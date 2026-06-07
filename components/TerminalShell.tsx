@@ -64,7 +64,7 @@ export function TerminalShell({ children }: TerminalShellProps) {
             </svg>
           )}
         </button>
-        <span className="titlebar-text">my-lichess-blunders</span>
+        <span className="titlebar-text">my-blunders</span>
         <a
           className="titlebar-author"
           href="https://github.com/samiabdulnour"
