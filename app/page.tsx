@@ -76,11 +76,15 @@ export default function Page() {
   const [stats, setStats] = useState<SessionStats>(DEFAULT_STATS);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   /** First-run gate. Until the user supplies a username (or skips), show
-   *  the onboarding screen instead of the main app. */
-  const [onboarded, setOnboarded] = useState(false);
-  /** True once persisted prefs have been read from localStorage. Gates the
-   *  first paint so returning users don't flash the onboarding screen. */
-  const [ready, setReady] = useState(false);
+   *  the onboarding screen instead of the main app.
+   *
+   *  Defaults to `true` (optimistic) on purpose: this component is statically
+   *  prerendered, and most loads are returning users. Starting "onboarded"
+   *  means the prerendered HTML already contains the full app shell, so it
+   *  paints instantly instead of waiting for the JS bundle to hydrate. The
+   *  mount effect then reads the real value from localStorage — a genuine
+   *  first run flips this to `false` and shows onboarding (a one-time swap). */
+  const [onboarded, setOnboarded] = useState(true);
   /** When true, `next()` picks a random unsolved puzzle. Persisted. */
   const [randomOrder, setRandomOrder] = useState(false);
   /** Color theme. Drives a `data-theme` attribute on <html>. Persisted. */
@@ -102,9 +106,8 @@ export default function Page() {
     setStats(loadStats());
     setHistory(loadHistory());
     setOnboarded(loadOnboarded());
-    // Persisted prefs are in hand — safe to paint and to persist on change.
+    // Persisted prefs are in hand — safe to persist on change from here.
     hydrated.current = true;
-    setReady(true);
 
     fetch(apiUrl('/api/puzzles'))
       .then((r) => r.json())
@@ -476,10 +479,6 @@ export default function Page() {
     setOnboarded(true);
     saveOnboarded(true);
   }, []);
-
-  // Hold first paint until persisted prefs are read — avoids flashing the
-  // onboarding screen at returning users for a frame.
-  if (!ready) return null;
 
   /* ── First run: onboarding ── */
   if (!onboarded) {
