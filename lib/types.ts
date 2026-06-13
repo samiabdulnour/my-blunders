@@ -95,4 +95,16 @@ export interface SessionStats {
   correct: number;
   wrong: number;
   streak: number;
+  /** Highest streak ever reached this profile. Surfaced in the stats sheet. */
+  bestStreak: number;
+}
+
+/**
+ * One day's solve tally, used to drive the "last 14 days" sparkline in the
+ * stats sheet. `date` is an ISO `YYYY-MM-DD` string.
+ */
+export interface HistoryEntry {
+  date: string;
+  correct: number;
+  wrong: number;
 }

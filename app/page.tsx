@@ -3,16 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Chess, type Move } from 'chess.js';
 
+import { AppShell } from '@/components/AppShell';
 import { Board } from '@/components/Board';
-import { PuzzleList } from '@/components/PuzzleList';
-import { TerminalShell } from '@/components/TerminalShell';
+import { Sidebar } from '@/components/Sidebar';
 import { ResultPanel } from '@/components/ResultPanel';
+import { Onboarding } from '@/components/Onboarding';
+import { BrandMark } from '@/components/BrandMark';
 import { apiUrl } from '@/lib/api';
 import { ecoName } from '@/lib/eco-names';
 import type {
   EcoFilter,
   Filter,
   GamePhase,
+  HistoryEntry,
   PhaseFilter,
   Puzzle,
   SessionStats,
@@ -28,10 +31,18 @@ import {
   saveRandomOrder,
   loadTheme,
   saveTheme,
+  loadStats,
+  saveStats,
+  loadHistory,
+  saveHistory,
+  loadOnboarded,
+  saveOnboarded,
   mergePuzzles,
   clearAll,
   type ThemeMode,
 } from '@/lib/storage';
+
+const DEFAULT_STATS: SessionStats = { correct: 0, wrong: 0, streak: 0, bestStreak: 0 };
 
 export default function Page() {
   const [all, setAll] = useState<Puzzle[]>([]);
@@ -52,48 +63,48 @@ export default function Page() {
   const [revealed, setRevealed] = useState(false);
   const [yourMove, setYourMove] = useState<string | null>(null);
   const [isOk, setIsOk] = useState(false);
-  /** True while a wrong move is flashing red and being undone. Blocks
-   *  further input during that short window. */
+  /** True while a wrong move is flashing red and being undone. */
   const [awaitingRetry, setAwaitingRetry] = useState(false);
-  /** When set, the piece at `.from` is rendered with a CSS animation
-   *  that slides it from the `.to` square back to `.from` — the visual
-   *  "bounce" after a wrong move, matching the Lichess puzzle feel. */
+  /** Piece at `.from` slides back from `.to` — the wrong-move bounce. */
   const [bounceBack, setBounceBack] = useState<{ from: string; to: string } | null>(null);
-  /** When set, the piece at `.to` is animated sliding in from `.from`
-   *  — used on puzzle load to replay the opponent's blunder so the user
-   *  sees what just happened before they have to respond. */
+  /** Piece at `.to` slides in from `.from` — opponent-move replay on load
+   *  and the forward animation on a correct / revealed move. */
   const [introMove, setIntroMove] = useState<{ from: string; to: string } | null>(null);
-  /** SANs of every wrong move the user has tried on the current puzzle.
-   *  Surfaced in the result panel so the user can see what they tried
-   *  before finding the answer or giving up. */
+  /** SANs of every wrong move the user has tried on the current puzzle. */
   const [attempts, setAttempts] = useState<string[]>([]);
   const [solved, setSolved] = useState<Record<string, SolveStatus>>({});
-  const [stats, setStats] = useState<SessionStats>({ correct: 0, wrong: 0, streak: 0 });
-  /** When true, `next()` picks a random unsolved puzzle from the filtered
-   *  list instead of the next in order. Persisted to localStorage. */
+  const [stats, setStats] = useState<SessionStats>(DEFAULT_STATS);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  /** First-run gate. Until the user supplies a username (or skips), show
+   *  the onboarding screen instead of the main app. */
+  const [onboarded, setOnboarded] = useState(false);
+  /** True once persisted prefs have been read from localStorage. Gates the
+   *  first paint so returning users don't flash the onboarding screen. */
+  const [ready, setReady] = useState(false);
+  /** When true, `next()` picks a random unsolved puzzle. Persisted. */
   const [randomOrder, setRandomOrder] = useState(false);
-  /** Color theme. Drives a `data-theme` attribute on <html>; CSS in
-   *  globals.css does the actual swap. Persisted to localStorage. */
+  /** Color theme. Drives a `data-theme` attribute on <html>. Persisted. */
   const [theme, setTheme] = useState<ThemeMode>('light');
   const hydrated = useRef(false);
   /** Puzzle id whose outcome has already been counted in stats. Prevents
-   *  double-counting when the user tries multiple wrong moves before
-   *  either finding the right one or clicking "show solution". */
+   *  double-counting across multiple wrong tries on one puzzle. */
   const recordedRef = useRef<string | null>(null);
-  /**
-   * Mirror of `current` as a ref. handleImport uses this to decide whether
-   * to auto-jump on the first streamed batch without falling into stale-
-   * closure traps when many batches arrive in quick succession.
-   */
+  /** Mirror of `current` as a ref, used by handleImport to decide whether
+   *  to auto-jump on the first streamed batch without stale-closure traps. */
   const currentRef = useRef<Puzzle | null>(null);
 
-  /* ── Load puzzles: seeds (from API) + saved (from localStorage) ── */
+  /* ── Hydrate persisted state, then load seed puzzles from the API ── */
   useEffect(() => {
     const saved = loadPuzzles();
-    const savedSolved = loadSolved();
-    setSolved(savedSolved);
+    setSolved(loadSolved());
     setRandomOrder(loadRandomOrder());
     setTheme(loadTheme());
+    setStats(loadStats());
+    setHistory(loadHistory());
+    setOnboarded(loadOnboarded());
+    // Persisted prefs are in hand — safe to paint and to persist on change.
+    hydrated.current = true;
+    setReady(true);
 
     fetch(apiUrl('/api/puzzles'))
       .then((r) => r.json())
@@ -101,69 +112,82 @@ export default function Page() {
         const merged = mergePuzzles(data.puzzles ?? [], saved);
         setAll(merged);
         if (merged.length > 0) loadPuzzle(merged[0]);
-        hydrated.current = true;
       })
       .catch((err) => {
         console.error('Failed to load seed puzzles:', err);
         setAll(saved);
         if (saved.length > 0) loadPuzzle(saved[0]);
-        hydrated.current = true;
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ── Persist solved state whenever it changes (after first hydration) ── */
+  /* ── Persist on change (after first hydration) ── */
   useEffect(() => {
     if (hydrated.current) saveSolved(solved);
   }, [solved]);
-
-  /* ── Persist preference toggles + apply theme to <html> ── */
+  useEffect(() => {
+    if (hydrated.current) saveStats(stats);
+  }, [stats]);
+  useEffect(() => {
+    if (hydrated.current) saveHistory(history);
+  }, [history]);
   useEffect(() => {
     if (hydrated.current) saveRandomOrder(randomOrder);
   }, [randomOrder]);
-
   useEffect(() => {
-    // The CSS theme switch is driven by a data-theme attribute on the
-    // root <html> rather than a class, so the variable swap stays
-    // outside React's tree and works for child portals too.
+    // The CSS theme switch is driven by data-theme on <html> so the
+    // variable swap stays outside React's tree (and works for portals).
     if (typeof document !== 'undefined') {
       document.documentElement.setAttribute('data-theme', theme);
     }
     if (hydrated.current) saveTheme(theme);
   }, [theme]);
 
-  /* ── Derived: filtered puzzle list ──
-     Apply the progress filter first, then narrow by ECO / speed / phase. */
+  /* ── Derived: filtered puzzle list ── */
   const filtered = useMemo(() => {
     let list = all;
     if (filter === 'new') list = list.filter((p) => !solved[p.id]);
     else if (filter === 'retry') list = list.filter((p) => solved[p.id] === 'fail');
 
-    if (ecoFilter !== 'all') {
-      list = list.filter((p) => p.eco === ecoFilter);
-    }
-    if (speedFilter !== 'all') {
-      list = list.filter((p) => p.speed === speedFilter);
-    }
-    if (phaseFilter !== 'all') {
-      list = list.filter((p) => phaseOf(p) === phaseFilter);
-    }
+    if (ecoFilter !== 'all') list = list.filter((p) => p.eco === ecoFilter);
+    if (speedFilter !== 'all') list = list.filter((p) => p.speed === speedFilter);
+    if (phaseFilter !== 'all') list = list.filter((p) => phaseOf(p) === phaseFilter);
     return list;
   }, [all, filter, ecoFilter, speedFilter, phaseFilter, solved]);
 
-  /* Count of unseen puzzles across the whole library, NOT narrowed by the
-     ECO / speed / phase dropdowns. The auto-fetch loop uses this: if the
-     user is still picky about phase but has unseen puzzles elsewhere, we
-     shouldn't spam Lichess for more. */
-  const unseenCount = useMemo(
-    () => all.reduce((n, p) => (solved[p.id] ? n : n + 1), 0),
+  /* Tab counts across the whole library (not narrowed by chips). */
+  const counts = useMemo(
+    () => ({
+      new: all.filter((p) => !solved[p.id]).length,
+      retry: all.filter((p) => solved[p.id] === 'fail').length,
+      all: all.length,
+    }),
     [all, solved]
   );
+  const unseenCount = counts.new;
 
-  /* ── Load a puzzle: replay its setup moves and hand over to the board ──
-     We also capture the opponent's last move (the final setup move) so
-     the board can animate it sliding in — the user sees the blunder
-     happen on load rather than arriving cold on a puzzle position. */
+  /* ── Record one day's solve into the history log ── */
+  const recordHistory = useCallback((kind: 'correct' | 'wrong') => {
+    const today = new Date().toISOString().slice(0, 10);
+    setHistory((h) => {
+      const last = h[h.length - 1];
+      if (last && last.date === today) {
+        const updated = [...h];
+        updated[updated.length - 1] = {
+          ...last,
+          correct: last.correct + (kind === 'correct' ? 1 : 0),
+          wrong: last.wrong + (kind === 'wrong' ? 1 : 0),
+        };
+        return updated;
+      }
+      return [
+        ...h,
+        { date: today, correct: kind === 'correct' ? 1 : 0, wrong: kind === 'wrong' ? 1 : 0 },
+      ];
+    });
+  }, []);
+
+  /* ── Load a puzzle: replay setup moves, animate the last (opponent) move ── */
   const loadPuzzle = useCallback((p: Puzzle) => {
     const c = new Chess();
     let lastMoveFrom: string | null = null;
@@ -195,9 +219,6 @@ export default function Page() {
     setAttempts([]);
     setLegalFrom(groupLegal(c));
 
-    // Intro animation: slide the opponent's last move in. The piece
-    // already lives on `to` (we applied every setup move above); the
-    // Board translates it visually from `from` back to 0 over ~350ms.
     if (lastMoveFrom && lastMoveTo) {
       setIntroMove({ from: lastMoveFrom, to: lastMoveTo });
       const id = p.id;
@@ -210,7 +231,7 @@ export default function Page() {
     }
   }, []);
 
-  /* ── Handle a click on a board square ── */
+  /* ── Click on a board square ── */
   const onSquareClick = useCallback(
     (sqn: string) => {
       if (revealed || awaitingRetry || !current) return;
@@ -229,23 +250,14 @@ export default function Page() {
           return;
         }
       }
-      if ((legalFrom[sqn] ?? []).length > 0) {
-        setSelected(sqn);
-      } else {
-        setSelected(null);
-      }
+      if ((legalFrom[sqn] ?? []).length > 0) setSelected(sqn);
+      else setSelected(null);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [revealed, awaitingRetry, current, chess, selected, legalFrom]
   );
 
-  /* ── Apply a move and compare to the puzzle's best move ──
-     Lichess-style flow:
-      · Correct move → reveal result panel, persistent green flash.
-      · Wrong move  → brief red flash on the landing square, then undo
-        the move so the user can try again. Stats are recorded once per
-        puzzle (on the first wrong attempt), so repeat tries don't
-        inflate the miss count. */
+  /* ── Apply a move and compare to the puzzle's best move ── */
   const makeMove = (mv: Move) => {
     if (!current) return;
     const next = new Chess(chess.fen());
@@ -269,10 +281,7 @@ export default function Page() {
       setIsOk(true);
       setFlashOk(mv.to);
 
-      // Forward animation: slide the piece visibly from its origin to
-      // the destination so the user sees the move land. Reuses the
-      // intro-move mechanism — the piece already lives on `to` after
-      // setChess(next); the Board translates it from `from` back to 0.
+      // Forward animation: slide the piece from origin into the destination.
       setIntroMove({ from: mv.from, to: mv.to });
       const okPuzzleId = current.id;
       setTimeout(() => {
@@ -282,45 +291,43 @@ export default function Page() {
 
       if (recordedRef.current !== current.id) {
         recordedRef.current = current.id;
-        setSolved((prev) =>
-          prev[current.id] ? prev : { ...prev, [current.id]: 'ok' }
-        );
-        setStats((prev) =>
-          solved[current.id]
-            ? prev
-            : { correct: prev.correct + 1, wrong: prev.wrong, streak: prev.streak + 1 }
-        );
+        const wasNew = !solved[current.id];
+        setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'ok' }));
+        if (wasNew) {
+          setStats((prev) => ({
+            correct: prev.correct + 1,
+            wrong: prev.wrong,
+            streak: prev.streak + 1,
+            bestStreak: Math.max(prev.bestStreak, prev.streak + 1),
+          }));
+          recordHistory('correct');
+        }
       }
       return;
     }
 
-    // ── Wrong move ──
-    // Show the piece landing on its (wrong) square with a red flash, then
-    // slide it back to its origin — two phases, so the user gets the
-    // Lichess-style "nope, try again" feedback:
-    //   · phase 1 (red flash, 400ms): piece sits at destination, red.
-    //   · phase 2 (bounce, 300ms): piece animates back to source.
+    // ── Wrong move: red flash at the destination, then bounce home. ──
     setChess(next);
     setSelected(null);
     setLastFrom(mv.from);
     setLastTo(mv.to);
     setFlashFail(mv.to);
     setAwaitingRetry(true);
-
-    // Track the attempt so we can surface it in the result panel.
     setAttempts((prev) => (prev.includes(applied.san) ? prev : [...prev, applied.san]));
 
-    // Record the miss exactly once per puzzle.
     if (recordedRef.current !== current.id) {
       recordedRef.current = current.id;
-      setSolved((prev) =>
-        prev[current.id] ? prev : { ...prev, [current.id]: 'fail' }
-      );
-      setStats((prev) =>
-        solved[current.id]
-          ? prev
-          : { correct: prev.correct, wrong: prev.wrong + 1, streak: 0 }
-      );
+      const wasNew = !solved[current.id];
+      setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'fail' }));
+      if (wasNew) {
+        setStats((prev) => ({
+          correct: prev.correct,
+          wrong: prev.wrong + 1,
+          streak: 0,
+          bestStreak: prev.bestStreak,
+        }));
+        recordHistory('wrong');
+      }
     }
 
     const beforeFen = chess.fen();
@@ -328,8 +335,6 @@ export default function Page() {
     const bounceFrom = mv.from;
     const bounceTo = mv.to;
 
-    // Phase 1 → Phase 2: rewind the position so the piece is back at
-    // its origin in the DOM, then apply the bounce-back animation.
     setTimeout(() => {
       if (currentRef.current?.id !== puzzleId) return;
       const rewind = new Chess(beforeFen);
@@ -341,7 +346,6 @@ export default function Page() {
       setBounceBack({ from: bounceFrom, to: bounceTo });
     }, 400);
 
-    // Phase 2 → done: clear the animation state and unlock input.
     setTimeout(() => {
       if (currentRef.current?.id !== puzzleId) return;
       setBounceBack(null);
@@ -349,12 +353,7 @@ export default function Page() {
     }, 700);
   };
 
-  /* ── Give up: reveal the engine's best move ──
-     Plays the engine's move on the board so the right piece travels to
-     the right square, then opens the result panel with a "solution
-     revealed" status and "—" in the "you played" slot. The source
-     square gets the same yellow last-move highlight used after a
-     correct solve, so the pre- and post-reveal views stay consistent. */
+  /* ── Give up: reveal the engine's best move ── */
   const showSolution = useCallback(() => {
     if (!current || revealed || awaitingRetry) return;
     const beforeFen = chess.fen();
@@ -377,8 +376,6 @@ export default function Page() {
     setYourMove('—');
     setIsOk(false);
 
-    // Animate the engine's move sliding into place so "show solution"
-    // doesn't just teleport the piece. Same mechanism as a correct move.
     setIntroMove({ from: bestApplied.from, to: bestApplied.to });
     const showPuzzleId = current.id;
     setTimeout(() => {
@@ -388,16 +385,19 @@ export default function Page() {
 
     if (recordedRef.current !== current.id) {
       recordedRef.current = current.id;
-      setSolved((prev) =>
-        prev[current.id] ? prev : { ...prev, [current.id]: 'fail' }
-      );
-      setStats((prev) =>
-        solved[current.id]
-          ? prev
-          : { correct: prev.correct, wrong: prev.wrong + 1, streak: 0 }
-      );
+      const wasNew = !solved[current.id];
+      setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'fail' }));
+      if (wasNew) {
+        setStats((prev) => ({
+          correct: prev.correct,
+          wrong: prev.wrong + 1,
+          streak: 0,
+          bestStreak: prev.bestStreak,
+        }));
+        recordHistory('wrong');
+      }
     }
-  }, [current, revealed, awaitingRetry, chess, solved]);
+  }, [current, revealed, awaitingRetry, chess, solved, recordHistory]);
 
   const retry = () => {
     if (current) loadPuzzle(current);
@@ -406,22 +406,15 @@ export default function Page() {
   const next = useCallback(() => {
     if (!current || filtered.length === 0) return;
 
-    // Random mode: pick any unsolved puzzle from the filtered list,
-    // excluding the current one. If everything's solved, pick any
-    // other puzzle so retry-loops don't get stuck on a single puzzle.
     if (randomOrder) {
-      const pool = filtered.filter(
-        (p) => p.id !== current.id && !solved[p.id]
-      );
+      const pool = filtered.filter((p) => p.id !== current.id && !solved[p.id]);
       const fallback = filtered.filter((p) => p.id !== current.id);
       const choices = pool.length > 0 ? pool : fallback;
       if (choices.length === 0) return;
-      const pick = choices[Math.floor(Math.random() * choices.length)];
-      loadPuzzle(pick);
+      loadPuzzle(choices[Math.floor(Math.random() * choices.length)]);
       return;
     }
 
-    // Sequential mode (default): walk forward to the next unsolved.
     const idx = filtered.findIndex((p) => p.id === current.id);
     for (let i = 1; i <= filtered.length; i++) {
       const cand = filtered[(idx + i) % filtered.length];
@@ -433,48 +426,30 @@ export default function Page() {
     loadPuzzle(filtered[(idx + 1) % filtered.length]);
   }, [current, filtered, solved, loadPuzzle, randomOrder]);
 
-  /**
-   * Import handler. Safe to call many times during a streamed import:
-   *  · merges incoming puzzles into `all` (deduped by id),
-   *  · persists the user-generated set to localStorage,
-   *  · auto-jumps to the first new puzzle only when nothing is currently
-   *    displayed on the board (so subsequent batches don't yank the user
-   *    off a puzzle they're thinking about).
-   */
+  /* ── Import handler (safe to call repeatedly during a streamed import) ── */
   const handleImport = useCallback(
     (newPuzzles: Puzzle[]) => {
       if (newPuzzles.length === 0) return;
-
       setAll((prev) => mergePuzzles(prev, newPuzzles));
-
-      // Persist only imported (non-seed) puzzles — seeds always come from
-      // the API; storing them would duplicate the seed list on reload.
       const saved = loadPuzzles();
       savePuzzles(mergePuzzles(saved, newPuzzles));
-
-      if (!currentRef.current) {
-        loadPuzzle(newPuzzles[0]);
-      }
+      if (!currentRef.current) loadPuzzle(newPuzzles[0]);
     },
     [loadPuzzle]
   );
 
-  /**
-   * Wipe all imported puzzles + solved progress from localStorage and reset
-   * the in-memory state back to whatever the seed endpoint returns. Seeds
-   * live in code so they reappear immediately. Username is preserved.
-   */
+  /* ── Wipe imported puzzles + progress, reset to seed state ── */
   const handleClearAll = useCallback(() => {
     clearAll();
     setSolved({});
-    setStats({ correct: 0, wrong: 0, streak: 0 });
+    setStats(DEFAULT_STATS);
+    setHistory([]);
     setCurrent(null);
     currentRef.current = null;
     setAll([]);
     setRevealed(false);
     setYourMove(null);
 
-    // Reload the seed puzzles so the sidebar isn't empty after a clear.
     fetch(apiUrl('/api/puzzles'))
       .then((r) => r.json())
       .then((data: { puzzles: Puzzle[] }) => {
@@ -497,12 +472,49 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealed, next]);
 
-  /* ── Render ── */
-  const mn = current ? Math.floor(current.setupMoves.length / 2) + 1 : 0;
+  const completeOnboarding = useCallback(() => {
+    setOnboarded(true);
+    saveOnboarded(true);
+  }, []);
+
+  // Hold first paint until persisted prefs are read — avoids flashing the
+  // onboarding screen at returning users for a frame.
+  if (!ready) return null;
+
+  /* ── First run: onboarding ── */
+  if (!onboarded) {
+    return (
+      <div className="app-root">
+        <div className="topbar">
+          <BrandMark />
+        </div>
+        <div className="body-row">
+          <div className="main">
+            <Onboarding onImport={handleImport} onComplete={completeOnboarding} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Main app ── */
+  const openingName = current ? ecoName(current.eco) : null;
+  const speedLabel =
+    current?.speed && current.speed !== 'unknown'
+      ? `${current.speed}${current.timeControl ? ` ${current.timeControl}` : ''}`
+      : null;
 
   return (
-    <TerminalShell loadedCount={all.length} stats={stats}>
-      <PuzzleList
+    <AppShell
+      stats={stats}
+      queueSize={unseenCount}
+      history={history}
+      randomOrder={randomOrder}
+      onToggleRandom={() => setRandomOrder((o) => !o)}
+      theme={theme}
+      onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+    >
+      <Sidebar
         all={all}
         filtered={filtered}
         filter={filter}
@@ -511,9 +523,8 @@ export default function Page() {
         phaseFilter={phaseFilter}
         current={current}
         solved={solved}
+        counts={counts}
         unseenCount={unseenCount}
-        randomOrder={randomOrder}
-        theme={theme}
         onFilterChange={setFilter}
         onEcoFilterChange={setEcoFilter}
         onSpeedFilterChange={setSpeedFilter}
@@ -521,53 +532,45 @@ export default function Page() {
         onSelect={loadPuzzle}
         onImport={handleImport}
         onClearAll={handleClearAll}
-        onRandomOrderChange={setRandomOrder}
-        onThemeChange={setTheme}
       />
 
       <div className="main">
         {!current ? (
           <div className="empty">
-            <div className="empty-line">
-              No puzzles loaded. Import a Lichess PGN from the sidebar.
-            </div>
+            <div>No puzzles loaded.</div>
+            <div>Import games from Lichess in the sidebar to begin.</div>
           </div>
         ) : (
           <div className="board-col">
-            <div className="ctx">
-              <div>
-                <div className="ctx-opp">
-                  {current.player
-                    ? current.abdulsColor === 'white'
-                      ? `${current.player} vs ${current.opponent}`
-                      : `${current.opponent} vs ${current.player}`
-                    : `vs ${current.opponent}`}{' '}
-                  <span className="eco">
-                    [{current.eco}
-                    {ecoName(current.eco) ? ` — ${ecoName(current.eco)}` : ''}]
-                  </span>
+            <div className="ctx-line">
+              <div className="ctx-l">
+                <div className="ctx-title">
+                  <span className="vs">vs</span>
+                  {current.opponent}
                 </div>
                 <div className="ctx-meta">
-                  move <span>{mn}</span> · you play{' '}
-                  <span>
-                    {current.abdulsColor === 'white' ? '\u25CB' : '\u25CF'} {current.abdulsColor}
-                  </span>
-                  {current.speed && current.speed !== 'unknown' && (
+                  {openingName && (
                     <>
-                      {' '}
-                      ·{' '}
-                      <span>
-                        {current.speed}
-                        {current.timeControl ? ` ${current.timeControl}` : ''}
-                      </span>
+                      <span>{openingName}</span>
+                      <span className="sep">·</span>
                     </>
-                  )}{' '}
-                  · <span>{current.date.replace(/\./g, '-')}</span>
+                  )}
+                  <span>{current.eco}</span>
+                  {speedLabel && (
+                    <>
+                      <span className="sep">·</span>
+                      <span>{speedLabel}</span>
+                    </>
+                  )}
+                  <span className="sep">·</span>
+                  <span>{current.date.replace(/\./g, '-')}</span>
                 </div>
               </div>
+              <div className={'turn-chip ' + (current.abdulsColor === 'white' ? 'white' : 'black')}>
+                <span className="dot" />
+                {current.abdulsColor === 'white' ? 'White to move' : 'Black to move'}
+              </div>
             </div>
-
-            <div className="puzzle-prompt">find the best move</div>
 
             <div className="board-row">
               <Board
@@ -586,10 +589,9 @@ export default function Page() {
                 onDragMove={makeMove}
               />
 
-              {/* Always reserve the 280px panel slot so the board doesn't shift
-                  horizontally when the result appears. Before reveal the
-                  slot hosts a "show solution" escape hatch; after reveal
-                  it shows the result panel with eval details + next. */}
+              {/* Reserve the 280px slot so the board doesn't shift when the
+                  result appears. Before reveal: a verdict-style prompt +
+                  "show solution" escape; after reveal: the result panel. */}
               <div className="result-slot">
                 {revealed && yourMove ? (
                   <ResultPanel
@@ -602,31 +604,21 @@ export default function Page() {
                   />
                 ) : (
                   <div className="pre-result">
-                    <div className="r-line">
-                      <span
-                        className={
-                          current.abdulsColor === 'white'
-                            ? 'r-status-turn-w'
-                            : 'r-status-turn-b'
-                        }
-                      ></span>
-                      <span
-                        style={{
-                          color:
-                            current.abdulsColor === 'white'
-                              ? 'var(--yellow)'
-                              : 'var(--cyan)',
-                        }}
-                      >
-                        {current.abdulsColor} to move
-                      </span>
+                    <div className="verdict idle">
+                      <div className="verdict-ico">?</div>
+                      <div>
+                        <div className="verdict-title">Find the best move.</div>
+                        <div className="verdict-sub">
+                          For {current.abdulsColor === 'white' ? 'white' : 'black'}.
+                        </div>
+                      </div>
                     </div>
-                    <button
-                      className="abtn"
-                      onClick={showSolution}
-                      disabled={awaitingRetry}
-                    >
-                      show solution
+                    <div className="help">
+                      Click a piece, then its destination — or drag. Click <em>show solution</em> to
+                      give up.
+                    </div>
+                    <button className="btn ghost" onClick={showSolution} disabled={awaitingRetry}>
+                      Show solution
                     </button>
                   </div>
                 )}
@@ -635,7 +627,7 @@ export default function Page() {
           </div>
         )}
       </div>
-    </TerminalShell>
+    </AppShell>
   );
 }
 
@@ -650,13 +642,11 @@ function groupLegal(c: Chess): Record<string, Move[]> {
 }
 
 /**
- * Classify a puzzle by how many plies had been played before the critical
- * position. Thresholds are the conventional-commentary breakpoints:
- *   · opening    — moves 1–12     (plies 0–23)
- *   · middlegame — moves 13–30    (plies 24–59)
- *   · endgame    — move 31+       (plies 60+)
- * These are heuristics, not hard definitions (a true endgame classifier
- * would look at material too), but they're accurate enough for a filter.
+ * Classify a puzzle by how many plies preceded the critical position:
+ *   · opening    — plies 0–23   (moves 1–12)
+ *   · middlegame — plies 24–59  (moves 13–30)
+ *   · endgame    — plies 60+    (move 31+)
+ * Heuristic, but close to how commentators carve up a game.
  */
 function phaseOf(p: Puzzle): GamePhase {
   const ply = p.setupMoves.length;

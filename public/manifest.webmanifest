@@ -4,8 +4,8 @@
   "description": "Puzzles from your own Lichess mistakes.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#2da66a",
-  "theme_color": "#2da66a",
+  "background_color": "#f1eee8",
+  "theme_color": "#f44e48",
   "orientation": "portrait",
   "icons": [
     {

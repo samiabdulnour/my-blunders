@@ -1,4 +1,4 @@
-import type { Puzzle } from './types';
+import type { HistoryEntry, Puzzle, SessionStats } from './types';
 
 /**
  * Tiny localStorage wrapper for persisting imported puzzles across reloads.
@@ -23,6 +23,9 @@ const KEY_OLDEST = 'bt.oldestFetchedMs';
 const KEY_FETCHED = 'bt.fetchedGames';
 const KEY_RANDOM = 'bt.randomOrder';
 const KEY_THEME = 'bt.theme';
+const KEY_ONBOARDED = 'bt.onboarded';
+const KEY_STATS = 'bt.stats';
+const KEY_HISTORY = 'bt.history';
 
 export function loadPuzzles(): Puzzle[] {
   if (typeof window === 'undefined') return [];
@@ -164,4 +167,72 @@ export function loadTheme(): ThemeMode {
 export function saveTheme(t: ThemeMode): void {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(KEY_THEME, t);
+}
+
+/* ── First-run onboarding flag ──
+   Gates the onboarding screen. Once the user has supplied a username (or
+   skipped into the app), we never show it again. */
+export function loadOnboarded(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(KEY_ONBOARDED) === '1';
+}
+
+export function saveOnboarded(on: boolean): void {
+  if (typeof window === 'undefined') return;
+  if (on) window.localStorage.setItem(KEY_ONBOARDED, '1');
+  else window.localStorage.removeItem(KEY_ONBOARDED);
+}
+
+/* ── Session stats ──
+   Solved / wrong tallies + current and best streak. Persisted so the
+   topbar cluster and stats sheet survive reloads. */
+const DEFAULT_STATS: SessionStats = { correct: 0, wrong: 0, streak: 0, bestStreak: 0 };
+
+export function loadStats(): SessionStats {
+  if (typeof window === 'undefined') return { ...DEFAULT_STATS };
+  try {
+    const raw = window.localStorage.getItem(KEY_STATS);
+    if (!raw) return { ...DEFAULT_STATS };
+    const parsed = JSON.parse(raw) as Partial<SessionStats>;
+    return {
+      correct: parsed.correct ?? 0,
+      wrong: parsed.wrong ?? 0,
+      streak: parsed.streak ?? 0,
+      bestStreak: parsed.bestStreak ?? parsed.streak ?? 0,
+    };
+  } catch {
+    return { ...DEFAULT_STATS };
+  }
+}
+
+export function saveStats(stats: SessionStats): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(KEY_STATS, JSON.stringify(stats));
+  } catch (err) {
+    console.warn('Failed to save stats to localStorage:', err);
+  }
+}
+
+/* ── Daily solve history ──
+   Drives the "last 14 days" sparkline. Each entry is one calendar day. */
+export function loadHistory(): HistoryEntry[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(KEY_HISTORY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as HistoryEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveHistory(history: HistoryEntry[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(KEY_HISTORY, JSON.stringify(history));
+  } catch (err) {
+    console.warn('Failed to save history to localStorage:', err);
+  }
 }

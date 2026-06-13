@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Puzzle } from '@/lib/types';
-import { apiUrl } from '@/lib/api';
+import type { Puzzle } from './types';
+import { apiUrl } from './api';
 import {
   loadUsername,
   saveUsername,
@@ -10,19 +10,9 @@ import {
   saveOldestFetchedMs,
   loadFetchedGameCount,
   saveFetchedGameCount,
-} from '@/lib/storage';
+} from './storage';
 
-interface ImportControlsProps {
-  /** Called as puzzles arrive. May be called many times during a streamed import. */
-  onImport: (newPuzzles: Puzzle[]) => void;
-  /** Wipe all imported puzzles and solved progress from cache. */
-  onClearAll: () => void;
-  /** How many unsolved puzzles are currently in the store. Used to
-   *  decide when to quietly pull another batch from Lichess. */
-  unseenCount: number;
-}
-
-interface ImportStatus {
+export interface ImportStatus {
   kind: 'idle' | 'working' | 'ok' | 'error';
   message?: string;
   /** Current/total game count for the progress bar, when known. */
@@ -31,32 +21,36 @@ interface ImportStatus {
 
 /** Games imported per batch. Small enough to feel responsive, large enough
  *  that the user usually gets several puzzles per click. */
-const BATCH_SIZE = 20;
+export const BATCH_SIZE = 20;
 
 /** When the store's unseen-puzzle count drops to or below this, the
  *  auto-import effect will quietly pull the next batch — provided a
  *  username exists and we haven't paginated past the user's history. */
 const AUTO_IMPORT_THRESHOLD = 5;
 
+interface UseImporterOptions {
+  /** Called as puzzles arrive. May be called many times during a streamed import. */
+  onImport: (newPuzzles: Puzzle[]) => void;
+  /** How many unsolved puzzles are currently in the store. Drives auto-import. */
+  unseenCount: number;
+  /** When false, the auto-import effect is suppressed (e.g. during onboarding,
+   *  where the import is driven explicitly by the CTA). Defaults to true. */
+  autoImport?: boolean;
+}
+
 /**
- * Sidebar panel with:
- *   · username input
- *   · primary IMPORT button → streams `BATCH_SIZE` games from Lichess
- *   · PGN file upload fallback for when the user has a file in hand
- *   · clear-cache escape hatch
+ * Encapsulates everything about pulling games from Lichess and turning them
+ * into puzzles:
+ *   · streaming NDJSON import (`runImport`) with cursor pagination,
+ *   · single-shot PGN-file upload (`importFile`),
+ *   · the quiet auto-import loop that refills the queue as it drains.
  *
- * Auto-import behaviour: once the user has done at least one manual import
- * (so we have a pagination cursor), the panel will quietly pull the next
- * batch of older games whenever the unseen-puzzle count drops to
- * `AUTO_IMPORT_THRESHOLD`. This keeps the list stocked without requiring
- * the user to click import again. The loop only stops when the user
- * paginates past the beginning of their recorded history.
- *
- * Streaming events are decoded line-by-line; puzzles are handed back to
- * the parent via onImport as each game finishes analysis, so the sidebar
- * list grows in real-time.
+ * Shared by the sidebar import bar and the first-run onboarding flow so both
+ * drive the *same* real import pipeline (no simulated progress). State that
+ * needs to survive reloads (username, pagination cursor, fetched-game count)
+ * is mirrored to localStorage.
  */
-export function ImportControls({ onImport, onClearAll, unseenCount }: ImportControlsProps) {
+export function useImporter({ onImport, unseenCount, autoImport = true }: UseImporterOptions) {
   const [username, setUsername] = useState('');
   const [status, setStatus] = useState<ImportStatus>({ kind: 'idle' });
   /**
@@ -89,7 +83,6 @@ export function ImportControls({ onImport, onClearAll, unseenCount }: ImportCont
    * Stops the auto-import loop so we don't spin forever on an empty tail.
    */
   const [exhausted, setExhausted] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setUsername(loadUsername());
@@ -98,12 +91,10 @@ export function ImportControls({ onImport, onClearAll, unseenCount }: ImportCont
     setHydrated(true);
   }, []);
 
-  /* ── Streaming import directly from Lichess ── */
-  /**
-   * Import a batch of up to BATCH_SIZE games from Lichess.
-   * When `untilCursor` is provided, imports games strictly older than that
-   * timestamp (used for every import except the very first).
-   */
+  /* ── Streaming import directly from Lichess ──
+     Import a batch of up to BATCH_SIZE games from Lichess. When
+     `untilCursor` is provided, imports games strictly older than that
+     timestamp (used for every import except the very first). */
   const runImport = useCallback(
     async (untilCursor?: number | null) => {
       const name = username.trim();
@@ -193,10 +184,7 @@ export function ImportControls({ onImport, onClearAll, unseenCount }: ImportCont
               }
             } else if (type === 'game-error') {
               // Non-fatal — note in the console and keep going.
-              console.warn(
-                `game ${(evt.gameId as string) ?? '?'} failed:`,
-                evt.message
-              );
+              console.warn(`game ${(evt.gameId as string) ?? '?'} failed:`, evt.message);
             } else if (type === 'done') {
               // Advance the pagination cursor. Subtract 1ms so the next
               // import doesn't re-request the boundary game.
@@ -228,10 +216,7 @@ export function ImportControls({ onImport, onClearAll, unseenCount }: ImportCont
               workingRef.current = false;
               return;
             } else if (type === 'error') {
-              setStatus({
-                kind: 'error',
-                message: (evt.message as string) ?? 'stream error',
-              });
+              setStatus({ kind: 'error', message: (evt.message as string) ?? 'stream error' });
               workingRef.current = false;
               return;
             }
@@ -244,10 +229,7 @@ export function ImportControls({ onImport, onClearAll, unseenCount }: ImportCont
           saveFetchedGameCount(next);
           return next;
         });
-        setStatus({
-          kind: 'ok',
-          message: `${parsedGames} games → ${totalPuzzles} puzzles`,
-        });
+        setStatus({ kind: 'ok', message: `${parsedGames} games → ${totalPuzzles} puzzles` });
       } catch (err) {
         setStatus({ kind: 'error', message: (err as Error).message });
       } finally {
@@ -261,46 +243,45 @@ export function ImportControls({ onImport, onClearAll, unseenCount }: ImportCont
      For users who have a PGN exported from somewhere and don't want to
      wait on the Lichess API. Kept alongside the streaming importer so
      both paths work. */
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // reset so the same file can be picked again
-    if (!file) return;
-
-    const name = username.trim();
-    if (!name) {
-      setStatus({ kind: 'error', message: 'enter your Lichess username first' });
-      return;
-    }
-    saveUsername(name);
-
-    workingRef.current = true;
-    setStatus({ kind: 'working', message: `reading ${file.name}...` });
-    const pgn = await file.text();
-
-    setStatus({ kind: 'working', message: 'analyzing with stockfish...' });
-    try {
-      const res = await fetch(apiUrl('/api/import-pgn'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pgn, username: name }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setStatus({ kind: 'error', message: data.error ?? `HTTP ${res.status}` });
+  const importFile = useCallback(
+    async (file: File) => {
+      const name = username.trim();
+      if (!name) {
+        setStatus({ kind: 'error', message: 'enter your Lichess username first' });
         return;
       }
-      const puzzles = (data.puzzles ?? []) as Puzzle[];
-      onImport(puzzles);
-      setStatus({
-        kind: 'ok',
-        message: `imported ${data.parsedGames} games → ${data.generated} puzzles`,
-      });
-    } catch (err) {
-      setStatus({ kind: 'error', message: (err as Error).message });
-    } finally {
-      workingRef.current = false;
-    }
-  };
+      saveUsername(name);
+
+      workingRef.current = true;
+      setStatus({ kind: 'working', message: `reading ${file.name}...` });
+      const pgn = await file.text();
+
+      setStatus({ kind: 'working', message: 'analyzing with stockfish...' });
+      try {
+        const res = await fetch(apiUrl('/api/import-pgn'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pgn, username: name }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setStatus({ kind: 'error', message: data.error ?? `HTTP ${res.status}` });
+          return;
+        }
+        const puzzles = (data.puzzles ?? []) as Puzzle[];
+        onImport(puzzles);
+        setStatus({
+          kind: 'ok',
+          message: `imported ${data.parsedGames} games → ${data.generated} puzzles`,
+        });
+      } catch (err) {
+        setStatus({ kind: 'error', message: (err as Error).message });
+      } finally {
+        workingRef.current = false;
+      }
+    },
+    [username, onImport]
+  );
 
   /* ── Auto-import loop ──
      When the user has worked their way through most of what's loaded
@@ -308,6 +289,7 @@ export function ImportControls({ onImport, onClearAll, unseenCount }: ImportCont
      Only fires after a first manual import has established a cursor, and
      stops when the user runs out of Lichess history. */
   useEffect(() => {
+    if (!autoImport) return;
     if (!hydrated) return;
     if (workingRef.current) return;
     if (exhausted) return;
@@ -315,90 +297,26 @@ export function ImportControls({ onImport, onClearAll, unseenCount }: ImportCont
     if (unseenCount > AUTO_IMPORT_THRESHOLD) return;
     if (!username.trim()) return;
     runImport(oldestMs);
-  }, [hydrated, oldestMs, unseenCount, username, exhausted, runImport]);
+  }, [autoImport, hydrated, oldestMs, unseenCount, username, exhausted, runImport]);
 
-  const working = status.kind === 'working';
+  /** Reset the pagination cursor + counters after a cache clear. */
+  const resetCursor = useCallback(() => {
+    setOldestMs(null);
+    setFetchedCount(0);
+    setExhausted(false);
+  }, []);
 
-  return (
-    <div className="import-panel">
-      <div className="side-prompt">import lichess games</div>
-      <input
-        type="text"
-        placeholder="your Lichess username"
-        className="import-input"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-        spellCheck={false}
-        autoCapitalize="none"
-        disabled={working}
-      />
-      <button
-        className="import-btn prim"
-        disabled={working}
-        onClick={() =>
-          runImport(
-            // First click (no cursor yet) imports the most recent games.
-            // Every subsequent manual click continues paginating older.
-            oldestMs ?? undefined
-          )
-        }
-      >
-        {working ? '· importing ·' : 'import'}
-      </button>
-      {fetchedCount > 0 && !working && (
-        <div className="import-counter">
-          {fetchedCount} games imported · auto-import{' '}
-          {exhausted ? 'off (history exhausted)' : 'on'}
-        </div>
-      )}
-      <button
-        className="import-btn"
-        disabled={working}
-        onClick={() => fileRef.current?.click()}
-      >
-        or upload PGN file
-      </button>
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".pgn,text/plain"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
-      <button
-        className="import-btn danger"
-        disabled={working}
-        onClick={() => {
-          if (
-            window.confirm(
-              'Clear all imported puzzles and solved progress? Seed puzzles will remain.'
-            )
-          ) {
-            onClearAll();
-            setOldestMs(null);
-            setFetchedCount(0);
-            setExhausted(false);
-            setStatus({ kind: 'ok', message: 'cache cleared' });
-          }
-        }}
-      >
-        clear all puzzles
-      </button>
-      {/* Only surface the status line at rest — on success or on error.
-          Streaming per-game progress during an import would otherwise
-          flicker in the sidebar while the user is trying to concentrate
-          on a puzzle. Working state is communicated solely by the button
-          label ("· importing ·"). */}
-      {status.message && !working && (
-        <div
-          className={
-            'import-status ' +
-            (status.kind === 'error' ? 'err' : 'ok')
-          }
-        >
-          {status.message}
-        </div>
-      )}
-    </div>
-  );
+  return {
+    username,
+    setUsername,
+    status,
+    setStatus,
+    oldestMs,
+    fetchedCount,
+    exhausted,
+    working: status.kind === 'working',
+    runImport,
+    importFile,
+    resetCursor,
+  };
 }
