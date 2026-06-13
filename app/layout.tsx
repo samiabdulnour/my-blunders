@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#2da66a',
+  themeColor: '#f44e48',
   /**
    * Lock the initial zoom so the board doesn't scale on double-tap, and
    * disable user scaling — a zoomed-in chessboard is never what we want,
