@@ -31,17 +31,27 @@ export function Onboarding({ onImport, onComplete }: OnboardingProps) {
   const [phase, setPhase] = useState<Phase>('idle');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Advance the step machine off the shared import status.
+  // Advance the step machine off the shared import status. Kept separate
+  // from the completion timer below: if we scheduled onComplete here, the
+  // setPhase('done') re-render would change this effect's deps and run its
+  // cleanup — cancelling the timeout before it ever fired (the app would
+  // hang on the "All set" screen).
   useEffect(() => {
     if (phase !== 'running') return;
-    if (status.kind === 'ok') {
-      setPhase('done');
-      const t = setTimeout(() => onComplete(username.trim()), 700);
-      return () => clearTimeout(t);
-    }
-    if (status.kind === 'error') setPhase('error');
+    if (status.kind === 'ok') setPhase('done');
+    else if (status.kind === 'error') setPhase('error');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status.kind, phase]);
+
+  // Once import has finished, briefly show the success state, then hand off
+  // to the main app. This effect owns the timer so it survives the phase
+  // transition that triggers it.
+  useEffect(() => {
+    if (phase !== 'done') return;
+    const t = setTimeout(() => onComplete(username.trim()), 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   const start = () => {
     if (!username.trim()) return;
