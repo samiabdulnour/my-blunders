@@ -40,11 +40,16 @@ export function ResultPanel({ puzzle, yourMove, attempts, isOk, onRetry, onNext 
   const fillW = Math.abs(pctAfter - pctBefore);
 
   /**
-   * Build a Lichess URL that opens the game at the exact puzzle position and
-   * from the side the user was playing:
+   * Where the "view game" button points. For Lichess-derived puzzles, build a
+   * deep link that opens the game at the exact position and POV:
    *   /{gameId}        — white POV   ·   /{gameId}/black — black POV   ·   #N — ply
+   * Curated famous-game puzzles carry a plain reference URL (e.g. Wikipedia)
+   * instead, so we open it as-is rather than appending a ply/POV path that
+   * would corrupt a non-Lichess link.
    */
-  const lichessUrl = (() => {
+  const isLichess = /(^|\.)lichess\.org/.test(puzzle.site);
+  const gameUrl = (() => {
+    if (!isLichess) return puzzle.site;
     const base = puzzle.site.replace(/#.*$/, '').replace(/\/$/, '');
     const ply = puzzle.setupMoves.length;
     const pov = puzzle.abdulsColor === 'black' ? '/black' : '';
@@ -108,9 +113,9 @@ export function ResultPanel({ puzzle, yourMove, attempts, isOk, onRetry, onNext 
           </button>
           <button
             className="btn"
-            onClick={() => window.open(lichessUrl, '_blank', 'noopener,noreferrer')}
+            onClick={() => window.open(gameUrl, '_blank', 'noopener,noreferrer')}
           >
-            Lichess
+            {isLichess ? 'Lichess' : 'View game'}
           </button>
         </div>
       </div>

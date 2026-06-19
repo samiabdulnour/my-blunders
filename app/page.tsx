@@ -11,6 +11,7 @@ import { Onboarding } from '@/components/Onboarding';
 import { BrandMark } from '@/components/BrandMark';
 import { apiUrl } from '@/lib/api';
 import { ecoName } from '@/lib/eco-names';
+import { FAMOUS_PUZZLES } from '@/lib/famous-puzzles';
 import type {
   EcoFilter,
   Filter,
@@ -475,10 +476,17 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealed, next]);
 
-  const completeOnboarding = useCallback(() => {
-    setOnboarded(true);
-    saveOnboarded(true);
-  }, []);
+  const completeOnboarding = useCallback(
+    (username: string) => {
+      // Guest path: entering without a name (the "explore" option on the
+      // onboarding screen) loads the curated famous-blunder set so the board
+      // isn't empty. handleImport merges, persists, and shows the first one.
+      if (!username.trim()) handleImport(FAMOUS_PUZZLES);
+      setOnboarded(true);
+      saveOnboarded(true);
+    },
+    [handleImport]
+  );
 
   /* ── First run: onboarding ── */
   if (!onboarded) {
