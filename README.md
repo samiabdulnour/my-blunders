@@ -1,4 +1,4 @@
-# my-lichess-blunders
+# my-blunders
 
 Train on puzzles generated from your own Lichess mistakes.
 
