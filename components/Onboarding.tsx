@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import type { Puzzle } from '@/lib/types';
 import { useImporter } from '@/lib/useImporter';
 
@@ -196,6 +197,10 @@ export function Onboarding({ onImport, onComplete }: OnboardingProps) {
       {phase === 'done' && (
         <div className="onb-done">✓ All set. Loading your first puzzle…</div>
       )}
+
+      <div className="onb-alt">
+        <Link href="/about">about my·blunders →</Link>
+      </div>
     </div>
   );
 }
