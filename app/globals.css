@@ -1289,6 +1289,52 @@ html[data-theme='dark'] .sq.cap-ring {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* Divider between the import CTA and the green "famous blunders" button. */
+.onb-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--fs-micro);
+  color: var(--txt-faint);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+}
+.onb-or::before,
+.onb-or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--contour);
+  opacity: 0.5;
+}
+/* Dedicated green, no-account path. Uses --mint (identical in both themes)
+   with dark text so contrast holds in light and dark mode alike. */
+.onb-famous {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: var(--mint);
+  color: #0d1f14;
+  border: 1px solid var(--mint);
+  padding: 11px 24px;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: filter 0.12s var(--ease-snap);
+}
+.onb-famous:hover {
+  filter: brightness(1.06);
+}
+.onb-famous .sub {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-base);
+  letter-spacing: var(--track-caps);
+  opacity: 0.7;
+}
 .onb-alt {
   font-size: var(--fs-micro);
   color: var(--txt-faint);

@@ -144,11 +144,18 @@ export function Onboarding({ onImport, onComplete }: OnboardingProps) {
           <button className="onb-go" onClick={start} disabled={!username.trim()}>
             Start importing →
           </button>
+          <div className="onb-or">or</div>
+          <button
+            type="button"
+            className="onb-famous"
+            onClick={() => onComplete('')}
+          >
+            ♟ Play famous blunders
+            <span className="sub">no account needed</span>
+          </button>
           <div className="onb-alt">
             already have a PGN?{' '}
             <a onClick={() => fileRef.current?.click()}>upload file</a>
-            &nbsp;·&nbsp;
-            <a onClick={() => onComplete('')}>no account — play famous blunders</a>
           </div>
           <input
             ref={fileRef}
@@ -174,7 +181,14 @@ export function Onboarding({ onImport, onComplete }: OnboardingProps) {
               <a onClick={() => onComplete(username.trim())}>continue anyway →</a>
             </div>
           ) : (
-            <div className="progress-note">analysis runs on the server — hang tight</div>
+            <>
+              <div className="progress-note">analysis runs on the server — hang tight</div>
+              <div className="onb-alt">
+                <a onClick={() => onComplete(username.trim())}>
+                  play famous blunders while this loads →
+                </a>
+              </div>
+            </>
           )}
         </div>
       )}

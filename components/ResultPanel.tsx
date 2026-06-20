@@ -40,21 +40,26 @@ export function ResultPanel({ puzzle, yourMove, attempts, isOk, onRetry, onNext 
   const fillW = Math.abs(pctAfter - pctBefore);
 
   /**
-   * Where the "view game" button points. For Lichess-derived puzzles, build a
-   * deep link that opens the game at the exact position and POV:
+   * Where the "view game" button points. For a real Lichess game URL
+   * (lichess.org/<8-char id>), build a deep link to the exact position + POV:
    *   /{gameId}        — white POV   ·   /{gameId}/black — black POV   ·   #N — ply
-   * Curated famous-game puzzles carry a plain reference URL (e.g. Wikipedia)
-   * instead, so we open it as-is rather than appending a ply/POV path that
-   * would corrupt a non-Lichess link.
+   * Famous-game puzzles instead carry a plain reference URL (Wikipedia) or a
+   * Lichess /analysis/ board, which we open verbatim — appending a ply/POV
+   * path would corrupt those.
    */
-  const isLichess = /(^|\.)lichess\.org/.test(puzzle.site);
+  const isLichessGame = /lichess\.org\/[A-Za-z0-9]{8}(?:[/#?]|$)/.test(puzzle.site);
   const gameUrl = (() => {
-    if (!isLichess) return puzzle.site;
+    if (!isLichessGame) return puzzle.site;
     const base = puzzle.site.replace(/#.*$/, '').replace(/\/$/, '');
     const ply = puzzle.setupMoves.length;
     const pov = puzzle.abdulsColor === 'black' ? '/black' : '';
     return `${base}${pov}#${ply}`;
   })();
+  const linkLabel = isLichessGame
+    ? 'Lichess'
+    : puzzle.site.includes('lichess.org')
+      ? 'Analyse'
+      : 'View game';
 
   return (
     <div className="result">
@@ -115,7 +120,7 @@ export function ResultPanel({ puzzle, yourMove, attempts, isOk, onRetry, onNext 
             className="btn"
             onClick={() => window.open(gameUrl, '_blank', 'noopener,noreferrer')}
           >
-            {isLichess ? 'Lichess' : 'View game'}
+            {linkLabel}
           </button>
         </div>
       </div>
