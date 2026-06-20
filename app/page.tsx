@@ -100,7 +100,10 @@ export default function Page() {
 
   /* ── Hydrate persisted state, then load seed puzzles from the API ── */
   useEffect(() => {
-    const saved = loadPuzzles();
+    // Famous-blunder placeholders were persisted by an earlier build; never
+    // treat them as the user's own games. Strip them on load — the current
+    // set is re-added below if the user still has no real games of their own.
+    const saved = loadPuzzles().filter((p) => !isFamous(p));
     setSolved(loadSolved());
     setRandomOrder(loadRandomOrder());
     setTheme(loadTheme());
@@ -113,22 +116,28 @@ export default function Page() {
     fetch(apiUrl('/api/puzzles'))
       .then((r) => r.json())
       .then((data: { puzzles: Puzzle[] }) => {
-        // Merge against whatever is already in state, not just the snapshot
-        // captured at mount: a guest may have tapped "play famous blunders"
-        // before this request resolved, and a late response must not clobber
-        // the puzzles that path just loaded.
-        setAll((prev) => mergePuzzles(data.puzzles ?? [], mergePuzzles(saved, prev)));
-        // Only auto-open a puzzle if nothing is showing yet (the guest path
-        // sets currentRef synchronously, so we won't yank them off it).
-        if (!currentRef.current) {
-          const first = (data.puzzles ?? [])[0] ?? saved[0];
-          if (first) loadPuzzle(first);
+        const real = mergePuzzles(data.puzzles ?? [], saved);
+        if (real.length > 0) {
+          // The user has games of their own — drop any famous placeholders.
+          setAll((prev) => mergePuzzles(real, prev.filter((p) => !isFamous(p))));
+          if (!currentRef.current) loadPuzzle(real[0]);
+        } else {
+          // No games yet: show the famous-blunders library as a placeholder.
+          // Merge against current state so a late response can't clobber a
+          // guest who tapped "play famous blunders" before this resolved.
+          setAll((prev) => (prev.some((p) => !isFamous(p)) ? prev : mergePuzzles(prev, FAMOUS_PUZZLES)));
+          if (!currentRef.current) loadPuzzle(FAMOUS_PUZZLES[0]);
         }
       })
       .catch((err) => {
         console.error('Failed to load seed puzzles:', err);
-        setAll((prev) => mergePuzzles(saved, prev));
-        if (!currentRef.current && saved.length > 0) loadPuzzle(saved[0]);
+        if (saved.length > 0) {
+          setAll((prev) => mergePuzzles(saved, prev.filter((p) => !isFamous(p))));
+          if (!currentRef.current) loadPuzzle(saved[0]);
+        } else {
+          setAll((prev) => (prev.some((p) => !isFamous(p)) ? prev : mergePuzzles(prev, FAMOUS_PUZZLES)));
+          if (!currentRef.current) loadPuzzle(FAMOUS_PUZZLES[0]);
+        }
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -442,10 +451,21 @@ export default function Page() {
   const handleImport = useCallback(
     (newPuzzles: Puzzle[]) => {
       if (newPuzzles.length === 0) return;
-      setAll((prev) => mergePuzzles(prev, newPuzzles));
-      const saved = loadPuzzles();
-      savePuzzles(mergePuzzles(saved, newPuzzles));
-      if (!currentRef.current) loadPuzzle(newPuzzles[0]);
+      const real = newPuzzles.filter((p) => !isFamous(p));
+      setAll((prev) => {
+        // The user's own (real) games replace the famous placeholders.
+        const base = real.length > 0 ? prev.filter((p) => !isFamous(p)) : prev;
+        return mergePuzzles(base, newPuzzles);
+      });
+      if (real.length > 0) {
+        // Persist only the user's own puzzles — famous ones live in code.
+        const saved = loadPuzzles().filter((p) => !isFamous(p));
+        savePuzzles(mergePuzzles(saved, real));
+        // If a famous placeholder was on the board, jump to the first real one.
+        if (!currentRef.current || isFamous(currentRef.current)) loadPuzzle(real[0]);
+      } else if (!currentRef.current) {
+        loadPuzzle(newPuzzles[0]);
+      }
     },
     [loadPuzzle]
   );
@@ -466,10 +486,15 @@ export default function Page() {
       .then((r) => r.json())
       .then((data: { puzzles: Puzzle[] }) => {
         const seeds = data.puzzles ?? [];
-        setAll(seeds);
-        if (seeds.length > 0) loadPuzzle(seeds[0]);
+        // Clearing your own games drops you back to the famous library.
+        const base = seeds.length > 0 ? seeds : FAMOUS_PUZZLES;
+        setAll(base);
+        if (base.length > 0) loadPuzzle(base[0]);
       })
-      .catch((err) => console.error('Failed to reload seed puzzles:', err));
+      .catch(() => {
+        setAll(FAMOUS_PUZZLES);
+        loadPuzzle(FAMOUS_PUZZLES[0]);
+      });
   }, [loadPuzzle]);
 
   /* ── Keyboard shortcuts ── */
@@ -485,15 +510,17 @@ export default function Page() {
   }, [revealed, next]);
 
   const completeOnboarding = useCallback(
-    (username: string) => {
-      // Guest path: entering without a name (the "explore" option on the
-      // onboarding screen) loads the curated famous-blunder set so the board
-      // isn't empty. handleImport merges, persists, and shows the first one.
-      if (!username.trim()) handleImport(FAMOUS_PUZZLES);
+    (_username: string) => {
+      // Show the famous-blunders library immediately so the board is never
+      // empty — whether the user skipped (guest) or kicked off an import that
+      // is still streaming in the background. Real games replace these via
+      // handleImport as they arrive.
+      setAll((prev) => (prev.some((p) => !isFamous(p)) ? prev : mergePuzzles(prev, FAMOUS_PUZZLES)));
+      if (!currentRef.current) loadPuzzle(FAMOUS_PUZZLES[0]);
       setOnboarded(true);
       saveOnboarded(true);
     },
-    [handleImport]
+    [loadPuzzle]
   );
 
   /* ── First run: onboarding ── */
@@ -644,6 +671,13 @@ export default function Page() {
       </div>
     </AppShell>
   );
+}
+
+/** Famous-blunder placeholder puzzles carry a `famous_` id prefix. They are
+ *  shown when the user has no games of their own, and are never persisted —
+ *  the user's real imported games replace them. */
+function isFamous(p: Puzzle): boolean {
+  return p.id.startsWith('famous_');
 }
 
 /** Group all legal moves at the current position by their `from` square. */
