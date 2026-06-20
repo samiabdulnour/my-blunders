@@ -187,3 +187,35 @@ export function parsePgn(pgnText: string): ParsedGame[] {
   }
   return games;
 }
+
+/**
+ * Parse a game's UTCDate ("YYYY.MM.DD") + UTCTime ("HH:MM:SS") headers into a
+ * UNIX millisecond timestamp, falling back to the plain `date` header. Returns
+ * null when no usable date is present.
+ */
+function gameStartMs(game: ParsedGame): number | null {
+  const d = game.headers['utcdate'] ?? game.headers['date'];
+  const t = game.headers['utctime'] ?? '00:00:00';
+  if (!d) return null;
+  const [y, mo, da] = d.split('.').map((s) => Number(s));
+  const [h, mi, s] = t.split(':').map((s) => Number(s));
+  if (!y || !mo || !da) return null;
+  const ms = Date.UTC(y, mo - 1, da, h || 0, mi || 0, s || 0);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Oldest game start time (UNIX ms) across a batch, or null if none have dates.
+ * Lichess returns games newest-first, so this is the pagination cursor for
+ * "fetch the next, older batch". Used by the client-side WASM import to mirror
+ * the server route's cursor behavior.
+ */
+export function oldestGameStartMs(games: ParsedGame[]): number | null {
+  let min: number | null = null;
+  for (const g of games) {
+    const ms = gameStartMs(g);
+    if (ms == null) continue;
+    if (min == null || ms < min) min = ms;
+  }
+  return min;
+}

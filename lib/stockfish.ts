@@ -1,9 +1,19 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { Chess } from 'chess.js';
+import {
+  UciSearch,
+  uciToSan,
+  type AnalyzeOpts,
+  type AnalysisResult,
+  type ChessEngine,
+} from './engine/uci';
 
 /**
- * Stockfish analysis service — spawns the local `stockfish` binary and
- * speaks UCI to it.
+ * Native Stockfish backend — spawns the local `stockfish` binary and speaks
+ * UCI to it over stdin/stdout. Server-only (uses `node:child_process`), so it
+ * must never be imported into client code.
+ *
+ * The UCI parsing itself lives in `lib/engine/uci.ts` and is shared with the
+ * browser WASM backend; this file only owns the child_process transport.
  *
  * Requires Stockfish installed on the host machine:
  *   macOS:  brew install stockfish
@@ -19,58 +29,9 @@ import { Chess } from 'chess.js';
  * bottleneck, switch to a singleton engine pool keyed on FEN.
  */
 
-export interface AnalyzeOpts {
-  fen: string;
-  /** Search depth. Default 18 — strong, fast for personal use. */
-  depth?: number;
-  /** Number of principal variations. Default 1 (just the best move). */
-  multiPv?: number;
-}
-
-export interface AnalysisLine {
-  /** Eval in centipawns (white-positive). null if `mate` is set. */
-  cp: number | null;
-  /** Moves to mate, signed (positive = white mates). null if `cp` is set. */
-  mate: number | null;
-  /** UCI moves of the principal variation. */
-  pvUci: string[];
-  /** Same PV converted to SAN — matches what the puzzle UI compares against. */
-  pvSan: string[];
-}
-
-export interface AnalysisResult {
-  fen: string;
-  depth: number;
-  /** Principal variations, sorted best-first. */
-  lines: AnalysisLine[];
-}
-
-/** Convert a UCI move ("e2e4", "e7e8q") to SAN against a given FEN. */
-function uciToSan(fen: string, uci: string): string {
-  const c = new Chess(fen);
-  const from = uci.slice(0, 2);
-  const to = uci.slice(2, 4);
-  const promotion = uci.length > 4 ? uci.slice(4, 5) : undefined;
-  const m = c.move({ from, to, promotion });
-  return m.san;
-}
-
-function uciLineToSan(fen: string, uciMoves: string[]): string[] {
-  const c = new Chess(fen);
-  const out: string[] = [];
-  for (const u of uciMoves) {
-    const from = u.slice(0, 2);
-    const to = u.slice(2, 4);
-    const promotion = u.length > 4 ? u.slice(4, 5) : undefined;
-    try {
-      const m = c.move({ from, to, promotion });
-      out.push(m.san);
-    } catch {
-      break; // engine sometimes emits truncated PVs in low-time scenarios
-    }
-  }
-  return out;
-}
+// Re-export the shared types so existing importers of `@/lib/stockfish`
+// (the API routes) keep working unchanged.
+export type { AnalyzeOpts, AnalysisLine, AnalysisResult } from './engine/uci';
 
 /**
  * Drive a single Stockfish process through one analysis request.
@@ -103,10 +64,9 @@ function runUci(opts: AnalyzeOpts): Promise<AnalysisResult> {
       );
     });
 
-    // Per-multipv slot — index 0 = best line. Stockfish updates these many
-    // times during search; we keep the latest.
-    const lines: Map<number, AnalysisLine> = new Map();
+    const search = new UciSearch(fen, depth);
     let buffer = '';
+    let settled = false;
 
     proc.stdout.on('data', (chunk: Buffer) => {
       buffer += chunk.toString();
@@ -115,45 +75,14 @@ function runUci(opts: AnalyzeOpts): Promise<AnalysisResult> {
       while ((nl = buffer.indexOf('\n')) !== -1) {
         const line = buffer.slice(0, nl).trim();
         buffer = buffer.slice(nl + 1);
-        handleLine(line);
+        const result = search.handleLine(line);
+        if (result && !settled) {
+          settled = true;
+          proc.stdin.end();
+          resolve(result);
+        }
       }
     });
-
-    function handleLine(line: string) {
-      if (line.startsWith('info ') && line.includes(' pv ')) {
-        const mpvMatch = line.match(/\bmultipv\s+(\d+)\b/);
-        const cpMatch = line.match(/\bscore cp\s+(-?\d+)/);
-        const mateMatch = line.match(/\bscore mate\s+(-?\d+)/);
-        const pvMatch = line.match(/\bpv\s+(.+?)(?:\s+(?:bmc|hashfull|nps|tbhits|time|nodes|depth)\s+|$)/);
-        const mpv = mpvMatch ? parseInt(mpvMatch[1], 10) : 1;
-        const pvUci = pvMatch ? pvMatch[1].trim().split(/\s+/) : [];
-        if (pvUci.length === 0) return;
-
-        // White-relative score: Stockfish reports cp from side-to-move POV;
-        // flip the sign when it's black to move so callers always get a
-        // white-positive value.
-        const sideToMove = fen.split(' ')[1]; // 'w' or 'b'
-        const flip = sideToMove === 'b' ? -1 : 1;
-
-        const cp = cpMatch ? parseInt(cpMatch[1], 10) * flip : null;
-        const mate = mateMatch ? parseInt(mateMatch[1], 10) * flip : null;
-
-        let pvSan: string[] = [];
-        try {
-          pvSan = uciLineToSan(fen, pvUci);
-        } catch {
-          // ignore — partial/illegal PV
-        }
-
-        lines.set(mpv, { cp, mate, pvUci, pvSan });
-      } else if (line.startsWith('bestmove')) {
-        proc.stdin.end();
-        const sorted = Array.from(lines.entries())
-          .sort(([a], [b]) => a - b)
-          .map(([, v]) => v);
-        resolve({ fen, depth, lines: sorted });
-      }
-    }
 
     proc.stderr.on('data', () => {
       // Stockfish prints its banner to stderr; ignore.
@@ -186,6 +115,16 @@ export async function bestMoveSan(fen: string, depth = 18): Promise<string | nul
   return res.lines[0]?.pvSan[0] ?? null;
 }
 
-// Suppress unused-import warning when the conversion helper is only used
-// internally by uciLineToSan; keep the export available for callers.
+/**
+ * The native engine as a `ChessEngine`. Pass this to `generatePuzzlesFromGame`
+ * from server routes; the browser passes the WASM engine instead.
+ */
+export const nodeEngine: ChessEngine = {
+  analyze: analyzePosition,
+  bestMoveSan,
+  dispose() {
+    // Nothing to release — each search spawns and tears down its own process.
+  },
+};
+
 export { uciToSan };
