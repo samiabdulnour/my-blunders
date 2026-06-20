@@ -113,14 +113,22 @@ export default function Page() {
     fetch(apiUrl('/api/puzzles'))
       .then((r) => r.json())
       .then((data: { puzzles: Puzzle[] }) => {
-        const merged = mergePuzzles(data.puzzles ?? [], saved);
-        setAll(merged);
-        if (merged.length > 0) loadPuzzle(merged[0]);
+        // Merge against whatever is already in state, not just the snapshot
+        // captured at mount: a guest may have tapped "play famous blunders"
+        // before this request resolved, and a late response must not clobber
+        // the puzzles that path just loaded.
+        setAll((prev) => mergePuzzles(data.puzzles ?? [], mergePuzzles(saved, prev)));
+        // Only auto-open a puzzle if nothing is showing yet (the guest path
+        // sets currentRef synchronously, so we won't yank them off it).
+        if (!currentRef.current) {
+          const first = (data.puzzles ?? [])[0] ?? saved[0];
+          if (first) loadPuzzle(first);
+        }
       })
       .catch((err) => {
         console.error('Failed to load seed puzzles:', err);
-        setAll(saved);
-        if (saved.length > 0) loadPuzzle(saved[0]);
+        setAll((prev) => mergePuzzles(saved, prev));
+        if (!currentRef.current && saved.length > 0) loadPuzzle(saved[0]);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
