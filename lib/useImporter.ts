@@ -53,6 +53,11 @@ interface UseImporterOptions {
   /** When false, the auto-import effect is suppressed (e.g. during onboarding,
    *  where the import is driven explicitly by the CTA). Defaults to true. */
   autoImport?: boolean;
+  /** Fired once the user's own games have been fetched + parsed — before any
+   *  analysis has produced a puzzle. Lets the UI drop guest/famous placeholders
+   *  the instant real games arrive, rather than waiting for the first puzzle
+   *  (which may be seconds away, or never, if the games hold no blunders). */
+  onGamesFetched?: () => void;
 }
 
 /**
@@ -71,7 +76,12 @@ interface UseImporterOptions {
  * way. State that needs to survive reloads (username, pagination cursor,
  * fetched-game count) is mirrored to localStorage.
  */
-export function useImporter({ onImport, unseenCount, autoImport = true }: UseImporterOptions) {
+export function useImporter({
+  onImport,
+  unseenCount,
+  autoImport = true,
+  onGamesFetched,
+}: UseImporterOptions) {
   const [username, setUsername] = useState('');
   const [status, setStatus] = useState<ImportStatus>({ kind: 'idle' });
   /**
@@ -127,6 +137,9 @@ export function useImporter({ onImport, unseenCount, autoImport = true }: UseImp
           return 'continue';
         case 'parsed':
           ctx.parsedGames = (evt.total as number) ?? 0;
+          // The user's own games are now in hand — let the UI retire any guest
+          // placeholders immediately, without waiting for the first puzzle.
+          if (ctx.parsedGames > 0) onGamesFetched?.();
           setStatus({
             kind: 'working',
             message: `parsed ${ctx.parsedGames} games — starting analysis...`,
@@ -192,7 +205,7 @@ export function useImporter({ onImport, unseenCount, autoImport = true }: UseImp
           return 'continue';
       }
     },
-    [onImport]
+    [onImport, onGamesFetched]
   );
 
   /* ── Native path: stream NDJSON puzzles from the server (server-side SF) ── */
@@ -391,6 +404,8 @@ export function useImporter({ onImport, unseenCount, autoImport = true }: UseImp
           });
           return;
         }
+        // Real games are in hand — drop any guest placeholders right away.
+        onGamesFetched?.();
         const engine = getWasmEngine();
         let total = 0;
         for (let i = 0; i < games.length; i++) {
@@ -416,7 +431,7 @@ export function useImporter({ onImport, unseenCount, autoImport = true }: UseImp
         workingRef.current = false;
       }
     },
-    [username, onImport]
+    [username, onImport, onGamesFetched]
   );
 
   /* ── Auto-import loop ──

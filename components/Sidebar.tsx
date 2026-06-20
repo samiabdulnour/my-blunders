@@ -32,6 +32,8 @@ interface SidebarProps {
   onPhaseFilterChange: (p: PhaseFilter) => void;
   onSelect: (p: Puzzle) => void;
   onImport: (newPuzzles: Puzzle[]) => void;
+  /** Fired when the user's own games are fetched, so placeholders can be dropped. */
+  onGamesFetched?: () => void;
   onClearAll: () => void;
 }
 
@@ -69,6 +71,7 @@ export function Sidebar({
   onPhaseFilterChange,
   onSelect,
   onImport,
+  onGamesFetched,
   onClearAll,
 }: SidebarProps) {
   // Distinct ECO codes present, sorted, with full opening names attached.
@@ -96,7 +99,12 @@ export function Sidebar({
 
   return (
     <div className="side">
-      <ImportBar onImport={onImport} onClearAll={onClearAll} unseenCount={unseenCount} />
+      <ImportBar
+        onImport={onImport}
+        onGamesFetched={onGamesFetched}
+        onClearAll={onClearAll}
+        unseenCount={unseenCount}
+      />
 
       <div className="side-block">
         <div className="side-h">Queue</div>
