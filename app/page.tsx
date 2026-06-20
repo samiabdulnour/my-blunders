@@ -97,6 +97,10 @@ export default function Page() {
   /** Mirror of `current` as a ref, used by handleImport to decide whether
    *  to auto-jump on the first streamed batch without stale-closure traps. */
   const currentRef = useRef<Puzzle | null>(null);
+  /** The opponent's setup move (puzzle's last move). Kept so the yellow
+   *  last-move highlight can be restored after a wrong-move bounce instead of
+   *  being cleared. */
+  const puzzleLastMoveRef = useRef<{ from: string; to: string } | null>(null);
 
   /* ── Hydrate persisted state, then load seed puzzles from the API ── */
   useEffect(() => {
@@ -227,6 +231,8 @@ export default function Page() {
     }
     setCurrent(p);
     currentRef.current = p;
+    puzzleLastMoveRef.current =
+      lastMoveFrom && lastMoveTo ? { from: lastMoveFrom, to: lastMoveTo } : null;
     setChess(c);
     setSelected(null);
     setLastFrom(lastMoveFrom);
@@ -360,8 +366,11 @@ export default function Page() {
       if (currentRef.current?.id !== puzzleId) return;
       const rewind = new Chess(beforeFen);
       setChess(rewind);
-      setLastFrom(null);
-      setLastTo(null);
+      // Restore the opponent's setup-move highlight (the blunder being
+      // punished) rather than clearing it — otherwise the yellow last-move
+      // marker vanishes after a wrong try.
+      setLastFrom(puzzleLastMoveRef.current?.from ?? null);
+      setLastTo(puzzleLastMoveRef.current?.to ?? null);
       setFlashFail(null);
       setLegalFrom(groupLegal(rewind));
       setBounceBack({ from: bounceFrom, to: bounceTo });
