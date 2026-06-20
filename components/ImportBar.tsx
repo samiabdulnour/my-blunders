@@ -7,6 +7,9 @@ import { useImporter } from '@/lib/useImporter';
 interface ImportBarProps {
   /** Called as puzzles arrive from an import. */
   onImport: (newPuzzles: Puzzle[]) => void;
+  /** Fired when the user's own games are fetched (before analysis produces
+   *  puzzles), so the app can drop the famous-blunder placeholders at once. */
+  onGamesFetched?: () => void;
   /** Wipe all imported puzzles and solved progress from cache. */
   onClearAll: () => void;
   /** Unsolved puzzle count — drives the quiet auto-import loop. */
@@ -20,7 +23,7 @@ interface ImportBarProps {
  * (type username → Import) stays front and centre. All the actual import
  * machinery lives in the shared `useImporter` hook.
  */
-export function ImportBar({ onImport, onClearAll, unseenCount }: ImportBarProps) {
+export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }: ImportBarProps) {
   const {
     username,
     setUsername,
@@ -33,7 +36,7 @@ export function ImportBar({ onImport, onClearAll, unseenCount }: ImportBarProps)
     runImport,
     importFile,
     resetCursor,
-  } = useImporter({ onImport, unseenCount });
+  } = useImporter({ onImport, onGamesFetched, unseenCount });
 
   const fileRef = useRef<HTMLInputElement>(null);
 

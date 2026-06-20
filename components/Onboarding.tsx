@@ -8,6 +8,9 @@ import { useImporter } from '@/lib/useImporter';
 interface OnboardingProps {
   /** Feed imported puzzles into the app as they arrive. */
   onImport: (newPuzzles: Puzzle[]) => void;
+  /** Fired when the user's own games have been fetched (before analysis), so
+   *  the app can drop the famous-blunder placeholders right away. */
+  onGamesFetched?: () => void;
   /** Called once onboarding is finished (with the username, or '' if skipped). */
   onComplete: (username: string) => void;
 }
@@ -21,11 +24,12 @@ type Phase = 'idle' | 'running' | 'done' | 'error';
  * reflects live analysis status. Users can also upload a PGN or skip straight
  * into the app.
  */
-export function Onboarding({ onImport, onComplete }: OnboardingProps) {
+export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingProps) {
   // autoImport off: the import here is driven explicitly by the CTA, not by
   // the queue-drain loop (there's no queue on screen yet).
   const { username, setUsername, status, runImport, importFile } = useImporter({
     onImport,
+    onGamesFetched,
     unseenCount: 0,
     autoImport: false,
   });

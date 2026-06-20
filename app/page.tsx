@@ -38,6 +38,7 @@ import {
   saveHistory,
   loadOnboarded,
   saveOnboarded,
+  loadUsername,
   mergePuzzles,
   clearAll,
   type ThemeMode,
@@ -101,6 +102,12 @@ export default function Page() {
    *  last-move highlight can be restored after a wrong-move bounce instead of
    *  being cleared. */
   const puzzleLastMoveRef = useRef<{ from: string; to: string } | null>(null);
+  /** Whether this is a "non-guest": the user has a Lichess account on record
+   *  (a saved username, i.e. they've imported at least once) or is importing
+   *  now. The famous-blunder library is GUEST-ONLY, so once this is true the
+   *  placeholders never show — not while fetching, not on a reload with no
+   *  saved puzzles, not after a clear. Seeded from storage on hydrate. */
+  const ownGamesRef = useRef(false);
 
   /* ── Hydrate persisted state, then load seed puzzles from the API ── */
   useEffect(() => {
@@ -108,6 +115,11 @@ export default function Page() {
     // treat them as the user's own games. Strip them on load — the current
     // set is re-added below if the user still has no real games of their own.
     const saved = loadPuzzles().filter((p) => !isFamous(p));
+    // Famous puzzles are a guest-only library: anyone who has provided a
+    // Lichess username (imported at least once) is not a guest, so the
+    // placeholders must never show for them — including on a reload where their
+    // saved puzzles happen to be empty (a zero-blunder import, or after a clear).
+    if (loadUsername().trim()) ownGamesRef.current = true;
     setSolved(loadSolved());
     setRandomOrder(loadRandomOrder());
     setTheme(loadTheme());
@@ -128,9 +140,12 @@ export default function Page() {
         } else {
           // No games yet: show the famous-blunders library as a placeholder.
           // Merge against current state so a late response can't clobber a
-          // guest who tapped "play famous blunders" before this resolved.
-          setAll((prev) => (prev.some((p) => !isFamous(p)) ? prev : mergePuzzles(prev, FAMOUS_PUZZLES)));
-          if (!currentRef.current) loadPuzzle(FAMOUS_PUZZLES[0]);
+          // guest who tapped "play famous blunders" before this resolved — and
+          // never re-add it once a real import is already underway.
+          if (!ownGamesRef.current) {
+            setAll((prev) => (prev.some((p) => !isFamous(p)) ? prev : mergePuzzles(prev, FAMOUS_PUZZLES)));
+            if (!currentRef.current) loadPuzzle(FAMOUS_PUZZLES[0]);
+          }
         }
       })
       .catch((err) => {
@@ -138,7 +153,7 @@ export default function Page() {
         if (saved.length > 0) {
           setAll((prev) => mergePuzzles(saved, prev.filter((p) => !isFamous(p))));
           if (!currentRef.current) loadPuzzle(saved[0]);
-        } else {
+        } else if (!ownGamesRef.current) {
           setAll((prev) => (prev.some((p) => !isFamous(p)) ? prev : mergePuzzles(prev, FAMOUS_PUZZLES)));
           if (!currentRef.current) loadPuzzle(FAMOUS_PUZZLES[0]);
         }
@@ -479,9 +494,31 @@ export default function Page() {
     [loadPuzzle]
   );
 
+  /* ── The user's own games just landed (fetched + parsed) ──
+     Retire the famous-blunder placeholders immediately — before analysis has
+     produced a single puzzle — so the guest library doesn't linger behind a
+     real import (and doesn't stick around forever if those games happen to
+     hold no blunders). Real puzzles then stream in via handleImport. */
+  const handleGamesFetched = useCallback(() => {
+    if (ownGamesRef.current) return; // placeholders already retired
+    ownGamesRef.current = true;
+    setAll((prev) => prev.filter((p) => !isFamous(p)));
+    // If a placeholder was on the board, clear it so the first real puzzle
+    // (or the empty/analyzing state) takes over rather than a famous game.
+    if (currentRef.current && isFamous(currentRef.current)) {
+      currentRef.current = null;
+      setCurrent(null);
+    }
+  }, []);
+
   /* ── Wipe imported puzzles + progress, reset to seed state ── */
   const handleClearAll = useCallback(() => {
     clearAll();
+    // The famous library is guest-only. clearAll() deliberately keeps the saved
+    // username, so an account-holder stays a non-guest and lands on an empty
+    // queue (with the "import to begin" prompt) rather than the placeholders.
+    const isGuest = !loadUsername().trim();
+    ownGamesRef.current = !isGuest;
     setSolved({});
     setStats(DEFAULT_STATS);
     setHistory([]);
@@ -491,11 +528,13 @@ export default function Page() {
     setRevealed(false);
     setYourMove(null);
 
+    if (!isGuest) return; // account-holder: empty queue, no placeholders
+
+    // Guest: fall back to seed puzzles, or the famous library when there are none.
     fetch(apiUrl('/api/puzzles'))
       .then((r) => r.json())
       .then((data: { puzzles: Puzzle[] }) => {
         const seeds = data.puzzles ?? [];
-        // Clearing your own games drops you back to the famous library.
         const base = seeds.length > 0 ? seeds : FAMOUS_PUZZLES;
         setAll(base);
         if (base.length > 0) loadPuzzle(base[0]);
@@ -523,9 +562,12 @@ export default function Page() {
       // Show the famous-blunders library immediately so the board is never
       // empty — whether the user skipped (guest) or kicked off an import that
       // is still streaming in the background. Real games replace these via
-      // handleImport as they arrive.
-      setAll((prev) => (prev.some((p) => !isFamous(p)) ? prev : mergePuzzles(prev, FAMOUS_PUZZLES)));
-      if (!currentRef.current) loadPuzzle(FAMOUS_PUZZLES[0]);
+      // handleImport as they arrive. Skip it once the user's own games have
+      // been fetched: their import owns the board now, placeholders or not.
+      if (!ownGamesRef.current) {
+        setAll((prev) => (prev.some((p) => !isFamous(p)) ? prev : mergePuzzles(prev, FAMOUS_PUZZLES)));
+        if (!currentRef.current) loadPuzzle(FAMOUS_PUZZLES[0]);
+      }
       setOnboarded(true);
       saveOnboarded(true);
     },
@@ -541,7 +583,11 @@ export default function Page() {
         </div>
         <div className="body-row">
           <div className="main">
-            <Onboarding onImport={handleImport} onComplete={completeOnboarding} />
+            <Onboarding
+              onImport={handleImport}
+              onGamesFetched={handleGamesFetched}
+              onComplete={completeOnboarding}
+            />
           </div>
         </div>
       </div>
@@ -582,6 +628,7 @@ export default function Page() {
         onPhaseFilterChange={setPhaseFilter}
         onSelect={loadPuzzle}
         onImport={handleImport}
+        onGamesFetched={handleGamesFetched}
         onClearAll={handleClearAll}
       />
 
