@@ -38,6 +38,7 @@ import {
   saveHistory,
   loadOnboarded,
   saveOnboarded,
+  loadUsername,
   mergePuzzles,
   clearAll,
   type ThemeMode,
@@ -101,9 +102,11 @@ export default function Page() {
    *  last-move highlight can be restored after a wrong-move bounce instead of
    *  being cleared. */
   const puzzleLastMoveRef = useRef<{ from: string; to: string } | null>(null);
-  /** True once the user has imported games of their own. Gates the famous
-   *  placeholder library: once real games are in, the placeholders never come
-   *  back (so a returning import or a guest-link tap can't resurrect them). */
+  /** Whether this is a "non-guest": the user has a Lichess account on record
+   *  (a saved username, i.e. they've imported at least once) or is importing
+   *  now. The famous-blunder library is GUEST-ONLY, so once this is true the
+   *  placeholders never show — not while fetching, not on a reload with no
+   *  saved puzzles, not after a clear. Seeded from storage on hydrate. */
   const ownGamesRef = useRef(false);
 
   /* ── Hydrate persisted state, then load seed puzzles from the API ── */
@@ -112,6 +115,11 @@ export default function Page() {
     // treat them as the user's own games. Strip them on load — the current
     // set is re-added below if the user still has no real games of their own.
     const saved = loadPuzzles().filter((p) => !isFamous(p));
+    // Famous puzzles are a guest-only library: anyone who has provided a
+    // Lichess username (imported at least once) is not a guest, so the
+    // placeholders must never show for them — including on a reload where their
+    // saved puzzles happen to be empty (a zero-blunder import, or after a clear).
+    if (loadUsername().trim()) ownGamesRef.current = true;
     setSolved(loadSolved());
     setRandomOrder(loadRandomOrder());
     setTheme(loadTheme());
@@ -506,8 +514,11 @@ export default function Page() {
   /* ── Wipe imported puzzles + progress, reset to seed state ── */
   const handleClearAll = useCallback(() => {
     clearAll();
-    // Back to guest state — let the famous library show again until the next import.
-    ownGamesRef.current = false;
+    // The famous library is guest-only. clearAll() deliberately keeps the saved
+    // username, so an account-holder stays a non-guest and lands on an empty
+    // queue (with the "import to begin" prompt) rather than the placeholders.
+    const isGuest = !loadUsername().trim();
+    ownGamesRef.current = !isGuest;
     setSolved({});
     setStats(DEFAULT_STATS);
     setHistory([]);
@@ -517,11 +528,13 @@ export default function Page() {
     setRevealed(false);
     setYourMove(null);
 
+    if (!isGuest) return; // account-holder: empty queue, no placeholders
+
+    // Guest: fall back to seed puzzles, or the famous library when there are none.
     fetch(apiUrl('/api/puzzles'))
       .then((r) => r.json())
       .then((data: { puzzles: Puzzle[] }) => {
         const seeds = data.puzzles ?? [];
-        // Clearing your own games drops you back to the famous library.
         const base = seeds.length > 0 ? seeds : FAMOUS_PUZZLES;
         setAll(base);
         if (base.length > 0) loadPuzzle(base[0]);
