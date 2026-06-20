@@ -56,8 +56,13 @@ function computeOldestMs(games: ParsedGame[]): number | null {
  * which is why this route opts into the Node.js runtime.
  */
 export const runtime = 'nodejs';
-// Give the analysis pipeline plenty of time — 30 games × ~3s/ply can add up.
-export const maxDuration = 300;
+// This server-side-Stockfish route is used only by the native/iOS build (which
+// points at an always-on Node host like Render); the web app analyzes in the
+// browser and never calls it. We cap maxDuration at 60s so the route doesn't
+// trip Vercel's Hobby function limit when the same repo is deployed there for
+// the web — on a long-running `next start` host this value isn't enforced, so
+// iOS imports can still take as long as they need.
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   let body: { username?: string; max?: number; until?: number };
