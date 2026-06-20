@@ -148,7 +148,7 @@ export function Onboarding({ onImport, onComplete }: OnboardingProps) {
             already have a PGN?{' '}
             <a onClick={() => fileRef.current?.click()}>upload file</a>
             &nbsp;·&nbsp;
-            <a onClick={() => onComplete('')}>skip for now</a>
+            <a onClick={() => onComplete('')}>no account — play famous blunders</a>
           </div>
           <input
             ref={fileRef}
