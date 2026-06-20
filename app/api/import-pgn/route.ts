@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { parsePgn } from '@/lib/pgn';
 import { generatePuzzlesFromGame } from '@/lib/puzzle-generator';
+import { nodeEngine } from '@/lib/stockfish';
 import type { Puzzle } from '@/lib/types';
 
 /**
@@ -57,7 +58,7 @@ export async function POST(req: Request) {
 
   for (const g of games) {
     try {
-      const generated = await generatePuzzlesFromGame(g, username);
+      const generated = await generatePuzzlesFromGame(g, username, nodeEngine);
       puzzles.push(...generated);
     } catch (err) {
       errors.push(`game ${g.gameId ?? '(unknown)'}: ${(err as Error).message}`);

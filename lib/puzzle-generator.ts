@@ -1,6 +1,6 @@
 import type { ParsedGame, ParsedMove } from './pgn';
 import type { GameSpeed, Puzzle } from './types';
-import { bestMoveSan, analyzePosition } from './stockfish';
+import type { ChessEngine } from './engine/uci';
 
 /**
  * Pull the Lichess speed name out of the Event header. Lichess writes
@@ -79,15 +79,22 @@ function evalToCp(m: ParsedMove): number {
 
 /**
  * Walk a parsed game and turn each critical mistake by `username` into a
- * Puzzle. For each critical position we ask Stockfish for the best move
+ * Puzzle. For each critical position we ask the engine for the best move
  * and store it as the puzzle's answer.
  *
  * "Critical" means: the user's move dropped the eval (from their POV) by
  * at least `THRESHOLDS.mistakeCp` centipawns.
+ *
+ * The `engine` is injected so this runs unchanged on the server (native
+ * Stockfish) or entirely in the browser (WASM worker). Note that *detecting*
+ * mistakes needs no engine at all — that comes from the `[%eval]` annotations
+ * Lichess ships in the PGN; the engine is only consulted to find the best-move
+ * answer at each critical position.
  */
 export async function generatePuzzlesFromGame(
   game: ParsedGame,
-  username: string
+  username: string,
+  engine: ChessEngine
 ): Promise<Puzzle[]> {
   // Identify which color the user played in this game.
   let userColor: 'w' | 'b' | null = null;
@@ -124,7 +131,7 @@ export async function generatePuzzlesFromGame(
     // Get the engine's best move at the position the user faced.
     let best: string | null = null;
     try {
-      best = await bestMoveSan(mv.fenBefore, 18);
+      best = await engine.bestMoveSan(mv.fenBefore, 18);
     } catch (err) {
       console.warn(`Skipping puzzle at ply ${mv.ply}: ${(err as Error).message}`);
       continue;
@@ -160,6 +167,3 @@ export async function generatePuzzlesFromGame(
 
   return puzzles;
 }
-
-// Re-export so the API route can import everything from one place if it wants.
-export { analyzePosition };

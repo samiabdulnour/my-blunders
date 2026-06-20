@@ -1,6 +1,7 @@
 import { fetchLichessGamesPgn, LICHESS_MAX_GAMES } from '@/lib/lichess';
 import { parsePgn, type ParsedGame } from '@/lib/pgn';
 import { generatePuzzlesFromGame } from '@/lib/puzzle-generator';
+import { nodeEngine } from '@/lib/stockfish';
 
 /**
  * Parse the PGN UTCDate ("YYYY.MM.DD") + UTCTime ("HH:MM:SS") headers into
@@ -130,7 +131,7 @@ export async function POST(req: Request) {
             message: `analyzing game ${i + 1}/${games.length}${game.gameId ? ` (${game.gameId})` : ''}`,
           });
           try {
-            const puzzles = await generatePuzzlesFromGame(game, username);
+            const puzzles = await generatePuzzlesFromGame(game, username, nodeEngine);
             totalPuzzles += puzzles.length;
             emit({
               type: 'puzzles',
