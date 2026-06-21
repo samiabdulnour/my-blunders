@@ -28,6 +28,20 @@ export interface Puzzle {
   setupMoves: string[];
   /** SAN of the engine's best move at the critical position. */
   bestMove: string;
+  /**
+   * The engine's principal variation from the critical position, in SAN
+   * (`line[0]` === `bestMove`, `line[1]` the reply, `line[2]` the user's next
+   * move, …). Used to show the continuation after solving and to drive
+   * multi-move puzzles. May be missing on puzzles imported before this field
+   * existed (fall back to the single `bestMove`).
+   */
+  line?: string[];
+  /**
+   * True when the point of `bestMove` only holds up *with* the continuation —
+   * i.e. it sacrifices material but the engine still wins. These are solved as
+   * multi-move puzzles (you must find the whole line), not one-movers.
+   */
+  combination?: boolean;
   /** SAN of the move the user actually played in the original game. */
   mistakeMove: string;
   /** Eval (in pawn units, white-positive) before the mistake. */
