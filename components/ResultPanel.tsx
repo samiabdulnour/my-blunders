@@ -8,8 +8,27 @@ interface ResultPanelProps {
   /** SANs of every wrong move tried before solving (or giving up). */
   attempts: string[];
   isOk: boolean;
+  /** True once the continuation has played out and the board is free to explore. */
+  analysis?: boolean;
   onRetry: () => void;
   onNext: () => void;
+}
+
+/**
+ * Render the engine line in move-numbered SAN starting from the critical
+ * position, e.g. "22… Qf7 23. f4 Qh5". `startPly` is how many plies preceded
+ * the position (so move numbers and the side to move line up).
+ */
+function formatEngineLine(line: string[], startPly: number): string {
+  let out = '';
+  for (let i = 0; i < line.length; i++) {
+    const ply = startPly + i;
+    const moveNo = Math.floor(ply / 2) + 1;
+    const whiteToMove = ply % 2 === 0;
+    if (whiteToMove) out += `${moveNo}. ${line[i]} `;
+    else out += i === 0 ? `${moveNo}… ${line[i]} ` : `${line[i]} `;
+  }
+  return out.trim();
 }
 
 const clamp = (v: number, mn: number, mx: number) => Math.max(mn, Math.min(mx, v));
@@ -24,8 +43,17 @@ const fmtEval = (v: number) => {
  * best move vs. what the user played, the real-game blunder, and the action
  * buttons. The "Lichess" button deep-links to the exact game position.
  */
-export function ResultPanel({ puzzle, yourMove, attempts, isOk, onRetry, onNext }: ResultPanelProps) {
+export function ResultPanel({
+  puzzle,
+  yourMove,
+  attempts,
+  isOk,
+  analysis,
+  onRetry,
+  onNext,
+}: ResultPanelProps) {
   const gaveUp = yourMove === '—';
+  const engineLine = puzzle.line && puzzle.line.length > 1 ? puzzle.line : null;
   const verdictText = isOk ? 'Correct.' : gaveUp ? 'Solution shown.' : 'Suboptimal.';
   const verdictSub = isOk
     ? 'Engine line found.'
@@ -97,6 +125,19 @@ export function ResultPanel({ puzzle, yourMove, attempts, isOk, onRetry, onNext 
           <div className="v">{yourMove || '—'}</div>
         </div>
       </div>
+
+      {engineLine && (
+        <div className="engine-line">
+          <div className="engine-line-h">{puzzle.combination ? 'Winning line' : 'Engine line'}</div>
+          <div className="engine-line-moves">
+            {formatEngineLine(engineLine, puzzle.setupMoves.length)}
+          </div>
+        </div>
+      )}
+
+      {analysis && (
+        <div className="analysis-note">Board unlocked — move pieces to explore the position.</div>
+      )}
 
       <div className="blunder-line">
         Blunder in real game:<span className="v">{puzzle.mistakeMove}</span>

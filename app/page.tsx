@@ -63,6 +63,12 @@ export default function Page() {
   const [flashOk, setFlashOk] = useState<string | null>(null);
   const [flashFail, setFlashFail] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
+  /** Plies of the current puzzle's solution line applied so far — drives
+   *  multi-move solving and the post-solve continuation reveal. */
+  const [lineStep, setLineStep] = useState(0);
+  /** True once a puzzle is solved/revealed and the board is unlocked for the
+   *  user to move pieces freely and analyse the position. */
+  const [analysis, setAnalysis] = useState(false);
   const [yourMove, setYourMove] = useState<string | null>(null);
   const [isOk, setIsOk] = useState(false);
   /** True while a wrong move is flashing red and being undone. */
@@ -255,6 +261,8 @@ export default function Page() {
     setFlashOk(null);
     setFlashFail(null);
     setRevealed(false);
+    setLineStep(0);
+    setAnalysis(false);
     setYourMove(null);
     setAwaitingRetry(false);
     setBounceBack(null);
@@ -276,8 +284,9 @@ export default function Page() {
   /* ── Click on a board square ── */
   const onSquareClick = useCallback(
     (sqn: string) => {
-      if (revealed || awaitingRetry || !current) return;
-      const myColor = current.abdulsColor === 'white' ? 'w' : 'b';
+      if ((revealed && !analysis) || awaitingRetry || !current) return;
+      // In analysis mode you can move whichever side is to move (explore freely).
+      const myColor = analysis ? chess.turn() : current.abdulsColor === 'white' ? 'w' : 'b';
       if (chess.turn() !== myColor) return;
 
       if (selected === sqn) {
@@ -296,10 +305,53 @@ export default function Page() {
       else setSelected(null);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [revealed, awaitingRetry, current, chess, selected, legalFrom]
+    [revealed, analysis, awaitingRetry, current, chess, selected, legalFrom]
   );
 
-  /* ── Apply a move and compare to the puzzle's best move ── */
+  /* ── Play out the rest of the engine line, then open free analysis ──
+     After a puzzle is solved (or given up), animate each remaining move of the
+     stored line from `startFen`, then flip into analysis mode so the board is
+     free to explore. Guards on the puzzle id so switching puzzles mid-reveal
+     cancels cleanly. */
+  const revealContinuation = (p: Puzzle, startFen: string, fromStep: number) => {
+    const line = solutionLine(p);
+    const c = new Chess(startFen);
+    const id = p.id;
+    let step = fromStep;
+    const playNext = () => {
+      if (currentRef.current?.id !== id) return;
+      if (step >= line.length) {
+        setLineStep(step);
+        setLegalFrom(groupLegal(c));
+        setAnalysis(true); // board unlocked for free exploration
+        return;
+      }
+      let applied;
+      try {
+        applied = c.move(line[step]);
+      } catch {
+        setLegalFrom(groupLegal(c));
+        setAnalysis(true);
+        return;
+      }
+      setChess(new Chess(c.fen()));
+      setLastFrom(applied.from);
+      setLastTo(applied.to);
+      setFlashOk(applied.to);
+      setIntroMove({ from: applied.from, to: applied.to });
+      setTimeout(() => {
+        if (currentRef.current?.id === id) setIntroMove(null);
+      }, 300);
+      step += 1;
+      setTimeout(playNext, 600);
+    };
+    setTimeout(playNext, 450); // let the solving move's own animation land first
+  };
+
+  /* ── Apply a move ──
+     Three modes: free analysis (after solve — any legal move), multi-move
+     solving (combination puzzles play out the engine line), and the
+     single-move default. */
   const makeMove = (mv: Move) => {
     if (!current) return;
     const next = new Chess(chess.fen());
@@ -311,39 +363,94 @@ export default function Page() {
     }
     if (!applied) return;
 
-    const ok = applied.san === current.bestMove;
+    // ── Free analysis: once solved, any legal move is allowed (explore). ──
+    if (analysis) {
+      setChess(next);
+      setSelected(null);
+      setLastFrom(mv.from);
+      setLastTo(mv.to);
+      setLegalFrom(groupLegal(next));
+      setIntroMove({ from: mv.from, to: mv.to });
+      const id = current.id;
+      setTimeout(() => {
+        if (currentRef.current?.id === id) setIntroMove(null);
+      }, 250);
+      return;
+    }
+
+    const line = solutionLine(current);
+    const ok = applied.san === line[lineStep];
 
     if (ok) {
       setChess(next);
       setSelected(null);
       setLastFrom(mv.from);
       setLastTo(mv.to);
-      setRevealed(true);
-      setYourMove(applied.san);
-      setIsOk(true);
       setFlashOk(mv.to);
-
-      // Forward animation: slide the piece from origin into the destination.
       setIntroMove({ from: mv.from, to: mv.to });
-      const okPuzzleId = current.id;
+      const okId = current.id;
       setTimeout(() => {
-        if (currentRef.current?.id !== okPuzzleId) return;
-        setIntroMove(null);
+        if (currentRef.current?.id === okId) setIntroMove(null);
       }, 350);
 
-      if (recordedRef.current !== current.id) {
-        recordedRef.current = current.id;
-        const wasNew = !solved[current.id];
-        setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'ok' }));
-        if (wasNew) {
-          setStats((prev) => ({
-            correct: prev.correct + 1,
-            wrong: prev.wrong,
-            streak: prev.streak + 1,
-            bestStreak: Math.max(prev.bestStreak, prev.streak + 1),
-          }));
-          recordHistory('correct');
+      const userMovesDone = Math.floor(lineStep / 2) + 1;
+      const solvedNow =
+        userMovesDone >= requiredUserMoves(current) || lineStep + 1 >= line.length;
+
+      if (solvedNow) {
+        setRevealed(true);
+        setYourMove(line[0]); // the key move
+        setIsOk(true);
+        if (recordedRef.current !== current.id) {
+          recordedRef.current = current.id;
+          const wasNew = !solved[current.id];
+          setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'ok' }));
+          if (wasNew) {
+            setStats((prev) => ({
+              correct: prev.correct + 1,
+              wrong: prev.wrong,
+              streak: prev.streak + 1,
+              bestStreak: Math.max(prev.bestStreak, prev.streak + 1),
+            }));
+            recordHistory('correct');
+          }
         }
+        // Play out the remaining engine line, then open free analysis.
+        revealContinuation(current, next.fen(), lineStep + 1);
+      } else {
+        // Combination still in progress: auto-play the opponent's reply, then
+        // wait for the user's next move.
+        const replyStep = lineStep + 1;
+        const reply = line[replyStep];
+        const afterUserFen = next.fen();
+        const id = current.id;
+        setTimeout(() => {
+          if (currentRef.current?.id !== id) return;
+          const c2 = new Chess(afterUserFen);
+          let rep = null;
+          try {
+            rep = reply ? c2.move(reply) : null;
+          } catch {
+            rep = null;
+          }
+          if (!rep) {
+            setFlashOk(null);
+            setLineStep(replyStep);
+            setLegalFrom(groupLegal(c2));
+            return;
+          }
+          setChess(new Chess(c2.fen()));
+          setLastFrom(rep.from);
+          setLastTo(rep.to);
+          setFlashOk(null);
+          puzzleLastMoveRef.current = { from: rep.from, to: rep.to };
+          setIntroMove({ from: rep.from, to: rep.to });
+          setTimeout(() => {
+            if (currentRef.current?.id === id) setIntroMove(null);
+          }, 350);
+          setLineStep(replyStep + 1);
+          setLegalFrom(groupLegal(c2));
+        }, 500);
       }
       return;
     }
@@ -398,35 +505,14 @@ export default function Page() {
     }, 700);
   };
 
-  /* ── Give up: reveal the engine's best move ── */
+  /* ── Give up: reveal the engine's best move and play out the line ── */
   const showSolution = useCallback(() => {
-    if (!current || revealed || awaitingRetry) return;
-    const beforeFen = chess.fen();
-    const replay = new Chess(beforeFen);
-    let bestApplied;
-    try {
-      bestApplied = replay.move(current.bestMove);
-    } catch {
-      return;
-    }
-    if (!bestApplied) return;
-
-    setChess(replay);
-    setSelected(null);
-    setLastFrom(bestApplied.from);
-    setLastTo(bestApplied.to);
-    setFlashOk(bestApplied.to);
-    setFlashFail(null);
+    if (!current || revealed || awaitingRetry || analysis) return;
     setRevealed(true);
     setYourMove('—');
     setIsOk(false);
-
-    setIntroMove({ from: bestApplied.from, to: bestApplied.to });
-    const showPuzzleId = current.id;
-    setTimeout(() => {
-      if (currentRef.current?.id !== showPuzzleId) return;
-      setIntroMove(null);
-    }, 350);
+    setSelected(null);
+    setFlashFail(null);
 
     if (recordedRef.current !== current.id) {
       recordedRef.current = current.id;
@@ -442,7 +528,10 @@ export default function Page() {
         recordHistory('wrong');
       }
     }
-  }, [current, revealed, awaitingRetry, chess, solved, recordHistory]);
+    // Play out the engine line from where the user is, then open free analysis.
+    revealContinuation(current, chess.fen(), lineStep);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, revealed, awaitingRetry, analysis, chess, solved, recordHistory, lineStep]);
 
   const retry = () => {
     if (current) loadPuzzle(current);
@@ -664,9 +753,18 @@ export default function Page() {
                   <span>{current.date.replace(/\./g, '-')}</span>
                 </div>
               </div>
-              <div className={'turn-chip ' + (current.abdulsColor === 'white' ? 'white' : 'black')}>
+              <div
+                className={
+                  'turn-chip ' +
+                  ((analysis ? chess.turn() === 'w' : current.abdulsColor === 'white')
+                    ? 'white'
+                    : 'black')
+                }
+              >
                 <span className="dot" />
-                {current.abdulsColor === 'white' ? 'White to move' : 'Black to move'}
+                {(analysis ? chess.turn() === 'w' : current.abdulsColor === 'white')
+                  ? 'White to move'
+                  : 'Black to move'}
               </div>
             </div>
 
@@ -682,7 +780,7 @@ export default function Page() {
                 flashFail={flashFail}
                 bounceBack={bounceBack}
                 introMove={introMove}
-                revealed={revealed || awaitingRetry}
+                revealed={analysis ? false : revealed || awaitingRetry}
                 onSquareClick={onSquareClick}
                 onDragMove={makeMove}
               />
@@ -697,17 +795,28 @@ export default function Page() {
                     yourMove={yourMove}
                     attempts={attempts}
                     isOk={isOk}
+                    analysis={analysis}
                     onRetry={retry}
                     onNext={next}
                   />
                 ) : (
                   <div className="pre-result">
                     <div className="verdict idle">
-                      <div className="verdict-ico">?</div>
+                      <div className="verdict-ico">{current.combination ? '⚔' : '?'}</div>
                       <div>
-                        <div className="verdict-title">Find the best move.</div>
+                        <div className="verdict-title">
+                          {current.combination
+                            ? lineStep > 0
+                              ? 'Find the next move.'
+                              : 'Find the combination.'
+                            : 'Find the best move.'}
+                        </div>
                         <div className="verdict-sub">
-                          For {current.abdulsColor === 'white' ? 'white' : 'black'}.
+                          {current.combination
+                            ? lineStep > 0
+                              ? 'Keep the line going.'
+                              : 'A sacrifice — find the follow-up too.'
+                            : `For ${current.abdulsColor === 'white' ? 'white' : 'black'}.`}
                         </div>
                       </div>
                     </div>
@@ -734,6 +843,25 @@ export default function Page() {
  *  the user's real imported games replace them. */
 function isFamous(p: Puzzle): boolean {
   return p.id.startsWith('famous_');
+}
+
+/** A puzzle's solution / continuation line in SAN. Falls back to the single
+ *  best move for puzzles imported before lines were stored. `line[0]` is the
+ *  key move, `line[1]` the reply, `line[2]` the user's next move, … */
+function solutionLine(p: Puzzle): string[] {
+  return p.line && p.line.length > 0 ? p.line : [p.bestMove];
+}
+
+/** Cap on how many of the user's own moves a combination puzzle requires —
+ *  keeps long engine lines from turning into a slog. */
+const MAX_REQUIRED_USER_MOVES = 3;
+
+/** How many of the user's moves must be found to solve the puzzle: just the
+ *  key move normally, or the whole combination (capped) for sacrifices. */
+function requiredUserMoves(p: Puzzle): number {
+  if (!p.combination) return 1;
+  const userPlies = Math.ceil(solutionLine(p).length / 2); // user moves at even indices
+  return Math.min(Math.max(userPlies, 1), MAX_REQUIRED_USER_MOVES);
 }
 
 /** Group all legal moves at the current position by their `from` square. */

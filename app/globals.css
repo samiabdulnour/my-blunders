@@ -1089,6 +1089,31 @@ html[data-theme='dark'] .sq.cap-ring {
   letter-spacing: 0;
 }
 
+/* Engine continuation / winning line shown after solving. */
+.engine-line {
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+.engine-line-h {
+  font-size: var(--fs-micro);
+  color: var(--txt-dim);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  margin-bottom: 3px;
+}
+.engine-line-moves {
+  font-size: var(--fs-sm, 13px);
+  color: var(--txt);
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+/* Hint that the board is now free to explore. */
+.analysis-note {
+  font-size: var(--fs-micro);
+  color: var(--mint-ink, var(--txt-dim));
+  font-style: italic;
+}
+
 .actions {
   display: flex;
   flex-direction: column;
