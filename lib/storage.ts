@@ -1,4 +1,5 @@
 import type { HistoryEntry, Puzzle, SessionStats } from './types';
+import type { OpeningGame } from './opening-tree';
 
 /**
  * Tiny localStorage wrapper for persisting imported puzzles across reloads.
@@ -26,6 +27,7 @@ const KEY_THEME = 'bt.theme';
 const KEY_ONBOARDED = 'bt.onboarded';
 const KEY_STATS = 'bt.stats';
 const KEY_HISTORY = 'bt.history';
+const KEY_OPENING_GAMES = 'bt.openingGames';
 
 export function loadPuzzles(): Puzzle[] {
   if (typeof window === 'undefined') return [];
@@ -235,4 +237,35 @@ export function saveHistory(history: HistoryEntry[]): void {
   } catch (err) {
     console.warn('Failed to save history to localStorage:', err);
   }
+}
+
+/* ── Opening-tree game summaries (compact, one per imported game) ──
+   Persisted so the Repertoire X-ray can rebuild its tree without a re-import.
+   The tree itself is derived on demand in lib/opening-tree.ts. */
+export function loadOpeningGames(): OpeningGame[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(KEY_OPENING_GAMES);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? (parsed as OpeningGame[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveOpeningGames(games: OpeningGame[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(KEY_OPENING_GAMES, JSON.stringify(games));
+  } catch (err) {
+    console.warn('Failed to save opening games to localStorage:', err);
+  }
+}
+
+/** Merge new summaries into the stored set, de-duped by gameId (newest wins). */
+export function mergeOpeningGames(existing: OpeningGame[], incoming: OpeningGame[]): OpeningGame[] {
+  const map = new Map<string, OpeningGame>();
+  for (const g of existing) map.set(g.gameId, g);
+  for (const g of incoming) map.set(g.gameId, g);
+  return Array.from(map.values());
 }
