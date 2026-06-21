@@ -62,10 +62,11 @@ export function OpeningSidebar({ onImport, onGamesFetched, onClearAll, unseenCou
                 key={o.pathId}
                 type="button"
                 className={'op-item' + (focus === o.pathId ? ' cur' : '')}
-                onClick={() => { setFocus(o.pathId); setSelectedId(o.pathId.split('/').pop() ?? null); }}
+                onClick={() => { setFocus(o.pathId); setSelectedId(o.pathId); }}
+                title={o.name}
               >
                 <span className="op-name">{o.name}</span>
-                <span className="op-ct num">{o.games}</span>
+                <span className="op-ct num">{o.games}g · <span className={'op-score ' + o.perf}>{o.score}%</span></span>
               </button>
             ))}
           </div>

@@ -17,7 +17,7 @@ import { ecoName } from './eco-names';
  */
 
 /** Plies (half-moves) of each game we keep for the opening tree. */
-export const OPENING_PLIES = 16;
+export const OPENING_PLIES = 24;
 /** Eval drop (centipawns, side-relative) that counts as a blunder out of a node. */
 const BLUNDER_CP = 200;
 
@@ -26,9 +26,10 @@ const PERF = { green: 52, amber: 44 };
 /** A node becomes a "hotspot" at this many blundered visits. */
 const HOTSPOT_BLUNDERS = 3;
 /** Pruning / collapsing knobs that keep the tree legible. */
-const MAX_DEPTH = 6; // plies deep we render before collapsing
 const MAX_CHILDREN = 3; // siblings rendered per node; the rest fold into +N
 const MIN_NODE_GAMES = 2; // drop branches seen fewer times than this
+/** Rows (plies) drawn at once before deeper lines fold into a drill badge. */
+const RENDER_ROWS = 7;
 /** A sibling played less than this fraction of the main line is a "gap". */
 const GAP_RATIO = 0.5;
 
@@ -243,24 +244,22 @@ function resolve(raw: RawNode, chess: Chess, parentEco = ''): TreeNode {
     gap: null, collapsed: 0, children: [],
   };
 
-  if (raw.ply < MAX_DEPTH) {
-    const kids = [...raw.children.values()].sort((a, b) => b.games - a.games);
-    const kept = kids.filter((k) => k.games >= MIN_NODE_GAMES).slice(0, MAX_CHILDREN);
-    node.collapsed = kids.length - kept.length;
-    const mainGames = kept.length ? kept[0].games : 0; // kept is sorted desc
-    for (const k of kept) {
-      // Root's children always get a clean baseline so the spine is named.
-      const child = resolve(k, new Chess(chess.fen()), raw.ply === 0 ? '' : eco);
-      // Gap = a side branch played far less than the main line from this
-      // position (a repertoire hole): leaky if it also scores poorly, else
-      // just unmapped. The main line itself is never a gap.
-      if (kept.length > 1 && k.games < mainGames * GAP_RATIO) {
-        child.gap = child.score < 45 ? 'leaky' : 'unmapped';
-      }
-      node.children.push(child);
+  // Build the full trie to OPENING_PLIES; the render-depth limit lives in
+  // layoutTree, so deeper lines stay in the data and are revealed by drilling.
+  const kids = [...raw.children.values()].sort((a, b) => b.games - a.games);
+  const kept = kids.filter((k) => k.games >= MIN_NODE_GAMES).slice(0, MAX_CHILDREN);
+  node.collapsed = kids.length - kept.length;
+  const mainGames = kept.length ? kept[0].games : 0; // kept is sorted desc
+  for (const k of kept) {
+    // Root's children always get a clean baseline so the spine is named.
+    const child = resolve(k, new Chess(chess.fen()), raw.ply === 0 ? '' : eco);
+    // Gap = a side branch played far less than the main line from this
+    // position (a repertoire hole): leaky if it also scores poorly, else
+    // just unmapped. The main line itself is never a gap.
+    if (kept.length > 1 && k.games < mainGames * GAP_RATIO) {
+      child.gap = child.score < 45 ? 'leaky' : 'unmapped';
     }
-  } else {
-    node.collapsed = raw.children.size;
+    node.children.push(child);
   }
 
   if (raw.san) chess.undo();
@@ -274,15 +273,32 @@ export const CARD_W = 104;
 const COL_GAP = 22;
 const ROW_H = 180;
 
-export interface LaidNode extends TreeNode { x: number; y: number; pathId: string; }
+/** `more` = lines hidden below this node (pruned siblings + plies past the
+ *  render limit) — drill into the node (re-root) to reveal them. pathId is the
+ *  absolute move path, so it can become the focus root directly. */
+export interface LaidNode extends TreeNode { x: number; y: number; pathId: string; more: number; }
 export interface LaidEdge { from: string; to: string; }
 export interface Layout { nodes: LaidNode[]; edges: LaidEdge[]; width: number; height: number; maxDepth: number; }
 
+export interface LayoutOpts {
+  /** Top row to draw (default: the tree's first moves). For a focused view,
+   *  pass the focus node alone. */
+  topNodes?: TreeNode[];
+  /** Absolute path prefix for the top row's ids (the focus node's parent path). */
+  basePath?: string;
+  /** Plies to draw before deeper lines fold into a drill badge. */
+  maxRows?: number;
+}
+
 /**
- * Lay the tree out for rendering. The virtual root isn't drawn; its children
- * are the top row. Returns absolute x/y per node plus parent→child edges.
+ * Lay the tree out for rendering. Top-down: depth = row, leaves packed left→
+ * right, parents centred. Only `maxRows` plies are drawn; nodes at the limit
+ * carry a `more` count so the UI can offer to drill deeper.
  */
-export function layoutTree(root: TreeNode): Layout {
+export function layoutTree(root: TreeNode, opts: LayoutOpts = {}): Layout {
+  const topNodes = opts.topNodes ?? root.children;
+  const basePath = opts.basePath ?? '';
+  const maxRows = opts.maxRows ?? RENDER_ROWS;
   const nodes: LaidNode[] = [];
   const edges: LaidEdge[] = [];
   let cursor = 0; // next free leaf column (in card+gap units)
@@ -291,22 +307,23 @@ export function layoutTree(root: TreeNode): Layout {
   const place = (node: TreeNode, depth: number, path: string): number => {
     const pathId = path ? `${path}/${node.san}` : node.san || 'root';
     maxDepth = Math.max(maxDepth, depth);
+    const renderKids = depth + 1 < maxRows ? node.children : [];
     let x: number;
-    if (node.children.length === 0) {
+    if (renderKids.length === 0) {
       x = cursor * (CARD_W + COL_GAP);
       cursor++;
     } else {
-      const xs = node.children.map((c) => place(c, depth + 1, pathId));
+      const xs = renderKids.map((c) => place(c, depth + 1, pathId));
       x = (xs[0] + xs[xs.length - 1]) / 2;
     }
-    const laid: LaidNode = { ...node, x, y: depth * ROW_H, pathId, children: node.children };
+    const more = node.collapsed + (node.children.length - renderKids.length);
+    const laid: LaidNode = { ...node, x, y: depth * ROW_H, pathId, more, children: node.children };
     nodes.push(laid);
-    for (const c of node.children) edges.push({ from: pathId, to: `${pathId}/${c.san}` });
+    for (const c of renderKids) edges.push({ from: pathId, to: `${pathId}/${c.san}` });
     return x;
   };
 
-  // Draw the root's children as the top row (skip the virtual start node).
-  for (const c of root.children) place(c, 0, '');
+  for (const c of topNodes) place(c, 0, basePath);
 
   const width = Math.max(CARD_W, cursor * (CARD_W + COL_GAP) - COL_GAP) + CARD_W;
   const height = (maxDepth + 1) * ROW_H;
@@ -323,7 +340,7 @@ export function hotspots(root: TreeNode): TreeNode[] {
 
 /** Path id for a node = its move SANs from the root joined by '/', matching
  *  the ids `layoutTree` assigns. */
-export type OpeningEntry = { name: string; games: number; pathId: string };
+export type OpeningEntry = { name: string; games: number; pathId: string; score: number; perf: Perf };
 
 /**
  * The distinct named openings in the tree (deduped by name, keeping the most-
@@ -334,7 +351,9 @@ export function namedOpenings(root: TreeNode): OpeningEntry[] {
   const walk = (n: TreeNode, path: string) => {
     if (n.name) {
       const cur = best.get(n.name);
-      if (!cur || n.games > cur.games) best.set(n.name, { name: n.name, games: n.games, pathId: path });
+      if (!cur || n.games > cur.games) {
+        best.set(n.name, { name: n.name, games: n.games, pathId: path, score: n.score, perf: n.perf });
+      }
     }
     for (const c of n.children) walk(c, path ? `${path}/${c.san}` : c.san);
   };
