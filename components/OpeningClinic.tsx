@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { layoutTree, findByPath, hotspots, CARD_W, type LaidNode } from '@/lib/opening-tree';
+import { layoutTree, findByPath, hotspots, formatEval, CARD_W, type LaidNode } from '@/lib/opening-tree';
 import { useClinic } from '@/lib/clinic-context';
 import { fetchTheory, type Theory } from '@/lib/opening-explorer';
 import { getWasmEngine } from '@/lib/engine/wasm-engine';
@@ -183,7 +183,7 @@ function ClinicNode({ node, selected, onSelect }: { node: LaidNode; selected: bo
       <div className="cnode-label">
         {node.name && <span className="cnode-name">{node.name}</span>}
         <span className="cnode-move">{node.label}</span>
-        <span className="cnode-games num">{node.games}g · <span className={'cnode-score ' + node.perf}>{node.score}%</span></span>
+        <span className="cnode-eval num">{node.eval != null ? formatEval(node.eval) : '·'}</span>
       </div>
     </div>
   );
@@ -250,10 +250,9 @@ function DetailPanel({ node, color, onPickMove }: { node: LaidNode | null; color
         <div className="cd-head">
           {node.name && <div className="cd-name">{node.name}</div>}
           <div className="cd-move">{node.label}</div>
-          <div className="cd-sub num">
-            reached {node.games} time{node.games === 1 ? '' : 's'}
-            {node.blunders > 0 && <span className="cd-blund"> · blundered {node.blunders}</span>}
-          </div>
+          {node.blunders > 0 && (
+            <div className="cd-sub num"><span className="cd-blund">blundered {node.blunders}×</span></div>
+          )}
         </div>
       </div>
 
@@ -315,7 +314,8 @@ function DetailPanel({ node, color, onPickMove }: { node: LaidNode | null; color
                 <button className={'cont-row' + (c.blunders > 0 ? ' bad' : '')} onClick={() => onPickMove(c.san)}>
                   <span className="c-san">{c.san}</span>
                   <span className="c-meta num">
-                    {c.games}× {c.blunders > 0 && <span className="c-warn"><IconWarn size={9} /> {c.blunders}</span>}
+                    {c.eval != null && <span className="c-eval">{formatEval(c.eval)}</span>}
+                    {c.blunders > 0 && <span className="c-warn"><IconWarn size={9} /> {c.blunders}</span>}
                   </span>
                 </button>
               </li>

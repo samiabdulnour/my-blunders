@@ -46,6 +46,9 @@ export interface OpeningGame {
   eco: string;
   /** SAN moves from the start, capped to OPENING_PLIES. */
   moves: string[];
+  /** White-relative eval (cp, mate clamped to ±10000) after each move, parallel
+   *  to `moves`; null where the game has no Lichess analysis at that ply. */
+  evals: (number | null)[];
   /** Indices into `moves` where the *user* blundered (drop ≥ BLUNDER_CP, or a
    *  Lichess "Blunder" judgment). The node blamed is the position before it. */
   blunderPlies: number[];
@@ -75,6 +78,8 @@ export interface TreeNode {
   /** Score % from the user's POV, (wins + draws/2) / games · 100. */
   score: number;
   perf: Perf;
+  /** Average white-relative eval (cp) at this position across games, or null. */
+  eval: number | null;
   /** Times the user blundered the move out of this node. */
   blunders: number;
   hotspot: boolean;
@@ -121,6 +126,7 @@ export function summarizeGame(game: ParsedGame, username: string): OpeningGame |
 
   const plies = game.moves.slice(0, OPENING_PLIES);
   const moves = plies.map((m) => m.san);
+  const evals = plies.map((m) => (m.mate !== null || m.evalCp !== null ? evalCp(m) : null));
 
   const sign = color === 'w' ? 1 : -1;
   const blunderPlies: number[] = [];
@@ -136,13 +142,22 @@ export function summarizeGame(game: ParsedGame, username: string): OpeningGame |
     if (drop >= BLUNDER_CP) blunderPlies.push(i);
   }
 
-  return { gameId: game.gameId ?? `${game.white}-${game.black}-${game.date}`, color, result, eco: game.eco, moves, blunderPlies };
+  return { gameId: game.gameId ?? `${game.white}-${game.black}-${game.date}`, color, result, eco: game.eco, moves, evals, blunderPlies };
 }
 
 function perfOf(score: number): Perf {
   if (score >= PERF.green) return 'green';
   if (score >= PERF.amber) return 'amber';
   return 'red';
+}
+
+/** White-relative eval (cp) → a compact label: "+0.6", "-1.2", "#". */
+export function formatEval(cp: number | null | undefined): string {
+  if (cp == null) return '';
+  if (cp >= 9000) return '#';
+  if (cp <= -9000) return '-#';
+  const v = cp / 100;
+  return (v > 0 ? '+' : '') + v.toFixed(1);
 }
 
 const MOVE_NO = (ply: number) => Math.floor((ply - 1) / 2) + 1;
@@ -158,13 +173,16 @@ interface RawNode {
   draws: number;
   losses: number;
   blunders: number;
+  /** Sum + count of white-relative evals at this position (for the average). */
+  evalSum: number;
+  evalCount: number;
   /** ECO code → count, for the modal opening name at this node. */
   ecos: Map<string, number>;
   children: Map<string, RawNode>;
 }
 
 const emptyRaw = (san: string, ply: number): RawNode => ({
-  san, ply, games: 0, wins: 0, draws: 0, losses: 0, blunders: 0, ecos: new Map(), children: new Map(),
+  san, ply, games: 0, wins: 0, draws: 0, losses: 0, blunders: 0, evalSum: 0, evalCount: 0, ecos: new Map(), children: new Map(),
 });
 
 function bumpEco(n: RawNode, eco: string) {
@@ -201,6 +219,8 @@ export function buildOpeningTree(games: OpeningGame[], color: 'w' | 'b'): TreeNo
       child.games++;
       bump(child, g.result);
       bumpEco(child, g.eco);
+      const ev = g.evals?.[i];
+      if (ev != null) { child.evalSum += ev; child.evalCount++; } // position eval after this move
       node = child;
     }
   }
@@ -240,6 +260,7 @@ function resolve(raw: RawNode, chess: Chess, parentEco = ''): TreeNode {
     fen, hl, depth: raw.ply,
     games: raw.games, wins: raw.wins, draws: raw.draws, losses: raw.losses,
     score: Math.round(score), perf: perfOf(score),
+    eval: raw.evalCount ? Math.round(raw.evalSum / raw.evalCount) : null,
     blunders: raw.blunders, hotspot: raw.blunders >= HOTSPOT_BLUNDERS,
     gap: null, collapsed: 0, children: [],
   };

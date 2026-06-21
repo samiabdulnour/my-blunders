@@ -12,6 +12,8 @@ import {
 } from './opening-tree';
 
 const FETCHED_KEY = 'bt.openingFetchedUser';
+// Bump when the summary shape changes so users re-pull. 'e1' = added per-ply evals.
+const FETCH_TAG = (u: string) => `${u}:e1`;
 
 interface ClinicValue {
   ready: boolean;
@@ -62,14 +64,14 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!username || fetchStarted.current) return;
-    if (typeof window !== 'undefined' && window.localStorage.getItem(FETCHED_KEY) === username) return;
+    if (typeof window !== 'undefined' && window.localStorage.getItem(FETCHED_KEY) === FETCH_TAG(username)) return;
     fetchStarted.current = true;
     setFetching(true);
     importOpeningGames(username)
       .then(() => {
         setGames(loadOpeningGames());
         try {
-          window.localStorage.setItem(FETCHED_KEY, username);
+          window.localStorage.setItem(FETCHED_KEY, FETCH_TAG(username));
         } catch {
           /* ignore quota */
         }

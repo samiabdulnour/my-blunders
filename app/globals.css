@@ -1886,3 +1886,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .ce-move { font-size: var(--fs-big); font-weight: var(--fw-bold); color: var(--green); letter-spacing: -0.01em; }
 .ce-eval { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); background: var(--bg3); padding: 2px 8px; border-radius: 3px; font-variant-numeric: tabular-nums; }
 .ce-tag { font-size: 9px; text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-faint); font-weight: var(--fw-bold); margin-left: auto; }
+
+/* Per-node + per-continuation Stockfish eval (games count now lives only in the left panel) */
+.cnode-eval { display: block; font-size: 11px; color: var(--txt-dim); margin-top: 1px; font-variant-numeric: tabular-nums; font-weight: var(--fw-bold); }
+.c-eval { color: var(--txt-dim); font-variant-numeric: tabular-nums; }
