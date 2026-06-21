@@ -5,6 +5,7 @@ import { Chess, type Move } from 'chess.js';
 
 import { AppShell } from '@/components/AppShell';
 import { Board } from '@/components/Board';
+import { OpeningClinic } from '@/components/OpeningClinic';
 import { Sidebar } from '@/components/Sidebar';
 import { ResultPanel } from '@/components/ResultPanel';
 import { Onboarding } from '@/components/Onboarding';
@@ -48,6 +49,8 @@ const DEFAULT_STATS: SessionStats = { correct: 0, wrong: 0, streak: 0, bestStrea
 
 export default function Page() {
   const [all, setAll] = useState<Puzzle[]>([]);
+  // Puzzle solver vs. Opening Clinic — the two modes of the trainer.
+  const [mode, setMode] = useState<'puzzle' | 'opening'>('puzzle');
   // Start on 'new' so the user always lands on something fresh rather
   // than re-seeing puzzles they've already solved.
   const [filter, setFilter] = useState<Filter>('new');
@@ -699,6 +702,8 @@ export default function Page() {
       onToggleRandom={() => setRandomOrder((o) => !o)}
       theme={theme}
       onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+      mode={mode}
+      onModeChange={setMode}
     >
       <Sidebar
         all={all}
@@ -721,8 +726,10 @@ export default function Page() {
         onClearAll={handleClearAll}
       />
 
-      <div className="main">
-        {!current ? (
+      <div className={'main' + (mode === 'opening' ? ' clinic-mode' : '')}>
+        {mode === 'opening' ? (
+          <OpeningClinic />
+        ) : !current ? (
           <div className="empty">
             <div>No puzzles loaded.</div>
             <div>Import games from Lichess in the sidebar to begin.</div>

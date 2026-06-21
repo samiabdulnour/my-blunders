@@ -1,8 +1,9 @@
 /**
- * Tiny read-only FEN board for the Repertoire X-ray: a CSS-grid of squares in
- * the X-ray's cream/slate palette with the cburnett pieces the app already
- * ships. Used at 10px (tree nodes) and 7px (puzzle thumbnails). The main
- * trainer's interactive <Board> is a separate component — this one only paints.
+ * Tiny read-only FEN board for the Opening Clinic: a CSS-grid of squares using
+ * the main app's board tokens (so it matches the trainer and inherits dark
+ * mode) with the cburnett pieces the app already ships. Used small in the tree
+ * nodes and larger in the detail panel. The interactive <Board> is separate —
+ * this one only paints.
  */
 const FILES = 'abcdefgh';
 
@@ -33,7 +34,7 @@ interface OpeningBoardProps {
   orient?: 'w' | 'b';
 }
 
-export function OpeningBoard({ fen, hl = null, sqSize = 10, orient = 'w' }: OpeningBoardProps) {
+export function OpeningBoard({ fen, hl = null, sqSize = 11, orient = 'w' }: OpeningBoardProps) {
   const grid = fenToGrid(fen);
   const hlSet = new Set(hl ?? []);
   const order = orient === 'w' ? [0, 1, 2, 3, 4, 5, 6, 7] : [7, 6, 5, 4, 3, 2, 1, 0];
@@ -43,16 +44,19 @@ export function OpeningBoard({ fen, hl = null, sqSize = 10, orient = 'w' }: Open
       const name = FILES[c] + (8 - r);
       const light = (c + (8 - r)) % 2 === 0;
       const piece = grid[r][c];
+      const hot = hlSet.has(name);
       cells.push(
-        <div key={name} className={'sq ' + (light ? 'l' : 'd')} data-sq={name}>
-          {hlSet.has(name) && <span className="lm" />}
-          {piece && <img className="pc" src={pieceSrc(piece)} alt="" draggable={false} />}
+        <div
+          key={name}
+          className={'ob-sq ' + (light ? 'ob-l' : 'ob-d') + (hot ? ' ob-hl' : '')}
+        >
+          {piece && <img className="ob-pc" src={pieceSrc(piece)} alt="" draggable={false} />}
         </div>
       );
     }
   }
   return (
-    <div className="xboard" style={{ '--xsq': `${sqSize}px` } as React.CSSProperties}>
+    <div className="ob-board" style={{ '--ob-sq': `${sqSize}px` } as React.CSSProperties}>
       {cells}
     </div>
   );

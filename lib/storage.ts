@@ -240,7 +240,7 @@ export function saveHistory(history: HistoryEntry[]): void {
 }
 
 /* ── Opening-tree game summaries (compact, one per imported game) ──
-   Persisted so the Repertoire X-ray can rebuild its tree without a re-import.
+   Persisted so the Opening Clinic can rebuild its tree without a re-import.
    The tree itself is derived on demand in lib/opening-tree.ts. */
 export function loadOpeningGames(): OpeningGame[] {
   if (typeof window === 'undefined') return [];

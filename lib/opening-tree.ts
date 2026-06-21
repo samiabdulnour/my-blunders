@@ -2,13 +2,13 @@ import type { ParsedGame } from './pgn';
 import { ecoName } from './eco-names';
 
 /**
- * Opening repertoire model for the "Repertoire X-ray".
+ * Opening repertoire model for the Opening Clinic.
  *
  * The trainer already imports a player's games to mine blunder puzzles; this
  * module turns those same games into a per-colour **opening tree**: from the
  * starting position, follow each game ply-by-ply into a trie, tallying at every
  * node how often the player reached it, how they scored from there, and how
- * often they blundered the move out of it. The X-ray renders that tree as a
+ * often they blundered the move out of it. The clinic renders that tree as a
  * top-down grid of mini-boards, loudest at the blunder hotspots.
  *
  * A compact `OpeningGame` summary (one per imported game) is what we persist —
@@ -60,7 +60,8 @@ export interface TreeNode {
   name: string;
   /** Pretty move label with number, e.g. "3.e5" / "3…Bf5". */
   label: string;
-  /** Position after the move, FEN board field only. */
+  /** Full FEN of the position after the move (OpeningBoard slices the board
+   *  field; the clinic uses the full FEN to query opening theory). */
   fen: string;
   /** From/to squares of the reaching move, for the last-move highlight. */
   hl: [string, string] | null;
@@ -223,7 +224,10 @@ function resolve(raw: RawNode, chess: Chess, parentEco = ''): TreeNode {
       /* illegal/odd SAN — leave board as-is */
     }
   }
-  const fen = chess.fen().split(' ')[0];
+  // Full FEN (not just the board field) so the Opening Clinic can query the
+  // Lichess opening explorer for this exact position. OpeningBoard slices off
+  // the board field itself.
+  const fen = chess.fen();
 
   // Show the opening name only where it changes from the parent, so the spine
   // is named once at the top rather than repeating down every node.

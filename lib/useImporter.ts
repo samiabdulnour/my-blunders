@@ -298,7 +298,7 @@ export function useImporter({
       processEvent({ type: 'status', message: 'parsing PGN...' }, ctx);
       const games = parsePgn(pgn);
       processEvent({ type: 'parsed', total: games.length }, ctx);
-      persistOpeningGames(games, name); // feed the Repertoire X-ray
+      persistOpeningGames(games, name); // feed the Opening Clinic
 
       if (games.length === 0) {
         processEvent({ type: 'done', parsedGames: 0, generated: 0, oldestMs: null }, ctx);
@@ -419,7 +419,7 @@ export function useImporter({
         }
         // Real games are in hand — drop any guest placeholders right away.
         onGamesFetched?.();
-        persistOpeningGames(games, name); // feed the Repertoire X-ray
+        persistOpeningGames(games, name); // feed the Opening Clinic
         const engine = getWasmEngine();
         let total = 0;
         for (let i = 0; i < games.length; i++) {
