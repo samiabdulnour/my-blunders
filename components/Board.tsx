@@ -254,6 +254,12 @@ export function Board({
       if (drag?.active && drag.over === sqn && sqn !== drag.from) {
         if (legalTargets.has(sqn)) classes.push('drop-target');
       }
+      // The cell holding the piece being dragged must outrank every other cell.
+      // `.sel` (applied to the drag source) and `.drop-target` set z-index:2,
+      // making those cells stacking contexts — which traps the dragged piece's
+      // z-index inside this cell and lets squares/pieces later in DOM order
+      // paint over it. Lifting the whole source cell keeps the piece on top.
+      if (drag?.active && drag.from === sqn) classes.push('drag-origin');
       if (sqn === flashOk) classes.push('flash-ok');
       if (sqn === flashFail) classes.push('flash-fail');
 
