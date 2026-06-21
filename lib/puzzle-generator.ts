@@ -1,6 +1,7 @@
+import { Chess } from 'chess.js';
 import type { ParsedGame, ParsedMove } from './pgn';
 import type { GameSpeed, Puzzle } from './types';
-import type { ChessEngine } from './engine/uci';
+import type { AnalysisLine, ChessEngine } from './engine/uci';
 
 /**
  * Pull the Lichess speed name out of the Event header. Lichess writes
@@ -59,6 +60,16 @@ export const THRESHOLDS = {
   /** Minimum eval drop to count as a "blunder" puzzle. */
   blunderCp: 200,
 };
+
+/** Plies of the engine PV we keep as a puzzle's solution / continuation line. */
+const SOLUTION_MAX_PLIES = 8;
+
+/** Centipawns the engine line must favor the user by for a sac to count as a
+ *  winning combination (mate always qualifies). */
+const COMBINATION_WIN_CP = 100;
+
+/** Standard piece values; king omitted since it never leaves the board. */
+const PIECE_VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
 /**
  * Compare a player name to the user's username. Lichess usernames are
@@ -128,16 +139,25 @@ export async function generatePuzzlesFromGame(
     // Skip the opening (first 6 plies) — almost always book noise.
     if (mv.ply <= 6) continue;
 
-    // Get the engine's best move at the position the user faced.
-    let best: string | null = null;
+    // Ask the engine for the best *line* at the position the user faced — we
+    // keep the whole principal variation, not just the first move.
+    let analysis;
     try {
-      best = await engine.bestMoveSan(mv.fenBefore, 18);
+      analysis = await engine.analyze({ fen: mv.fenBefore, depth: 18 });
     } catch (err) {
       console.warn(`Skipping puzzle at ply ${mv.ply}: ${(err as Error).message}`);
       continue;
     }
+    const top = analysis.lines[0];
+    const pv = top?.pvSan ?? [];
+    const best = pv[0] ?? null;
     if (!best) continue;
     if (best === mv.san) continue; // engine agrees with the user — no puzzle
+
+    // Keep a capped slice of the PV as the solution / continuation line, and
+    // flag combinations (sacrifices that only pay off because of the follow-up).
+    const line = pv.slice(0, SOLUTION_MAX_PLIES);
+    const combination = isCombination(mv.fenBefore, line, top, userColor);
 
     // Build the setup move list (everything before the mistake) in SAN.
     const setupMoves = moves.slice(0, i).map((m) => m.san);
@@ -155,6 +175,8 @@ export async function generatePuzzlesFromGame(
       abdulsColor: userColor === 'w' ? 'white' : 'black',
       setupMoves,
       bestMove: best,
+      line,
+      combination,
       mistakeMove: mv.san,
       evalBefore: evalBeforeSide / 100, // back to pawn units, side-relative
       evalAfter: evalAfterSide / 100,
@@ -166,4 +188,53 @@ export async function generatePuzzlesFromGame(
   }
 
   return puzzles;
+}
+
+/** Material balance from `userColor`'s point of view at the given position. */
+function materialBalance(chess: Chess, userColor: 'w' | 'b'): number {
+  let bal = 0;
+  for (const row of chess.board()) {
+    for (const sq of row) {
+      if (!sq) continue;
+      const v = PIECE_VALUE[sq.type] ?? 0;
+      bal += sq.color === userColor ? v : -v;
+    }
+  }
+  return bal;
+}
+
+/**
+ * A "combination" is a best move whose point only holds up *with* the
+ * continuation: it concedes material immediately, yet the engine still
+ * evaluates the line as winning for the user. Those are worth solving as
+ * multi-move puzzles (you have to find the follow-up) rather than one-movers.
+ *
+ * Detection is intentionally cheap — no extra engine calls: a material
+ * sacrifice across the first exchange plus a winning engine eval on the line.
+ */
+function isCombination(
+  fenBefore: string,
+  line: string[],
+  top: AnalysisLine | undefined,
+  userColor: 'w' | 'b'
+): boolean {
+  if (!top || line.length < 3) return false; // need a real continuation
+  const userSign = userColor === 'w' ? 1 : -1;
+  const winning =
+    top.mate != null
+      ? top.mate * userSign > 0
+      : top.cp != null
+        ? top.cp * userSign >= COMBINATION_WIN_CP
+        : false;
+  if (!winning) return false;
+
+  const c = new Chess(fenBefore);
+  const before = materialBalance(c, userColor);
+  try {
+    c.move(line[0]); // the user's (sacrificial) move
+    if (line[1]) c.move(line[1]); // the forced reply
+  } catch {
+    return false;
+  }
+  return materialBalance(c, userColor) <= before - 1; // gave up ≥ a pawn
 }
