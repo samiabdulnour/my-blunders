@@ -1,24 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  buildOpeningTree,
-  layoutTree,
-  CARD_W,
-  type OpeningGame,
-  type LaidNode,
-} from '@/lib/opening-tree';
-import { loadOpeningGames, loadUsername } from '@/lib/storage';
-import { importOpeningGames } from '@/lib/opening-import';
+import { useEffect, useMemo, useState } from 'react';
+import { layoutTree, findByPath, CARD_W, type LaidNode } from '@/lib/opening-tree';
+import { useClinic } from '@/lib/clinic-context';
 import { fetchTheory, type Theory } from '@/lib/opening-explorer';
-import { OpeningBoard } from '@/components/repertoire/OpeningBoard';
+import { OpeningBoard, type BoardArrow } from '@/components/repertoire/OpeningBoard';
 import { IconWarn } from '@/components/repertoire/icons';
 
 const TOP_PAD = 26;
 const LEFT_PAD = 24;
 const ROW_H = 176;
 const CARD_BOTTOM = 124;
-const FETCHED_KEY = 'bt.openingFetchedUser';
 
 function connectorPath(parent: LaidNode, child: LaidNode): string {
   const px = LEFT_PAD + parent.x + CARD_W / 2;
@@ -36,43 +28,17 @@ function connectorPath(parent: LaidNode, child: LaidNode): string {
  * Uses the main app's tokens so it matches the trainer and inherits dark mode.
  */
 export function OpeningClinic() {
-  const [games, setGames] = useState<OpeningGame[]>([]);
-  const [username, setUsername] = useState('');
-  const [color, setColor] = useState<'w' | 'b'>('w');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [fetching, setFetching] = useState(false);
-  const fetchStarted = useRef(false);
+  const { ready, fetching, color, focus, setFocus, selectedId, setSelectedId, tree, openings } = useClinic();
 
-  useEffect(() => {
-    const g = loadOpeningGames();
-    setGames(g);
-    setUsername(loadUsername());
-    const whites = g.filter((x) => x.color === 'w').length;
-    setColor(g.length - whites > whites ? 'b' : 'w');
-  }, []);
-
-  // Once per user, pull a big engine-free batch so the clinic has real breadth.
-  useEffect(() => {
-    if (!username || fetchStarted.current) return;
-    if (typeof window !== 'undefined' && window.localStorage.getItem(FETCHED_KEY) === username) return;
-    fetchStarted.current = true;
-    setFetching(true);
-    importOpeningGames(username)
-      .then(() => {
-        setGames(loadOpeningGames());
-        try {
-          window.localStorage.setItem(FETCHED_KEY, username);
-        } catch {
-          /* ignore quota */
-        }
-      })
-      .finally(() => setFetching(false));
-  }, [username]);
-
-  const { layout, hasGames } = useMemo(() => {
-    const tree = buildOpeningTree(games, color);
-    return { layout: layoutTree(tree), hasGames: tree.games > 0 };
-  }, [games, color]);
+  // Focus narrows the tree to one opening's subtree; otherwise the whole tree.
+  const layout = useMemo(() => {
+    if (focus) {
+      const node = findByPath(tree, focus);
+      if (node) return layoutTree({ ...tree, children: [node] });
+    }
+    return layoutTree(tree);
+  }, [tree, focus]);
+  const hasGames = tree.games > 0;
 
   const byId = useMemo(() => {
     const m: Record<string, LaidNode> = {};
@@ -89,24 +55,26 @@ export function OpeningClinic() {
 
   const gaps = layout.nodes.filter((n) => n.gap).length;
   const hotspotCount = layout.nodes.filter((n) => n.hotspot).length;
+  const focusName = focus ? openings.find((o) => o.pathId === focus)?.name : null;
 
   return (
     <div className="clinic">
       <div className="clinic-tree">
         <div className="clinic-bar">
-          <div className="clinic-seg" role="tablist" aria-label="Repertoire colour">
-            <button className={color === 'w' ? 'on' : ''} onClick={() => { setColor('w'); setSelectedId(null); }}>White</button>
-            <button className={color === 'b' ? 'on' : ''} onClick={() => { setColor('b'); setSelectedId(null); }}>Black</button>
-          </div>
           <div className="clinic-bar-meta">
             <span><b>{layout.nodes.length}</b> mapped</span>
             <span><b>{gaps}</b> gaps</span>
             <span className={hotspotCount ? 'hot' : ''}><b>{hotspotCount}</b> hotspots</span>
             {fetching && <span className="clinic-loading">loading games…</span>}
           </div>
+          {focus && (
+            <button className="clinic-clear" onClick={() => { setFocus(null); setSelectedId(null); }}>
+              {focusName ?? 'focused'} ✕
+            </button>
+          )}
         </div>
 
-        {!hasGames ? (
+        {!ready ? null : !hasGames ? (
           <div className="clinic-empty">
             <h3>No {color === 'w' ? 'White' : 'Black'} games mapped yet</h3>
             <p>{fetching ? 'Pulling your games from Lichess…' : 'Import your games from the sidebar to build your opening tree.'}</p>
@@ -190,16 +158,34 @@ function DetailPanel({ node, color, onPickMove }: { node: LaidNode | null; color
     );
   }
 
-  // Your continuations from here, most played first.
+  // Whose move is it here? The "your move" framing only applies on your turn —
+  // in the White tree, the node after 1.e4 has Black (the opponent) to move.
+  const userTurn = (node.fen.split(' ')[1] ?? 'w') === color;
+  // Continuations from here, most played first (your moves on your turn).
   const yours = [...node.children].sort((a, b) => b.games - a.games);
   const yourMain = yours[0];
-  // Where does your main move rank in theory?
+  const best = theory?.moves[0];
   const inTheory = theory?.moves.findIndex((m) => m.san === yourMain?.san) ?? -1;
+
+  // Arrows: green = the right move (theory main line); red = the move you got
+  // wrong here (a blundered or off-book continuation) — only on your turn.
+  const blunderChild = yours.filter((c) => c.blunders > 0).sort((a, b) => b.blunders - a.blunders)[0];
+  const offBook = !!yourMain && !!theory && !theory.moves.some((m) => m.san === yourMain.san);
+  const wrong = userTurn ? blunderChild ?? (offBook ? yourMain : undefined) : undefined;
+  const arrows: BoardArrow[] = [];
+  if (best) arrows.push({ from: best.uci.slice(0, 2), to: best.uci.slice(2, 4), kind: 'good' });
+  if (wrong?.hl && wrong.san !== best?.san) arrows.push({ from: wrong.hl[0], to: wrong.hl[1], kind: 'bad' });
 
   return (
     <aside className="clinic-detail">
       <div className="cd-board-sec">
-        <div className="cd-board"><OpeningBoard fen={node.fen} hl={node.hl} sqSize={30} orient={color} /></div>
+        <div className="cd-board"><OpeningBoard fen={node.fen} hl={node.hl} sqSize={30} orient={color} arrows={arrows} /></div>
+        {arrows.length > 0 && (
+          <div className="cd-legend">
+            {best && <span className="cd-leg good">the move{best ? ` — ${best.san}` : ''}</span>}
+            {wrong && wrong.san !== best?.san && <span className="cd-leg bad">you play{` — ${wrong.san}`}</span>}
+          </div>
+        )}
         <div className="cd-head">
           {node.name && <div className="cd-name">{node.name}</div>}
           <div className="cd-move">{node.label}</div>
@@ -211,7 +197,7 @@ function DetailPanel({ node, color, onPickMove }: { node: LaidNode | null; color
       </div>
 
       <div className="cd-sec">
-        <div className="cd-eyebrow">Right continuation <span className="cd-src">{theory ? `lichess ${theory.db}` : ''}</span></div>
+        <div className="cd-eyebrow">{userTurn ? 'Right continuation' : 'Main line here'} <span className="cd-src">{theory ? `lichess ${theory.db}` : ''}</span></div>
         {loading ? (
           <div className="cd-note">Looking up theory…</div>
         ) : !theory || theory.moves.length === 0 ? (
@@ -220,7 +206,7 @@ function DetailPanel({ node, color, onPickMove }: { node: LaidNode | null; color
           <>
             <ul className="theory-list">
               {theory.moves.slice(0, 5).map((m, i) => {
-                const mine = m.san === yourMain?.san;
+                const mine = userTurn && m.san === yourMain?.san;
                 return (
                   <li key={m.uci} className={'theory-row' + (i === 0 ? ' best' : '') + (mine ? ' mine' : '')}>
                     <span className="t-san">{m.san}{i === 0 && <span className="t-tag">main</span>}{mine && <span className="t-tag you">you</span>}</span>
@@ -230,7 +216,7 @@ function DetailPanel({ node, color, onPickMove }: { node: LaidNode | null; color
                 );
               })}
             </ul>
-            {yourMain && (
+            {userTurn && yourMain && (
               <div className="cd-verdict">
                 {inTheory === 0
                   ? <>You play the main line here — <b>{yourMain.san}</b>. ✓</>
@@ -244,7 +230,7 @@ function DetailPanel({ node, color, onPickMove }: { node: LaidNode | null; color
       </div>
 
       <div className="cd-sec">
-        <div className="cd-eyebrow">What you play from here</div>
+        <div className="cd-eyebrow">{userTurn ? 'What you play from here' : 'What you face here'}</div>
         {yours.length === 0 ? (
           <div className="cd-note">End of your mapped line{node.collapsed > 0 ? ` (+${node.collapsed} more below)` : ''}.</div>
         ) : (

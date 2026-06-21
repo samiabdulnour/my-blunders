@@ -320,3 +320,32 @@ export function hotspots(root: TreeNode): TreeNode[] {
   walk(root);
   return out.sort((a, b) => b.blunders - a.blunders || a.score - b.score);
 }
+
+/** Path id for a node = its move SANs from the root joined by '/', matching
+ *  the ids `layoutTree` assigns. */
+export type OpeningEntry = { name: string; games: number; pathId: string };
+
+/**
+ * The distinct named openings in the tree (deduped by name, keeping the most-
+ * played occurrence), most-played first — drives the clinic's opening filter.
+ */
+export function namedOpenings(root: TreeNode): OpeningEntry[] {
+  const best = new Map<string, OpeningEntry>();
+  const walk = (n: TreeNode, path: string) => {
+    if (n.name) {
+      const cur = best.get(n.name);
+      if (!cur || n.games > cur.games) best.set(n.name, { name: n.name, games: n.games, pathId: path });
+    }
+    for (const c of n.children) walk(c, path ? `${path}/${c.san}` : c.san);
+  };
+  for (const c of root.children) walk(c, c.san);
+  return [...best.values()].sort((a, b) => b.games - a.games);
+}
+
+/** Find a node by its path id (SANs joined by '/'), or null. */
+export function findByPath(root: TreeNode, pathId: string): TreeNode | null {
+  const sans = pathId.split('/');
+  let node: TreeNode | undefined = root.children.find((c) => c.san === sans[0]);
+  for (let i = 1; node && i < sans.length; i++) node = node.children.find((c) => c.san === sans[i]);
+  return node ?? null;
+}

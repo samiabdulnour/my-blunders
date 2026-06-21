@@ -1736,7 +1736,9 @@ html[data-theme='dark'] .sq.cap-ring {
    Styled with the main app tokens so it matches the trainer and inherits
    dark mode — no separate surface.
    ════════════════════════════════════════════════════════════════ */
-.ob-board { display: grid; grid-template-columns: repeat(8, var(--ob-sq, 11px)); line-height: 0; border: 1px solid var(--border); }
+.ob-wrap { position: relative; width: max-content; border: 1px solid var(--border); }
+.ob-board { display: grid; grid-template-columns: repeat(8, var(--ob-sq, 11px)); width: max-content; line-height: 0; }
+.ob-arrows { position: absolute; top: 0; left: 0; pointer-events: none; }
 .ob-sq { width: var(--ob-sq, 11px); height: var(--ob-sq, 11px); position: relative; }
 .ob-l { background: var(--sq-l); }
 .ob-d { background: var(--sq-d); }
@@ -1772,7 +1774,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .cnode { position: absolute; }
 .cnode-btn { display: block; width: 100%; border: 0; background: none; padding: 0; cursor: pointer; }
 .cnode-frame {
-  position: relative; width: 84px; margin: 0 auto; padding: 3px; border-radius: 4px;
+  position: relative; width: max-content; margin: 0 auto; padding: 3px; border-radius: 4px;
   border: 2px solid var(--border2); background: var(--bg2); transition: transform 0.12s var(--ease-snap), box-shadow 0.12s ease;
 }
 .cnode-btn:hover .cnode-frame { transform: translateY(-1px); }
@@ -1845,3 +1847,23 @@ html[data-theme='dark'] .sq.cap-ring {
 
 /* Opening mode fills the main area (the clinic manages its own scroll/panes). */
 .main.clinic-mode { padding: 0; flex-direction: row; align-items: stretch; overflow: hidden; }
+
+/* Wrong/correct arrow legend under the detail board */
+.cd-legend { display: flex; gap: 16px; justify-content: center; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: 0.06em; color: var(--txt-dim); }
+.cd-leg { display: inline-flex; align-items: center; gap: 6px; }
+.cd-leg::before { content: ''; width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.cd-leg.good::before { background: var(--green); }
+.cd-leg.bad::before { background: var(--red); }
+
+/* Openings filter list (left panel, Opening mode) */
+.op-item { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg2); cursor: pointer; text-align: left; transition: border-color 0.12s ease, background 0.12s ease; }
+.op-item + .op-item { margin-top: 6px; }
+.op-item:hover { border-color: var(--border2); }
+.op-item.cur { border-color: var(--contour); background: var(--bg3); }
+.op-name { font-size: var(--fs-base); font-weight: var(--fw-bold); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-ct { font-size: var(--fs-micro); color: var(--txt-dim); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+/* Openings list wrapper + focus-clear chip (Opening mode) */
+.op-list { padding: 12px 16px; }
+.clinic-clear { margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border: 1px solid var(--border2); border-radius: 3px; background: var(--bg); color: var(--txt-dim); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
+.clinic-clear:hover { color: var(--txt); border-color: var(--contour); }

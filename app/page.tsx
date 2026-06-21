@@ -6,6 +6,8 @@ import { Chess, type Move } from 'chess.js';
 import { AppShell } from '@/components/AppShell';
 import { Board } from '@/components/Board';
 import { OpeningClinic } from '@/components/OpeningClinic';
+import { OpeningSidebar } from '@/components/OpeningSidebar';
+import { ClinicProvider } from '@/lib/clinic-context';
 import { Sidebar } from '@/components/Sidebar';
 import { ResultPanel } from '@/components/ResultPanel';
 import { Onboarding } from '@/components/Onboarding';
@@ -705,31 +707,43 @@ export default function Page() {
       mode={mode}
       onModeChange={setMode}
     >
-      <Sidebar
-        all={all}
-        filtered={filtered}
-        filter={filter}
-        ecoFilter={ecoFilter}
-        speedFilter={speedFilter}
-        phaseFilter={phaseFilter}
-        current={current}
-        solved={solved}
-        counts={counts}
-        unseenCount={unseenCount}
-        onFilterChange={setFilter}
-        onEcoFilterChange={setEcoFilter}
-        onSpeedFilterChange={setSpeedFilter}
-        onPhaseFilterChange={setPhaseFilter}
-        onSelect={loadPuzzle}
-        onImport={handleImport}
-        onGamesFetched={handleGamesFetched}
-        onClearAll={handleClearAll}
-      />
+      {mode === 'opening' ? (
+        <ClinicProvider>
+          <OpeningSidebar
+            onImport={handleImport}
+            onGamesFetched={handleGamesFetched}
+            onClearAll={handleClearAll}
+            unseenCount={unseenCount}
+          />
+          <div className="main clinic-mode">
+            <OpeningClinic />
+          </div>
+        </ClinicProvider>
+      ) : (
+        <>
+          <Sidebar
+            all={all}
+            filtered={filtered}
+            filter={filter}
+            ecoFilter={ecoFilter}
+            speedFilter={speedFilter}
+            phaseFilter={phaseFilter}
+            current={current}
+            solved={solved}
+            counts={counts}
+            unseenCount={unseenCount}
+            onFilterChange={setFilter}
+            onEcoFilterChange={setEcoFilter}
+            onSpeedFilterChange={setSpeedFilter}
+            onPhaseFilterChange={setPhaseFilter}
+            onSelect={loadPuzzle}
+            onImport={handleImport}
+            onGamesFetched={handleGamesFetched}
+            onClearAll={handleClearAll}
+          />
 
-      <div className={'main' + (mode === 'opening' ? ' clinic-mode' : '')}>
-        {mode === 'opening' ? (
-          <OpeningClinic />
-        ) : !current ? (
+          <div className="main">
+            {!current ? (
           <div className="empty">
             <div>No puzzles loaded.</div>
             <div>Import games from Lichess in the sidebar to begin.</div>
@@ -839,8 +853,10 @@ export default function Page() {
               </div>
             </div>
           </div>
-        )}
-      </div>
+            )}
+          </div>
+        </>
+      )}
     </AppShell>
   );
 }
