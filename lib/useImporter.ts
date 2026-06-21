@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Puzzle } from './types';
 import { apiUrl } from './api';
 import { isNativeApp } from './platform';
-import { parsePgn, oldestGameStartMs } from './pgn';
+import { parsePgn, oldestGameStartMs, type ParsedGame } from './pgn';
 import { generatePuzzlesFromGame } from './puzzle-generator';
+import { summarizeGame, type OpeningGame } from './opening-tree';
 import { getWasmEngine } from './engine/wasm-engine';
 import {
   loadUsername,
@@ -14,7 +15,18 @@ import {
   saveOldestFetchedMs,
   loadFetchedGameCount,
   saveFetchedGameCount,
+  loadOpeningGames,
+  saveOpeningGames,
+  mergeOpeningGames,
 } from './storage';
+
+/** Persist compact opening-tree summaries for an imported batch (web path). */
+function persistOpeningGames(games: ParsedGame[], username: string): void {
+  const summaries = games
+    .map((g) => summarizeGame(g, username))
+    .filter((s): s is OpeningGame => s !== null);
+  if (summaries.length) saveOpeningGames(mergeOpeningGames(loadOpeningGames(), summaries));
+}
 
 export interface ImportStatus {
   kind: 'idle' | 'working' | 'ok' | 'error';
@@ -286,6 +298,7 @@ export function useImporter({
       processEvent({ type: 'status', message: 'parsing PGN...' }, ctx);
       const games = parsePgn(pgn);
       processEvent({ type: 'parsed', total: games.length }, ctx);
+      persistOpeningGames(games, name); // feed the Repertoire X-ray
 
       if (games.length === 0) {
         processEvent({ type: 'done', parsedGames: 0, generated: 0, oldestMs: null }, ctx);
@@ -406,6 +419,7 @@ export function useImporter({
         }
         // Real games are in hand — drop any guest placeholders right away.
         onGamesFetched?.();
+        persistOpeningGames(games, name); // feed the Repertoire X-ray
         const engine = getWasmEngine();
         let total = 0;
         for (let i = 0; i < games.length; i++) {
