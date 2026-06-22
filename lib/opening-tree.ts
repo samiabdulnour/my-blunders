@@ -28,8 +28,9 @@ const HOTSPOT_BLUNDERS = 3;
 /** Pruning / collapsing knobs that keep the tree legible. */
 const MAX_CHILDREN = 3; // siblings rendered per node; the rest fold into +N
 const MIN_NODE_GAMES = 2; // drop branches seen fewer times than this
-/** Rows (plies) drawn at once before deeper lines fold into a drill badge. */
-const RENDER_ROWS = 7;
+/** Rows (plies) drawn at once before deeper lines fold into a drill badge.
+ *  20 plies ≈ move 10 for both colours; the trie holds OPENING_PLIES total. */
+const RENDER_ROWS = 20;
 /** A sibling played less than this fraction of the main line is a "gap". */
 const GAP_RATIO = 0.5;
 
