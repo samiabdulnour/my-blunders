@@ -280,12 +280,6 @@ function DetailPanel({ node, color, onPickMove, onDrill }: { node: LaidNode | nu
     <aside className="clinic-detail">
       <div className="cd-board-sec">
         <div className="cd-board"><OpeningBoard fen={node.fen} hl={node.hl} sqSize={30} orient={color} arrows={arrows} /></div>
-        {arrows.length > 0 && (
-          <div className="cd-legend">
-            {greenSan && <span className="cd-leg good">the move — {greenSan}</span>}
-            {wrong && wrong.san !== greenSan && <span className="cd-leg bad">you play — {wrong.san}</span>}
-          </div>
-        )}
         <div className="cd-head">
           {node.name && <div className="cd-name">{node.name}</div>}
           <div className="cd-move">{node.label}</div>
@@ -308,13 +302,12 @@ function DetailPanel({ node, color, onPickMove, onDrill }: { node: LaidNode | nu
       </div>
 
       <div className="cd-sec">
-        <div className="cd-eyebrow">{userTurn ? 'Right continuation' : 'Best move here'} <span className="cd-src">stockfish</span></div>
+        <div className="cd-eyebrow">{userTurn ? 'Right continuation' : 'Best move here'}</div>
         {engine ? (
           <>
             <div className="cd-engine">
               <span className="ce-move">{engine.bestSan || '—'}</span>
               <span className="ce-eval num">{evalText(engine)}</span>
-              <span className="ce-tag">engine best</span>
             </div>
             {userTurn && yourMain && (
               <div className="cd-verdict">
@@ -333,7 +326,7 @@ function DetailPanel({ node, color, onPickMove, onDrill }: { node: LaidNode | nu
 
       {(theoryLoading || (theory && theory.moves.length > 0)) && (
         <div className="cd-sec">
-          <div className="cd-eyebrow">Played in practice <span className="cd-src">{theory ? `lichess ${theory.db}` : ''}</span></div>
+          <div className="cd-eyebrow">Played in practice</div>
           {theoryLoading && !theory ? (
             <div className="cd-note">Looking up theory…</div>
           ) : (

@@ -1805,7 +1805,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .cd-board { display: flex; justify-content: center; }
 .cd-head { width: 100%; text-align: center; }
 .cd-name { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); }
-.cd-move { font-size: var(--fs-big); font-weight: var(--fw-bold); letter-spacing: -0.02em; line-height: 1.1; }
+.cd-move { font-size: var(--fs-title); font-weight: var(--fw-bold); letter-spacing: -0.01em; line-height: 1.1; }
 .cd-sub { font-size: var(--fs-micro); color: var(--txt-dim); margin-top: 3px; }
 .cd-blund { color: var(--red); }
 .cd-sec { padding: 16px 18px; border-bottom: 1px solid var(--border); }
@@ -1883,8 +1883,8 @@ html[data-theme='dark'] .sq.cap-ring {
 
 /* Stockfish "right continuation" readout */
 .cd-engine { display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
-.ce-move { font-size: var(--fs-big); font-weight: var(--fw-bold); color: var(--green); letter-spacing: -0.01em; }
-.ce-eval { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); background: var(--bg3); padding: 2px 8px; border-radius: 3px; font-variant-numeric: tabular-nums; }
+.ce-move { font-size: var(--fs-title); font-weight: var(--fw-bold); color: var(--green); letter-spacing: -0.01em; }
+.ce-eval { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt-dim); font-variant-numeric: tabular-nums; }
 .ce-tag { font-size: 9px; text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-faint); font-weight: var(--fw-bold); margin-left: auto; }
 
 /* Per-node + per-continuation Stockfish eval (games count now lives only in the left panel) */
