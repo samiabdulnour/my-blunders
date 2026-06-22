@@ -1905,3 +1905,64 @@ html[data-theme='dark'] .sq.cap-ring {
 /* Fixed-width topbar lead (toggle + brand) ≈ sidebar width, so the Puzzles/
    Opening tabs line up with the tree content ("All openings"). */
 .topbar-lead { display: flex; align-items: center; gap: 16px; width: 300px; flex-shrink: 0; }
+
+/* ════════════════════════════════════════════════════════════════
+   Opening Drill — practice the best move in your weak positions.
+   ════════════════════════════════════════════════════════════════ */
+.odrill { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.od-topbar { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--bg2); }
+.od-back { background: none; border: 0; color: var(--txt-dim); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; padding: 4px 0; }
+.od-back:hover { color: var(--txt); }
+.od-progress { margin-left: auto; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt); letter-spacing: var(--track-caps); }
+.od-meta { display: flex; gap: 14px; font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.od-meta b { color: var(--txt); }
+.od-meta .bad { color: var(--red); }
+
+.od-body { flex: 1; display: flex; min-height: 0; }
+.od-stage { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 28px; overflow: auto; background: radial-gradient(circle at center, var(--border) 0.8px, transparent 1.2px) 0 0 / 24px 24px, var(--bg); }
+.od-board-col { display: flex; flex-direction: column; gap: 10px; }
+.od-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.od-tomove { display: inline-flex; align-items: center; gap: 7px; font-weight: var(--fw-bold); color: var(--txt); }
+.od-turndot { width: 11px; height: 11px; border-radius: 50%; background: var(--contour); border: 1.5px solid var(--contour); }
+.od-frame { padding: 6px; border-radius: 5px; border: 3px solid var(--border2); background: var(--bg2); transition: border-color 0.15s ease; }
+.od-frame.ok { border-color: var(--green); }
+.od-frame.bad { border-color: var(--red); }
+
+.od-panel { width: 360px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--bg2); overflow-y: auto; display: flex; flex-direction: column; }
+.od-sec { padding: 18px 20px; border-bottom: 1px solid var(--border); }
+.od-grow { flex: 1; }
+.od-eyebrow { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--red); }
+.od-title { margin-top: 9px; font-size: var(--fs-big); font-weight: var(--fw-bold); letter-spacing: -0.02em; line-height: 1.1; }
+.od-line { margin-top: 10px; padding: 9px 11px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; font-weight: var(--fw-bold); color: var(--txt); }
+.od-record { font-size: var(--fs-base); line-height: 1.5; color: var(--txt); }
+.od-record .bad { color: var(--red); }
+.od-dots { display: flex; gap: 5px; margin-top: 12px; flex-wrap: wrap; }
+.od-att { width: 22px; height: 22px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: var(--fw-bold); border: 1px solid var(--border2); }
+.od-att.bad { background: var(--red); color: #fff; border-color: var(--red); }
+.od-att.ok { background: var(--green-soft); color: var(--green); border-color: var(--green); }
+.od-prompt { padding: 13px 15px; background: var(--contour); color: var(--bg2); border-radius: 5px; display: flex; flex-direction: column; gap: 3px; }
+.od-prompt.ok { background: var(--green); color: #fff; }
+.od-prompt.bad { background: var(--red); color: #fff; }
+.od-prompt .q { font-size: var(--fs-title); font-weight: var(--fw-bold); letter-spacing: -0.01em; }
+.od-prompt .qs { font-size: 12px; opacity: 0.75; }
+.od-usual { display: flex; gap: 11px; align-items: flex-start; margin-top: 12px; padding: 11px 12px; border-radius: 4px; background: var(--red-soft); border: 1px solid var(--border2); }
+.od-usual .um { flex-shrink: 0; font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--red); }
+.od-usual .ut { font-size: 12px; color: var(--txt); line-height: 1.5; }
+.od-actions { display: flex; gap: 10px; }
+.od-btn { flex: 1; padding: 12px; border-radius: 3px; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); border: 1px solid var(--contour); cursor: pointer; transition: filter 0.1s ease, background 0.1s ease; }
+.od-btn.primary { background: var(--contour); color: var(--bg2); }
+.od-btn.primary:hover { filter: brightness(1.1); }
+.od-btn.ghost { background: var(--bg); color: var(--txt); }
+.od-btn.ghost:hover { background: var(--bg3); }
+.od-btn:disabled { opacity: 0.4; cursor: default; }
+.od-reveal { margin-top: 12px; font-size: 12px; color: var(--txt-dim); line-height: 1.55; }
+.od-reveal b { color: var(--green); font-weight: var(--fw-bold); }
+.od-reveal b.bad { color: var(--red); }
+.od-complete { margin: auto; text-align: center; color: var(--txt-dim); padding: 40px; }
+.od-complete h2 { font-size: var(--fs-big); color: var(--txt); margin-bottom: 6px; }
+.od-complete .od-next { margin-top: 16px; padding: 10px 18px; background: var(--contour); color: var(--bg2); border: 0; border-radius: 3px; font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); font-size: var(--fs-micro); cursor: pointer; }
+
+/* Drill entry buttons (clinic bar + detail panel) */
+.od-start { flex-shrink: 0; padding: 7px 12px; border-radius: 3px; background: var(--coral); color: #16140f; border: 1px solid var(--contour); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; white-space: nowrap; }
+.od-start:hover { filter: brightness(1.08); }
+.cd-drill { width: 100%; margin-top: 12px; }

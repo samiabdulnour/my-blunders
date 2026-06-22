@@ -1,46 +1,19 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { layoutTree, findByPath, hotspots, formatEval, CARD_W, type LaidNode } from '@/lib/opening-tree';
+import { layoutTree, findByPath, hotspots, weakSpots, lineString, formatEval, CARD_W, type LaidNode, type DrillItem } from '@/lib/opening-tree';
 import { useClinic } from '@/lib/clinic-context';
 import { fetchTheory, type Theory } from '@/lib/opening-explorer';
-import { getWasmEngine } from '@/lib/engine/wasm-engine';
+import { evalPosition, peekEval, whiteCp, type EngineEval } from '@/lib/opening-engine';
+import { OpeningDrill } from '@/components/OpeningDrill';
 import { OpeningBoard, type BoardArrow } from '@/components/repertoire/OpeningBoard';
 import { IconWarn } from '@/components/repertoire/icons';
-
-/** Stockfish evaluation of a position: the correct continuation + how it scores. */
-interface EngineEval { cp: number | null; mate: number | null; bestUci: string; bestSan: string }
-const engineCache = new Map<string, EngineEval | null>();
-
-/** Analyze a FEN with the WASM engine (cached per position). */
-async function evalPosition(fen: string): Promise<EngineEval | null> {
-  const hit = engineCache.get(fen);
-  if (hit !== undefined) return hit;
-  try {
-    const res = await getWasmEngine().analyze({ fen, depth: 14 });
-    const l = res.lines[0];
-    const out: EngineEval | null = l ? { cp: l.cp, mate: l.mate, bestUci: l.pvUci[0] ?? '', bestSan: l.pvSan[0] ?? '' } : null;
-    engineCache.set(fen, out);
-    return out;
-  } catch {
-    engineCache.set(fen, null);
-    return null;
-  }
-}
 
 /** White-relative eval as a label: "+0.6", "-1.2", "#3". */
 function evalText(e: EngineEval): string {
   if (e.mate !== null) return (e.mate > 0 ? '#' : '-#') + Math.abs(e.mate);
   const cp = (e.cp ?? 0) / 100;
   return (cp > 0 ? '+' : '') + cp.toFixed(1);
-}
-
-/** White-relative cp from an engine result (undefined = not computed yet). */
-function whiteCp(e: EngineEval | null | undefined): number | null | undefined {
-  if (e === undefined) return undefined;
-  if (e === null) return null;
-  if (e.mate !== null) return e.mate > 0 ? 10000 : -10000;
-  return e.cp;
 }
 
 /** Colour a connector by how much eval the move (parent→child) loses for the
@@ -79,6 +52,7 @@ function connectorPath(parent: LaidNode, child: LaidNode): string {
  */
 export function OpeningClinic() {
   const { ready, fetching, color, focus, setFocus, selectedId, setSelectedId, tree } = useClinic();
+  const [drillItems, setDrillItems] = useState<DrillItem[] | null>(null);
 
   // Focus re-roots the tree at one node (an opening, or any clicked node) so you
   // can drill in; otherwise the whole tree. Path ids are absolute, so a focus
@@ -110,14 +84,14 @@ export function OpeningClinic() {
     (async () => {
       for (const n of layout.nodes) {
         if (cancelled) return;
-        if (n.eval != null || engineCache.has(n.fen)) continue;
+        if (n.eval != null || peekEval(n.fen) !== undefined) continue;
         await evalPosition(n.fen);
         if (!cancelled) setTick((t) => t + 1);
       }
     })();
     return () => { cancelled = true; };
   }, [layout]);
-  const evalOf = (n: LaidNode): number | null | undefined => n.eval ?? whiteCp(engineCache.get(n.fen));
+  const evalOf = (n: LaidNode): number | null | undefined => n.eval ?? whiteCp(peekEval(n.fen));
 
   // Default selection: the worst hotspot, else the top-left (shallowest) node.
   const defaultSel = useMemo(() => {
@@ -130,6 +104,9 @@ export function OpeningClinic() {
   // Drill = re-root the tree at a node. Used by the breadcrumb, the sidebar, and
   // the continuation list — but NOT by clicking a board (that only selects).
   const drill = (pathId: string) => { setFocus(pathId); setSelectedId(pathId); };
+
+  // Weak spots to drill (whole tree, this colour).
+  const weak = useMemo(() => weakSpots(tree, color), [tree, color]);
 
   // Whole-tree stats (not just the rows currently drawn).
   const allHot = useMemo(() => hotspots(tree).length, [tree]);
@@ -151,6 +128,10 @@ export function OpeningClinic() {
     }
     return out;
   }, [tree, focus]);
+
+  if (drillItems && drillItems.length > 0) {
+    return <OpeningDrill items={drillItems} onExit={() => setDrillItems(null)} />;
+  }
 
   return (
     <div className="clinic">
@@ -175,6 +156,11 @@ export function OpeningClinic() {
             {allGaps > 0 && <span className="cleg"><i className="sw gap" /> {allGaps} gap{allGaps === 1 ? '' : 's'}</span>}
             {fetching && <span className="clinic-loading">loading games…</span>}
           </div>
+          {weak.length > 0 && (
+            <button className="od-start" onClick={() => setDrillItems(weak)}>
+              Drill {weak.length} weak spot{weak.length === 1 ? '' : 's'} →
+            </button>
+          )}
         </div>
 
         {!ready ? null : !hasGames ? (
@@ -200,12 +186,17 @@ export function OpeningClinic() {
         )}
       </div>
 
-      <DetailPanel node={selected} color={color} onPickMove={(san) => {
-        // Drill into a played continuation by SAN, if it's in the tree.
-        if (!selected) return;
-        const child = selected.children.find((c) => c.san === san);
-        if (child) drill(`${selected.pathId}/${child.san}`);
-      }} />
+      <DetailPanel
+        node={selected}
+        color={color}
+        onPickMove={(san) => {
+          // Drill into a played continuation by SAN, if it's in the tree.
+          if (!selected) return;
+          const child = selected.children.find((c) => c.san === san);
+          if (child) drill(`${selected.pathId}/${child.san}`);
+        }}
+        onDrill={setDrillItems}
+      />
     </div>
   );
 }
@@ -237,7 +228,7 @@ function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: La
   );
 }
 
-function DetailPanel({ node, color, onPickMove }: { node: LaidNode | null; color: 'w' | 'b'; onPickMove: (san: string) => void }) {
+function DetailPanel({ node, color, onPickMove, onDrill }: { node: LaidNode | null; color: 'w' | 'b'; onPickMove: (san: string) => void; onDrill: (items: DrillItem[]) => void }) {
   const [theory, setTheory] = useState<Theory | null>(null);
   const [theoryLoading, setTheoryLoading] = useState(false);
   const [engine, setEngine] = useState<EngineEval | null>(null);
@@ -302,6 +293,18 @@ function DetailPanel({ node, color, onPickMove }: { node: LaidNode | null; color
             <div className="cd-sub num"><span className="cd-blund">blundered {node.blunders}×</span></div>
           )}
         </div>
+        {userTurn && (
+          <button
+            className="od-start cd-drill"
+            onClick={() => {
+              const sans = node.pathId.split('/');
+              const usual = [...node.children].sort((a, b) => b.games - a.games)[0];
+              onDrill([{ fen: node.fen, color, line: lineString(sans), name: node.name || '', reached: node.games, blundered: node.blunders, usualSan: usual?.san ?? null }]);
+            }}
+          >
+            Drill this position →
+          </button>
+        )}
       </div>
 
       <div className="cd-sec">

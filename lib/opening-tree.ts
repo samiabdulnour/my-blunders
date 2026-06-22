@@ -390,3 +390,61 @@ export function findByPath(root: TreeNode, pathId: string): TreeNode | null {
   for (let i = 1; node && i < sans.length; i++) node = node.children.find((c) => c.san === sans[i]);
   return node ?? null;
 }
+
+/** One position to practice in the Opening Drill (the user is to move). */
+export interface DrillItem {
+  fen: string;
+  color: 'w' | 'b';
+  /** Moves leading here, e.g. "1.e4 c6 2.d4 d5 3.e5 Bf5". */
+  line: string;
+  name: string;
+  reached: number;
+  blundered: number;
+  /** The move you most often play from here (your habit — may be the leak). */
+  usualSan: string | null;
+}
+
+/** Render a SAN path as a numbered line: "1.e4 c6 2.d4 d5 …". */
+export function lineString(sans: string[]): string {
+  let out = '';
+  for (let i = 0; i < sans.length; i++) {
+    const ply = i + 1;
+    if (ply % 2 === 1) out += (out ? ' ' : '') + `${(ply + 1) / 2}.${sans[i]}`;
+    else out += ` ${sans[i]}`;
+  }
+  return out;
+}
+
+/**
+ * Positions worth drilling for one colour: nodes where it's the user's turn and
+ * they have a leak — they blundered here, or their habitual move loses eval vs.
+ * a played alternative. Worst first. The drill computes the exact best move with
+ * the engine; this just picks the positions.
+ */
+export function weakSpots(root: TreeNode, color: 'w' | 'b'): DrillItem[] {
+  const sign = color === 'w' ? 1 : -1;
+  const out: (DrillItem & { weakness: number })[] = [];
+  const walk = (n: TreeNode, sans: string[], name: string) => {
+    const nm = n.name || name;
+    const userToMove = (n.fen.split(' ')[1] ?? 'w') === color;
+    if (n.san && userToMove && n.children.length > 0) {
+      const usual = [...n.children].sort((a, b) => b.games - a.games)[0];
+      const userEvals = n.children.filter((k) => k.eval != null).map((k) => (k.eval as number) * sign);
+      let evalLoss = 0;
+      if (usual.eval != null && userEvals.length) evalLoss = Math.max(...userEvals) - (usual.eval as number) * sign;
+      if (n.blunders > 0 || evalLoss >= 40) {
+        out.push({
+          fen: n.fen, color, line: lineString(sans), name: nm,
+          reached: n.games, blundered: n.blunders, usualSan: usual?.san ?? null,
+          weakness: n.blunders * 1000 + Math.max(0, evalLoss),
+        });
+      }
+    }
+    for (const c of n.children) walk(c, [...sans, c.san], nm);
+  };
+  for (const c of root.children) walk(c, [c.san], c.name || '');
+  return out
+    .sort((a, b) => b.weakness - a.weakness)
+    .slice(0, 24)
+    .map(({ weakness: _weakness, ...d }) => d);
+}
