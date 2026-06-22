@@ -35,6 +35,26 @@ function evalText(e: EngineEval): string {
   return (cp > 0 ? '+' : '') + cp.toFixed(1);
 }
 
+/** White-relative cp from an engine result (undefined = not computed yet). */
+function whiteCp(e: EngineEval | null | undefined): number | null | undefined {
+  if (e === undefined) return undefined;
+  if (e === null) return null;
+  if (e.mate !== null) return e.mate > 0 ? 10000 : -10000;
+  return e.cp;
+}
+
+/** Colour a connector by how much eval the move (parent→child) loses for the
+ *  side that played it: green = good, amber = risky, red = blunder, neutral when
+ *  the eval isn't known. This draws the correct vs. wrong path through the tree. */
+function edgeStroke(parentFen: string, parentEval: number | null, childEval: number | null): string {
+  if (parentEval == null || childEval == null) return 'var(--border2)';
+  const whiteToMove = parentFen.split(' ')[1] === 'w';
+  const loss = whiteToMove ? parentEval - childEval : childEval - parentEval;
+  if (loss >= 200) return 'var(--red)';
+  if (loss >= 90) return 'var(--yellow)';
+  return 'var(--green)';
+}
+
 const TOP_PAD = 26;
 const LEFT_PAD = 24;
 const ROW_H = 176;
@@ -79,6 +99,24 @@ export function OpeningClinic() {
     return m;
   }, [layout]);
 
+  // Fill a Stockfish eval for any rendered node the games don't already carry
+  // one for, so every board shows an eval. Cached per FEN, computed progressively
+  // (the engine result re-renders via the tick).
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const n of layout.nodes) {
+        if (cancelled) return;
+        if (n.eval != null || engineCache.has(n.fen)) continue;
+        await evalPosition(n.fen);
+        if (!cancelled) setTick((t) => t + 1);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [layout]);
+  const evalOf = (n: LaidNode): number | null | undefined => n.eval ?? whiteCp(engineCache.get(n.fen));
+
   // Default selection: the worst hotspot, else the top-left (shallowest) node.
   const defaultSel = useMemo(() => {
     const hot = layout.nodes.filter((n) => n.hotspot).sort((a, b) => b.blunders - a.blunders);
@@ -87,7 +125,8 @@ export function OpeningClinic() {
   }, [layout]);
   const selected = (selectedId && byId[selectedId]) || defaultSel;
 
-  // Drill into a node: make it the base of the tree and select it.
+  // Drill = re-root the tree at a node. Used by the breadcrumb, the sidebar, and
+  // the continuation list — but NOT by clicking a board (that only selects).
   const drill = (pathId: string) => { setFocus(pathId); setSelectedId(pathId); };
 
   // Whole-tree stats (not just the rows currently drawn).
@@ -126,9 +165,12 @@ export function OpeningClinic() {
               </span>
             ))}
           </nav>
-          <div className="clinic-bar-meta">
-            <span><b>{allGaps}</b> gaps</span>
-            <span className={allHot ? 'hot' : ''}><b>{allHot}</b> hotspots</span>
+          <div className="clinic-legend">
+            <span className="cleg"><i className="ln good" /> good</span>
+            <span className="cleg"><i className="ln risk" /> risky</span>
+            <span className="cleg"><i className="ln bad" /> blunder</span>
+            {allHot > 0 && <span className="cleg"><i className="sw hot" /> {allHot} hotspot{allHot === 1 ? '' : 's'}</span>}
+            {allGaps > 0 && <span className="cleg"><i className="sw gap" /> {allGaps} gap{allGaps === 1 ? '' : 's'}</span>}
             {fetching && <span className="clinic-loading">loading games…</span>}
           </div>
         </div>
@@ -145,11 +187,12 @@ export function OpeningClinic() {
                 const a = byId[e.from];
                 const b = byId[e.to];
                 if (!a || !b) return null;
-                return <path key={i} d={connectorPath(a, b)} fill="none" stroke="var(--border2)" strokeWidth="1.5" />;
+                const stroke = edgeStroke(a.fen, evalOf(a) ?? null, evalOf(b) ?? null);
+                return <path key={i} d={connectorPath(a, b)} fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" />;
               })}
             </svg>
             {layout.nodes.map((n) => (
-              <ClinicNode key={n.pathId} node={n} selected={selected?.pathId === n.pathId} onSelect={() => drill(n.pathId)} />
+              <ClinicNode key={n.pathId} node={n} displayEval={evalOf(n)} selected={selected?.pathId === n.pathId} onSelect={() => setSelectedId(n.pathId)} />
             ))}
           </div>
         )}
@@ -165,15 +208,18 @@ export function OpeningClinic() {
   );
 }
 
-function ClinicNode({ node, selected, onSelect }: { node: LaidNode; selected: boolean; onSelect: () => void }) {
+function ClinicNode({ node, displayEval, selected, onSelect }: { node: LaidNode; displayEval: number | null | undefined; selected: boolean; onSelect: () => void }) {
+  // Frame is neutral now; move-quality lives on the connecting lines. Only gap
+  // (rarely played), hotspot (blunder spot), and selection still tint the frame.
   const cls =
-    'cnode-frame ' +
-    (node.gap ? 'gap' : 'perf-' + node.perf) +
+    'cnode-frame' +
+    (node.gap ? ' gap' : '') +
     (node.hotspot ? ' hotspot' : '') +
     (selected ? ' sel' : '');
+  const evalLabel = displayEval === undefined ? '…' : formatEval(displayEval) || '·';
   return (
     <div className="cnode" style={{ left: LEFT_PAD + node.x, top: TOP_PAD + node.y, width: CARD_W }}>
-      <button className="cnode-btn" onClick={onSelect} title={node.more > 0 ? 'Drill into this line' : undefined}>
+      <button className="cnode-btn" onClick={onSelect}>
         <div className={cls}>
           {node.blunders > 0 && <span className="cnode-warn"><IconWarn size={10} /> {node.blunders}</span>}
           {node.more > 0 && <span className="cnode-more">+{node.more}</span>}
@@ -183,7 +229,7 @@ function ClinicNode({ node, selected, onSelect }: { node: LaidNode; selected: bo
       <div className="cnode-label">
         {node.name && <span className="cnode-name">{node.name}</span>}
         <span className="cnode-move">{node.label}</span>
-        <span className="cnode-eval num">{node.eval != null ? formatEval(node.eval) : '·'}</span>
+        <span className="cnode-eval num">{evalLabel}</span>
       </div>
     </div>
   );

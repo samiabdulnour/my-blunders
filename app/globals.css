@@ -1890,3 +1890,14 @@ html[data-theme='dark'] .sq.cap-ring {
 /* Per-node + per-continuation Stockfish eval (games count now lives only in the left panel) */
 .cnode-eval { display: block; font-size: 11px; color: var(--txt-dim); margin-top: 1px; font-variant-numeric: tabular-nums; font-weight: var(--fw-bold); }
 .c-eval { color: var(--txt-dim); font-variant-numeric: tabular-nums; }
+
+/* Clinic legend — explains the connector colours (move quality) + frame marks */
+.clinic-legend { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: 0.04em; color: var(--txt-dim); }
+.cleg { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.cleg .ln { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.cleg .ln.good { background: var(--green); }
+.cleg .ln.risk { background: var(--yellow); }
+.cleg .ln.bad { background: var(--red); }
+.cleg .sw { width: 10px; height: 10px; display: inline-block; border-radius: 2px; }
+.cleg .sw.hot { border: 1.5px solid var(--red); }
+.cleg .sw.gap { border: 1px dashed var(--txt-faint); }

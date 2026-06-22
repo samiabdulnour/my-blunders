@@ -66,7 +66,7 @@ export function OpeningSidebar({ onImport, onGamesFetched, onClearAll, unseenCou
                 title={o.name}
               >
                 <span className="op-name">{o.name}</span>
-                <span className="op-ct num">{o.games}g · <span className={'op-score ' + o.perf}>{o.score}%</span></span>
+                <span className="op-ct num">{o.games} game{o.games === 1 ? '' : 's'} · <span className={'op-score ' + o.perf}>{o.score}%</span></span>
               </button>
             ))}
           </div>
