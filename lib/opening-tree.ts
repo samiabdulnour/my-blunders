@@ -2,13 +2,13 @@ import type { ParsedGame } from './pgn';
 import { ecoName } from './eco-names';
 
 /**
- * Opening repertoire model for the "Repertoire X-ray".
+ * Opening repertoire model for the Opening Clinic.
  *
  * The trainer already imports a player's games to mine blunder puzzles; this
  * module turns those same games into a per-colour **opening tree**: from the
  * starting position, follow each game ply-by-ply into a trie, tallying at every
  * node how often the player reached it, how they scored from there, and how
- * often they blundered the move out of it. The X-ray renders that tree as a
+ * often they blundered the move out of it. The clinic renders that tree as a
  * top-down grid of mini-boards, loudest at the blunder hotspots.
  *
  * A compact `OpeningGame` summary (one per imported game) is what we persist —
@@ -17,7 +17,7 @@ import { ecoName } from './eco-names';
  */
 
 /** Plies (half-moves) of each game we keep for the opening tree. */
-export const OPENING_PLIES = 16;
+export const OPENING_PLIES = 24;
 /** Eval drop (centipawns, side-relative) that counts as a blunder out of a node. */
 const BLUNDER_CP = 200;
 
@@ -26,9 +26,11 @@ const PERF = { green: 52, amber: 44 };
 /** A node becomes a "hotspot" at this many blundered visits. */
 const HOTSPOT_BLUNDERS = 3;
 /** Pruning / collapsing knobs that keep the tree legible. */
-const MAX_DEPTH = 6; // plies deep we render before collapsing
 const MAX_CHILDREN = 3; // siblings rendered per node; the rest fold into +N
 const MIN_NODE_GAMES = 2; // drop branches seen fewer times than this
+/** Rows (plies) drawn at once before deeper lines fold into a drill badge.
+ *  20 plies ≈ move 10 for both colours; the trie holds OPENING_PLIES total. */
+const RENDER_ROWS = 20;
 /** A sibling played less than this fraction of the main line is a "gap". */
 const GAP_RATIO = 0.5;
 
@@ -45,6 +47,9 @@ export interface OpeningGame {
   eco: string;
   /** SAN moves from the start, capped to OPENING_PLIES. */
   moves: string[];
+  /** White-relative eval (cp, mate clamped to ±10000) after each move, parallel
+   *  to `moves`; null where the game has no Lichess analysis at that ply. */
+  evals: (number | null)[];
   /** Indices into `moves` where the *user* blundered (drop ≥ BLUNDER_CP, or a
    *  Lichess "Blunder" judgment). The node blamed is the position before it. */
   blunderPlies: number[];
@@ -60,7 +65,8 @@ export interface TreeNode {
   name: string;
   /** Pretty move label with number, e.g. "3.e5" / "3…Bf5". */
   label: string;
-  /** Position after the move, FEN board field only. */
+  /** Full FEN of the position after the move (OpeningBoard slices the board
+   *  field; the clinic uses the full FEN to query opening theory). */
   fen: string;
   /** From/to squares of the reaching move, for the last-move highlight. */
   hl: [string, string] | null;
@@ -73,6 +79,8 @@ export interface TreeNode {
   /** Score % from the user's POV, (wins + draws/2) / games · 100. */
   score: number;
   perf: Perf;
+  /** Average white-relative eval (cp) at this position across games, or null. */
+  eval: number | null;
   /** Times the user blundered the move out of this node. */
   blunders: number;
   hotspot: boolean;
@@ -119,6 +127,7 @@ export function summarizeGame(game: ParsedGame, username: string): OpeningGame |
 
   const plies = game.moves.slice(0, OPENING_PLIES);
   const moves = plies.map((m) => m.san);
+  const evals = plies.map((m) => (m.mate !== null || m.evalCp !== null ? evalCp(m) : null));
 
   const sign = color === 'w' ? 1 : -1;
   const blunderPlies: number[] = [];
@@ -134,13 +143,22 @@ export function summarizeGame(game: ParsedGame, username: string): OpeningGame |
     if (drop >= BLUNDER_CP) blunderPlies.push(i);
   }
 
-  return { gameId: game.gameId ?? `${game.white}-${game.black}-${game.date}`, color, result, eco: game.eco, moves, blunderPlies };
+  return { gameId: game.gameId ?? `${game.white}-${game.black}-${game.date}`, color, result, eco: game.eco, moves, evals, blunderPlies };
 }
 
 function perfOf(score: number): Perf {
   if (score >= PERF.green) return 'green';
   if (score >= PERF.amber) return 'amber';
   return 'red';
+}
+
+/** White-relative eval (cp) → a compact label: "+0.6", "-1.2", "#". */
+export function formatEval(cp: number | null | undefined): string {
+  if (cp == null) return '';
+  if (cp >= 9000) return '#';
+  if (cp <= -9000) return '-#';
+  const v = cp / 100;
+  return (v > 0 ? '+' : '') + v.toFixed(1);
 }
 
 const MOVE_NO = (ply: number) => Math.floor((ply - 1) / 2) + 1;
@@ -156,13 +174,16 @@ interface RawNode {
   draws: number;
   losses: number;
   blunders: number;
+  /** Sum + count of white-relative evals at this position (for the average). */
+  evalSum: number;
+  evalCount: number;
   /** ECO code → count, for the modal opening name at this node. */
   ecos: Map<string, number>;
   children: Map<string, RawNode>;
 }
 
 const emptyRaw = (san: string, ply: number): RawNode => ({
-  san, ply, games: 0, wins: 0, draws: 0, losses: 0, blunders: 0, ecos: new Map(), children: new Map(),
+  san, ply, games: 0, wins: 0, draws: 0, losses: 0, blunders: 0, evalSum: 0, evalCount: 0, ecos: new Map(), children: new Map(),
 });
 
 function bumpEco(n: RawNode, eco: string) {
@@ -199,6 +220,8 @@ export function buildOpeningTree(games: OpeningGame[], color: 'w' | 'b'): TreeNo
       child.games++;
       bump(child, g.result);
       bumpEco(child, g.eco);
+      const ev = g.evals?.[i];
+      if (ev != null) { child.evalSum += ev; child.evalCount++; } // position eval after this move
       node = child;
     }
   }
@@ -223,7 +246,10 @@ function resolve(raw: RawNode, chess: Chess, parentEco = ''): TreeNode {
       /* illegal/odd SAN — leave board as-is */
     }
   }
-  const fen = chess.fen().split(' ')[0];
+  // Full FEN (not just the board field) so the Opening Clinic can query the
+  // Lichess opening explorer for this exact position. OpeningBoard slices off
+  // the board field itself.
+  const fen = chess.fen();
 
   // Show the opening name only where it changes from the parent, so the spine
   // is named once at the top rather than repeating down every node.
@@ -235,28 +261,27 @@ function resolve(raw: RawNode, chess: Chess, parentEco = ''): TreeNode {
     fen, hl, depth: raw.ply,
     games: raw.games, wins: raw.wins, draws: raw.draws, losses: raw.losses,
     score: Math.round(score), perf: perfOf(score),
+    eval: raw.evalCount ? Math.round(raw.evalSum / raw.evalCount) : null,
     blunders: raw.blunders, hotspot: raw.blunders >= HOTSPOT_BLUNDERS,
     gap: null, collapsed: 0, children: [],
   };
 
-  if (raw.ply < MAX_DEPTH) {
-    const kids = [...raw.children.values()].sort((a, b) => b.games - a.games);
-    const kept = kids.filter((k) => k.games >= MIN_NODE_GAMES).slice(0, MAX_CHILDREN);
-    node.collapsed = kids.length - kept.length;
-    const mainGames = kept.length ? kept[0].games : 0; // kept is sorted desc
-    for (const k of kept) {
-      // Root's children always get a clean baseline so the spine is named.
-      const child = resolve(k, new Chess(chess.fen()), raw.ply === 0 ? '' : eco);
-      // Gap = a side branch played far less than the main line from this
-      // position (a repertoire hole): leaky if it also scores poorly, else
-      // just unmapped. The main line itself is never a gap.
-      if (kept.length > 1 && k.games < mainGames * GAP_RATIO) {
-        child.gap = child.score < 45 ? 'leaky' : 'unmapped';
-      }
-      node.children.push(child);
+  // Build the full trie to OPENING_PLIES; the render-depth limit lives in
+  // layoutTree, so deeper lines stay in the data and are revealed by drilling.
+  const kids = [...raw.children.values()].sort((a, b) => b.games - a.games);
+  const kept = kids.filter((k) => k.games >= MIN_NODE_GAMES).slice(0, MAX_CHILDREN);
+  node.collapsed = kids.length - kept.length;
+  const mainGames = kept.length ? kept[0].games : 0; // kept is sorted desc
+  for (const k of kept) {
+    // Root's children always get a clean baseline so the spine is named.
+    const child = resolve(k, new Chess(chess.fen()), raw.ply === 0 ? '' : eco);
+    // Gap = a side branch played far less than the main line from this
+    // position (a repertoire hole): leaky if it also scores poorly, else
+    // just unmapped. The main line itself is never a gap.
+    if (kept.length > 1 && k.games < mainGames * GAP_RATIO) {
+      child.gap = child.score < 45 ? 'leaky' : 'unmapped';
     }
-  } else {
-    node.collapsed = raw.children.size;
+    node.children.push(child);
   }
 
   if (raw.san) chess.undo();
@@ -266,19 +291,36 @@ function resolve(raw: RawNode, chess: Chess, parentEco = ''): TreeNode {
 
 /* ── Tidy top-down layout: depth = row, leaves packed left→right, parents
  *    centered over their children. Connectors are parent-bottom → child-top. ── */
-export const CARD_W = 104;
+export const CARD_W = 120;
 const COL_GAP = 22;
-const ROW_H = 180;
+const ROW_H = 188;
 
-export interface LaidNode extends TreeNode { x: number; y: number; pathId: string; }
+/** `more` = lines hidden below this node (pruned siblings + plies past the
+ *  render limit) — drill into the node (re-root) to reveal them. pathId is the
+ *  absolute move path, so it can become the focus root directly. */
+export interface LaidNode extends TreeNode { x: number; y: number; pathId: string; more: number; }
 export interface LaidEdge { from: string; to: string; }
 export interface Layout { nodes: LaidNode[]; edges: LaidEdge[]; width: number; height: number; maxDepth: number; }
 
+export interface LayoutOpts {
+  /** Top row to draw (default: the tree's first moves). For a focused view,
+   *  pass the focus node alone. */
+  topNodes?: TreeNode[];
+  /** Absolute path prefix for the top row's ids (the focus node's parent path). */
+  basePath?: string;
+  /** Plies to draw before deeper lines fold into a drill badge. */
+  maxRows?: number;
+}
+
 /**
- * Lay the tree out for rendering. The virtual root isn't drawn; its children
- * are the top row. Returns absolute x/y per node plus parent→child edges.
+ * Lay the tree out for rendering. Top-down: depth = row, leaves packed left→
+ * right, parents centred. Only `maxRows` plies are drawn; nodes at the limit
+ * carry a `more` count so the UI can offer to drill deeper.
  */
-export function layoutTree(root: TreeNode): Layout {
+export function layoutTree(root: TreeNode, opts: LayoutOpts = {}): Layout {
+  const topNodes = opts.topNodes ?? root.children;
+  const basePath = opts.basePath ?? '';
+  const maxRows = opts.maxRows ?? RENDER_ROWS;
   const nodes: LaidNode[] = [];
   const edges: LaidEdge[] = [];
   let cursor = 0; // next free leaf column (in card+gap units)
@@ -287,22 +329,23 @@ export function layoutTree(root: TreeNode): Layout {
   const place = (node: TreeNode, depth: number, path: string): number => {
     const pathId = path ? `${path}/${node.san}` : node.san || 'root';
     maxDepth = Math.max(maxDepth, depth);
+    const renderKids = depth + 1 < maxRows ? node.children : [];
     let x: number;
-    if (node.children.length === 0) {
+    if (renderKids.length === 0) {
       x = cursor * (CARD_W + COL_GAP);
       cursor++;
     } else {
-      const xs = node.children.map((c) => place(c, depth + 1, pathId));
+      const xs = renderKids.map((c) => place(c, depth + 1, pathId));
       x = (xs[0] + xs[xs.length - 1]) / 2;
     }
-    const laid: LaidNode = { ...node, x, y: depth * ROW_H, pathId, children: node.children };
+    const more = node.collapsed + (node.children.length - renderKids.length);
+    const laid: LaidNode = { ...node, x, y: depth * ROW_H, pathId, more, children: node.children };
     nodes.push(laid);
-    for (const c of node.children) edges.push({ from: pathId, to: `${pathId}/${c.san}` });
+    for (const c of renderKids) edges.push({ from: pathId, to: `${pathId}/${c.san}` });
     return x;
   };
 
-  // Draw the root's children as the top row (skip the virtual start node).
-  for (const c of root.children) place(c, 0, '');
+  for (const c of topNodes) place(c, 0, basePath);
 
   const width = Math.max(CARD_W, cursor * (CARD_W + COL_GAP) - COL_GAP) + CARD_W;
   const height = (maxDepth + 1) * ROW_H;
@@ -315,4 +358,35 @@ export function hotspots(root: TreeNode): TreeNode[] {
   const walk = (n: TreeNode) => { if (n.hotspot) out.push(n); n.children.forEach(walk); };
   walk(root);
   return out.sort((a, b) => b.blunders - a.blunders || a.score - b.score);
+}
+
+/** Path id for a node = its move SANs from the root joined by '/', matching
+ *  the ids `layoutTree` assigns. */
+export type OpeningEntry = { name: string; games: number; pathId: string; score: number; perf: Perf };
+
+/**
+ * The distinct named openings in the tree (deduped by name, keeping the most-
+ * played occurrence), most-played first — drives the clinic's opening filter.
+ */
+export function namedOpenings(root: TreeNode): OpeningEntry[] {
+  const best = new Map<string, OpeningEntry>();
+  const walk = (n: TreeNode, path: string) => {
+    if (n.name) {
+      const cur = best.get(n.name);
+      if (!cur || n.games > cur.games) {
+        best.set(n.name, { name: n.name, games: n.games, pathId: path, score: n.score, perf: n.perf });
+      }
+    }
+    for (const c of n.children) walk(c, path ? `${path}/${c.san}` : c.san);
+  };
+  for (const c of root.children) walk(c, c.san);
+  return [...best.values()].sort((a, b) => b.games - a.games);
+}
+
+/** Find a node by its path id (SANs joined by '/'), or null. */
+export function findByPath(root: TreeNode, pathId: string): TreeNode | null {
+  const sans = pathId.split('/');
+  let node: TreeNode | undefined = root.children.find((c) => c.san === sans[0]);
+  for (let i = 1; node && i < sans.length; i++) node = node.children.find((c) => c.san === sans[i]);
+  return node ?? null;
 }

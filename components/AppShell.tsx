@@ -16,6 +16,9 @@ interface AppShellProps {
   onToggleRandom: () => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
+  /** Puzzle ↔ Opening mode for the shared topbar switch. */
+  mode: 'puzzle' | 'opening';
+  onModeChange: (mode: 'puzzle' | 'opening') => void;
   /** Sidebar + main, supplied by the page. */
   children: React.ReactNode;
 }
@@ -39,6 +42,8 @@ export function AppShell({
   onToggleRandom,
   theme,
   onToggleTheme,
+  mode,
+  onModeChange,
   children,
 }: AppShellProps) {
   const [sideOpen, setSideOpen] = useState(true);
@@ -86,6 +91,7 @@ export function AppShell({
   return (
     <div className="app-root">
       <div className="topbar">
+        <div className="topbar-lead">
         <button
           type="button"
           className="topbar-toggle"
@@ -108,6 +114,28 @@ export function AppShell({
         </button>
 
         <BrandMark />
+        </div>
+
+        <div className="mode-seg" role="tablist" aria-label="Mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'puzzle'}
+            className={mode === 'puzzle' ? 'on' : ''}
+            onClick={() => onModeChange('puzzle')}
+          >
+            Puzzles
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'opening'}
+            className={mode === 'opening' ? 'on' : ''}
+            onClick={() => onModeChange('opening')}
+          >
+            Opening
+          </button>
+        </div>
 
         <button
           type="button"
@@ -132,19 +160,6 @@ export function AppShell({
         </button>
 
         <div className="topbar-prefs">
-          <Link
-            href="/repertoire"
-            className="icon-btn"
-            title="Repertoire X-ray"
-            aria-label="Repertoire X-ray"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="6" cy="5" r="2.4" />
-              <circle cx="6" cy="19" r="2.4" />
-              <circle cx="18" cy="12" r="2.4" />
-              <path d="M6 7.4v9.2M8.4 5H13a3 3 0 0 1 3 3v1.8M8.4 19H13a3 3 0 0 0 3-3v-1.4" />
-            </svg>
-          </Link>
           <Link
             href="/about"
             className="icon-btn"
