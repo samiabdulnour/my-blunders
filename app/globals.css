@@ -1901,3 +1901,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .cleg .sw { width: 10px; height: 10px; display: inline-block; border-radius: 2px; }
 .cleg .sw.hot { border: 1.5px solid var(--red); }
 .cleg .sw.gap { border: 1px dashed var(--txt-faint); }
+
+/* Fixed-width topbar lead (toggle + brand) ≈ sidebar width, so the Puzzles/
+   Opening tabs line up with the tree content ("All openings"). */
+.topbar-lead { display: flex; align-items: center; gap: 16px; width: 300px; flex-shrink: 0; }

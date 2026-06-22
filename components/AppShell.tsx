@@ -91,6 +91,7 @@ export function AppShell({
   return (
     <div className="app-root">
       <div className="topbar">
+        <div className="topbar-lead">
         <button
           type="button"
           className="topbar-toggle"
@@ -113,6 +114,7 @@ export function AppShell({
         </button>
 
         <BrandMark />
+        </div>
 
         <div className="mode-seg" role="tablist" aria-label="Mode">
           <button
