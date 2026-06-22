@@ -57,8 +57,10 @@ function edgeStroke(parentFen: string, parentEval: number | null, childEval: num
 
 const TOP_PAD = 26;
 const LEFT_PAD = 24;
-const ROW_H = 176;
-const CARD_BOTTOM = 124;
+// Connectors leave the parent *below* its label (board ≈106 + label ≈46) so the
+// line sits in the gap between rows and never crosses the move/eval text. The
+// node name is truncated to one line so node height stays bounded.
+const CARD_BOTTOM = 156;
 
 function connectorPath(parent: LaidNode, child: LaidNode): string {
   const px = LEFT_PAD + parent.x + CARD_W / 2;
@@ -192,7 +194,7 @@ export function OpeningClinic() {
               })}
             </svg>
             {layout.nodes.map((n) => (
-              <ClinicNode key={n.pathId} node={n} displayEval={evalOf(n)} selected={selected?.pathId === n.pathId} onSelect={() => setSelectedId(n.pathId)} />
+              <ClinicNode key={n.pathId} node={n} color={color} displayEval={evalOf(n)} selected={selected?.pathId === n.pathId} onSelect={() => setSelectedId(n.pathId)} />
             ))}
           </div>
         )}
@@ -208,7 +210,7 @@ export function OpeningClinic() {
   );
 }
 
-function ClinicNode({ node, displayEval, selected, onSelect }: { node: LaidNode; displayEval: number | null | undefined; selected: boolean; onSelect: () => void }) {
+function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: LaidNode; color: 'w' | 'b'; displayEval: number | null | undefined; selected: boolean; onSelect: () => void }) {
   // Frame is neutral now; move-quality lives on the connecting lines. Only gap
   // (rarely played), hotspot (blunder spot), and selection still tint the frame.
   const cls =
@@ -223,7 +225,7 @@ function ClinicNode({ node, displayEval, selected, onSelect }: { node: LaidNode;
         <div className={cls}>
           {node.blunders > 0 && <span className="cnode-warn"><IconWarn size={10} /> {node.blunders}</span>}
           {node.more > 0 && <span className="cnode-more">+{node.more}</span>}
-          <OpeningBoard fen={node.fen} hl={node.hl} sqSize={10} />
+          <OpeningBoard fen={node.fen} hl={node.hl} sqSize={12} orient={color} />
         </div>
       </button>
       <div className="cnode-label">

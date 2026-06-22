@@ -291,9 +291,9 @@ function resolve(raw: RawNode, chess: Chess, parentEco = ''): TreeNode {
 
 /* ── Tidy top-down layout: depth = row, leaves packed left→right, parents
  *    centered over their children. Connectors are parent-bottom → child-top. ── */
-export const CARD_W = 104;
+export const CARD_W = 120;
 const COL_GAP = 22;
-const ROW_H = 180;
+const ROW_H = 188;
 
 /** `more` = lines hidden below this node (pruned siblings + plies past the
  *  render limit) — drill into the node (re-root) to reveal them. pathId is the
