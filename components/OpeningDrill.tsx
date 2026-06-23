@@ -151,7 +151,7 @@ export function OpeningDrill({ items, onExit }: { items: DrillItem[]; onExit: ()
               <span className="od-tomove"><span className="od-turndot" /> {toMove} to move</span>
               {item.name && <span>{item.name}</span>}
             </div>
-            <div className={'od-frame' + (status === 'right' ? ' ok' : '') + (status === 'wrong' ? ' bad' : '')} style={{ ['--sq-size' as string]: '54px' }}>
+            <div className={'od-frame' + (status === 'right' ? ' ok' : '') + (status === 'wrong' ? ' bad' : '')}>
               <Board
                 chess={chess}
                 orientation={item.color === 'w' ? 'white' : 'black'}

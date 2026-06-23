@@ -1924,7 +1924,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .od-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
 .od-tomove { display: inline-flex; align-items: center; gap: 7px; font-weight: var(--fw-bold); color: var(--txt); }
 .od-turndot { width: 11px; height: 11px; border-radius: 50%; background: var(--contour); border: 1.5px solid var(--contour); }
-.od-frame { padding: 6px; border-radius: 5px; border: 3px solid var(--border2); background: var(--bg2); transition: border-color 0.15s ease; }
+.od-frame { --sq-size: 54px; padding: 6px; border-radius: 5px; border: 3px solid var(--border2); background: var(--bg2); transition: border-color 0.15s ease; }
 .od-frame.ok { border-color: var(--green); }
 .od-frame.bad { border-color: var(--red); }
 
@@ -1966,3 +1966,24 @@ html[data-theme='dark'] .sq.cap-ring {
 .od-start { flex-shrink: 0; padding: 7px 12px; border-radius: 3px; background: var(--coral); color: #16140f; border: 1px solid var(--contour); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; white-space: nowrap; }
 .od-start:hover { filter: brightness(1.08); }
 .cd-drill { width: 100%; margin-top: 12px; }
+
+/* ── Opening Clinic + Drill: mobile (stack the panes, keep tabs on-screen) ── */
+@media (max-width: 900px) {
+  /* Don't reserve the sidebar-width lead, or the tabs fall off the screen. */
+  .topbar-lead { width: auto; }
+
+  /* Clinic: tree on top, detail docked below (each scrolls). */
+  .main.clinic-mode { overflow: hidden; }
+  .clinic { flex-direction: column; }
+  .clinic-tree { flex: 1; min-height: 0; }
+  .clinic-bar { flex-wrap: wrap; gap: 8px 12px; height: auto; }
+  .clinic-detail { width: 100%; flex-shrink: 0; border-left: 0; border-top: 1px solid var(--contour); max-height: 46vh; }
+  .cd-board-sec { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .cd-board { margin: 0 auto; }
+
+  /* Drill: board over panel, board scaled to the viewport. */
+  .od-body { flex-direction: column; }
+  .od-stage { flex: none; padding: 14px; }
+  .od-frame { --sq-size: min(42px, calc((100vw - 44px) / 8)); }
+  .od-panel { width: 100%; border-left: 0; border-top: 1px solid var(--contour); }
+}
