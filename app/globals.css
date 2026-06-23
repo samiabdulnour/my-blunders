@@ -1995,24 +1995,41 @@ html[data-theme='dark'] .sq.cap-ring {
 /* ── Opening Clinic + Drill: mobile (stack the panes, keep tabs on-screen) ── */
 @media (max-width: 900px) {
   /* Don't reserve the sidebar-width lead, or the tabs fall off the screen. */
-  .topbar-lead { width: auto; }
+  .topbar-lead { width: auto; gap: 10px; }
 
   /* Clinic: tree on top, detail docked below (each scrolls). */
   .main.clinic-mode { overflow: hidden; }
   .clinic { flex-direction: column; }
   .clinic-tree { flex: 1; min-height: 0; }
-  .clinic-bar { flex-wrap: wrap; gap: 8px 12px; height: auto; }
-  /* Stack the bar: crumbs and legend each get their own row so the breadcrumb
-     can't overflow its flex-shrunk box and collide with the legend; the drill
-     button and zoom share the last row. */
-  .clinic-crumbs, .clinic-legend { flex: 0 0 100%; }
+  /* Compact bar so the canvas gets the room: crumbs share row 1 with the zoom
+     control, the (smaller) legend takes row 2, the drill button row 3. */
+  .clinic-bar { flex-wrap: wrap; gap: 6px 10px; height: auto; padding: 7px 12px; }
+  .clinic-crumbs { order: 0; flex: 1 1 auto; }
+  .clinic-zoom { order: 1; }
+  .clinic-legend { order: 2; flex: 1 1 100%; font-size: 10px; gap: 4px 10px; }
+  .od-start { order: 3; flex: 1 1 100%; text-align: center; padding: 6px 12px; }
   .clinic-detail { width: 100%; flex-shrink: 0; border-left: 0; border-top: 1px solid var(--contour); max-height: 46vh; }
   .cd-board-sec { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px; }
   .cd-board { margin: 0 auto; }
 
-  /* Drill: board over panel, board scaled to the viewport. */
-  .od-body { flex-direction: column; }
+  /* Drill: board over panel; the whole drill body scrolls so the actions at
+     the bottom of the panel stay reachable. */
+  .od-topbar { padding: 0 12px; gap: 10px; }
+  .od-meta { display: none; }
+  .od-body { flex-direction: column; overflow-y: auto; }
   .od-stage { flex: none; padding: 14px; }
   .od-frame { --sq-size: min(42px, calc((100vw - 44px) / 8)); }
+  .od-sec { padding: 14px 16px; }
   .od-panel { width: 100%; border-left: 0; border-top: 1px solid var(--contour); }
+}
+
+/* Phones: drop the wordmark and tighten the clusters so the mode tabs, the
+   (puzzle-only) stats strip, and the prefs icons all fit a ~390px bar. */
+@media (max-width: 560px) {
+  .topbar { gap: 6px; }
+  .brand-word { display: none; }
+  .mode-seg button { padding: 0 7px; }
+  .stats-strip { gap: 7px; padding: 5px 6px; }
+  .topbar-prefs { padding-left: 6px; margin-left: 6px; gap: 2px; }
+  .icon-btn { padding: 4px 5px; }
 }

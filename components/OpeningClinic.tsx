@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { layoutTree, findByPath, hotspots, weakSpots, lineString, formatEval, CARD_W, type LaidNode, type DrillItem } from '@/lib/opening-tree';
 import { useClinic } from '@/lib/clinic-context';
 import { fetchTheory, type Theory } from '@/lib/opening-explorer';
@@ -56,6 +56,11 @@ export function OpeningClinic() {
   const [detailOpen, setDetailOpen] = useState(true);
   const [zoom, setZoom] = useState(1);
   const zoomBy = (d: number) => setZoom((z) => Math.min(1.6, Math.max(0.4, Math.round((z + d) * 10) / 10)));
+  // The scrolling tree pane + a live mirror of the zoom (so the centering
+  // effect can read the current zoom without re-running on every zoom change).
+  const treeRef = useRef<HTMLDivElement | null>(null);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
 
   // Focus re-roots the tree at one node (an opening, or any clicked node) so you
   // can drill in; otherwise the whole tree. Path ids are absolute, so a focus
@@ -95,6 +100,26 @@ export function OpeningClinic() {
     return () => { cancelled = true; };
   }, [layout]);
   const evalOf = (n: LaidNode): number | null | undefined => n.eval ?? whiteCp(peekEval(n.fen));
+
+  // Open the canvas *on the opening*, not on blank space: a wide repertoire's
+  // root sits centred over its subtree, so scroll-0 shows empty canvas. Centre
+  // the first row (the opening's first moves) whenever the tree/focus changes.
+  useEffect(() => {
+    const el = treeRef.current;
+    if (!el) return;
+    const top = layout.nodes.filter((n) => n.y === 0);
+    if (top.length === 0) return;
+    // Centre on the *main* (most-played) first move. Centring on the span
+    // midpoint would land in the blank gap between two wide openings (e.g. e4
+    // and d4), so pick the busiest root and show that opening's tree.
+    const main = top.reduce((a, b) => (b.games > a.games ? b : a), top[0]);
+    const center = LEFT_PAD + main.x + CARD_W / 2;
+    const id = requestAnimationFrame(() => {
+      el.scrollLeft = Math.max(0, center * zoomRef.current - el.clientWidth / 2);
+      el.scrollTop = 0;
+    });
+    return () => cancelAnimationFrame(id);
+  }, [layout]);
 
   // Default selection: the worst hotspot, else the top-left (shallowest) node.
   const defaultSel = useMemo(() => {
@@ -138,7 +163,7 @@ export function OpeningClinic() {
 
   return (
     <div className="clinic">
-      <div className="clinic-tree">
+      <div className="clinic-tree" ref={treeRef}>
         <div className="clinic-bar">
           <nav className="clinic-crumbs">
             <button className={'crumb' + (focus ? '' : ' on')} onClick={() => { setFocus(null); setSelectedId(null); }}>
