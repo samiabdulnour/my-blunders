@@ -174,12 +174,15 @@ select {
   background: var(--bg2);
 }
 
+/* Pushes the stats/prefs cluster to the right (and fills the gap in Opening
+   mode, where the stats strip is hidden). */
+.topbar-spacer { flex: 1; min-width: 8px; }
+
 /* Stats strip — one clickable cluster, opens the detail sheet */
 .stats-strip {
   display: flex;
   align-items: baseline;
   gap: 14px;
-  margin-left: auto;
   background: none;
   border: 1px solid transparent;
   padding: 5px 9px;
@@ -1769,7 +1772,11 @@ html[data-theme='dark'] .sq.cap-ring {
 .clinic-empty { max-width: 320px; margin: 60px auto; text-align: center; color: var(--txt-dim); padding: 24px; }
 .clinic-empty h3 { font-size: var(--fs-title); color: var(--txt); margin-bottom: 8px; }
 
-.clinic-canvas { position: relative; margin: 8px auto 40px; }
+/* The wrapper reserves the *scaled* footprint so the tree pane scrolls
+   correctly; the inner canvas keeps its natural size and is scaled with a
+   transform (origin top-left) for zoom. */
+.clinic-canvas-wrap { position: relative; margin: 8px auto 40px; }
+.clinic-canvas { position: relative; }
 .clinic-conn { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
 .cnode { position: absolute; }
 .cnode-btn { display: block; width: 100%; border: 0; background: none; padding: 0; cursor: pointer; }
@@ -1799,7 +1806,14 @@ html[data-theme='dark'] .sq.cap-ring {
 .cnode-move { display: block; font-size: 12px; font-weight: var(--fw-bold); color: var(--txt); letter-spacing: -0.01em; }
 .cnode-games { display: block; font-size: 10px; color: var(--txt-faint); margin-top: 1px; }
 
-.clinic-detail { width: 340px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--bg2); overflow-y: auto; display: flex; flex-direction: column; }
+.clinic-detail { position: relative; width: 340px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--bg2); overflow-y: auto; display: flex; flex-direction: column; }
+.cd-close {
+  position: absolute; top: 8px; right: 8px; z-index: 6; width: 26px; height: 26px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 18px;
+  color: var(--txt-dim); background: var(--bg2); border: 1px solid var(--border); border-radius: 4px;
+  cursor: pointer; transition: color 0.12s ease, border-color 0.12s ease;
+}
+.cd-close:hover { color: var(--txt); border-color: var(--border2); }
 .cd-empty { margin: auto; padding: 40px 24px; text-align: center; color: var(--txt-faint); font-size: var(--fs-base); }
 .cd-board-sec { padding: 18px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; }
 .cd-board { display: flex; justify-content: center; }
@@ -1902,6 +1916,17 @@ html[data-theme='dark'] .sq.cap-ring {
 .cleg .sw.hot { border: 1.5px solid var(--red); }
 .cleg .sw.gap { border: 1px dashed var(--txt-faint); }
 
+/* Zoom the tree canvas (handy on phones). Compact −/%/+ group in the bar. */
+.clinic-zoom { display: inline-flex; align-items: center; flex-shrink: 0; border: 1px solid var(--contour); border-radius: 3px; overflow: hidden; }
+.clinic-zoom button {
+  width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: var(--fw-bold); color: var(--txt-dim); background: var(--bg2);
+  border: 0; cursor: pointer; transition: color 0.12s ease, background 0.12s ease;
+}
+.clinic-zoom button:hover:not(:disabled) { color: var(--txt); background: var(--bg3); }
+.clinic-zoom button:disabled { opacity: 0.35; cursor: default; }
+.clinic-zoom .num { min-width: 40px; text-align: center; font-size: var(--fs-micro); color: var(--txt-dim); border-left: 1px solid var(--border); border-right: 1px solid var(--border); padding: 0 2px; }
+
 /* Fixed-width topbar lead (toggle + brand) ≈ sidebar width, so the Puzzles/
    Opening tabs line up with the tree content ("All openings"). */
 .topbar-lead { display: flex; align-items: center; gap: 16px; width: 300px; flex-shrink: 0; }
@@ -1977,6 +2002,10 @@ html[data-theme='dark'] .sq.cap-ring {
   .clinic { flex-direction: column; }
   .clinic-tree { flex: 1; min-height: 0; }
   .clinic-bar { flex-wrap: wrap; gap: 8px 12px; height: auto; }
+  /* Stack the bar: crumbs and legend each get their own row so the breadcrumb
+     can't overflow its flex-shrunk box and collide with the legend; the drill
+     button and zoom share the last row. */
+  .clinic-crumbs, .clinic-legend { flex: 0 0 100%; }
   .clinic-detail { width: 100%; flex-shrink: 0; border-left: 0; border-top: 1px solid var(--contour); max-height: 46vh; }
   .cd-board-sec { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px; }
   .cd-board { margin: 0 auto; }

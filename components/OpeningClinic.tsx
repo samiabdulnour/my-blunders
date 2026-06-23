@@ -53,6 +53,9 @@ function connectorPath(parent: LaidNode, child: LaidNode): string {
 export function OpeningClinic() {
   const { ready, fetching, color, focus, setFocus, selectedId, setSelectedId, tree } = useClinic();
   const [drillItems, setDrillItems] = useState<DrillItem[] | null>(null);
+  const [detailOpen, setDetailOpen] = useState(true);
+  const [zoom, setZoom] = useState(1);
+  const zoomBy = (d: number) => setZoom((z) => Math.min(1.6, Math.max(0.4, Math.round((z + d) * 10) / 10)));
 
   // Focus re-roots the tree at one node (an opening, or any clicked node) so you
   // can drill in; otherwise the whole tree. Path ids are absolute, so a focus
@@ -161,6 +164,11 @@ export function OpeningClinic() {
               Drill {weak.length} weak spot{weak.length === 1 ? '' : 's'} →
             </button>
           )}
+          <div className="clinic-zoom">
+            <button onClick={() => zoomBy(-0.2)} aria-label="Zoom out" disabled={zoom <= 0.4}>−</button>
+            <span className="num">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => zoomBy(0.2)} aria-label="Zoom in" disabled={zoom >= 1.6}>+</button>
+          </div>
         </div>
 
         {!ready ? null : !hasGames ? (
@@ -169,34 +177,45 @@ export function OpeningClinic() {
             <p>{fetching ? 'Pulling your games from Lichess…' : 'Import your games from the sidebar to build your opening tree.'}</p>
           </div>
         ) : (
-          <div className="clinic-canvas" style={{ width: LEFT_PAD + layout.width, height: TOP_PAD + layout.height }}>
-            <svg className="clinic-conn" width={LEFT_PAD + layout.width} height={TOP_PAD + layout.height}>
-              {layout.edges.map((e, i) => {
-                const a = byId[e.from];
-                const b = byId[e.to];
-                if (!a || !b) return null;
-                const stroke = edgeStroke(a.fen, evalOf(a) ?? null, evalOf(b) ?? null);
-                return <path key={i} d={connectorPath(a, b)} fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" />;
-              })}
-            </svg>
-            {layout.nodes.map((n) => (
-              <ClinicNode key={n.pathId} node={n} color={color} displayEval={evalOf(n)} selected={selected?.pathId === n.pathId} onSelect={() => setSelectedId(n.pathId)} />
-            ))}
+          <div
+            className="clinic-canvas-wrap"
+            style={{ width: (LEFT_PAD + layout.width) * zoom, height: (TOP_PAD + layout.height) * zoom }}
+          >
+            <div
+              className="clinic-canvas"
+              style={{ width: LEFT_PAD + layout.width, height: TOP_PAD + layout.height, transform: `scale(${zoom})`, transformOrigin: '0 0' }}
+            >
+              <svg className="clinic-conn" width={LEFT_PAD + layout.width} height={TOP_PAD + layout.height}>
+                {layout.edges.map((e, i) => {
+                  const a = byId[e.from];
+                  const b = byId[e.to];
+                  if (!a || !b) return null;
+                  const stroke = edgeStroke(a.fen, evalOf(a) ?? null, evalOf(b) ?? null);
+                  return <path key={i} d={connectorPath(a, b)} fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" />;
+                })}
+              </svg>
+              {layout.nodes.map((n) => (
+                <ClinicNode key={n.pathId} node={n} color={color} displayEval={evalOf(n)} selected={selected?.pathId === n.pathId} onSelect={() => { setSelectedId(n.pathId); setDetailOpen(true); }} />
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      <DetailPanel
-        node={selected}
-        color={color}
-        onPickMove={(san) => {
-          // Drill into a played continuation by SAN, if it's in the tree.
-          if (!selected) return;
-          const child = selected.children.find((c) => c.san === san);
-          if (child) drill(`${selected.pathId}/${child.san}`);
-        }}
-        onDrill={setDrillItems}
-      />
+      {detailOpen && (
+        <DetailPanel
+          node={selected}
+          color={color}
+          onClose={() => setDetailOpen(false)}
+          onPickMove={(san) => {
+            // Drill into a played continuation by SAN, if it's in the tree.
+            if (!selected) return;
+            const child = selected.children.find((c) => c.san === san);
+            if (child) drill(`${selected.pathId}/${child.san}`);
+          }}
+          onDrill={setDrillItems}
+        />
+      )}
     </div>
   );
 }
@@ -228,7 +247,7 @@ function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: La
   );
 }
 
-function DetailPanel({ node, color, onPickMove, onDrill }: { node: LaidNode | null; color: 'w' | 'b'; onPickMove: (san: string) => void; onDrill: (items: DrillItem[]) => void }) {
+function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: LaidNode | null; color: 'w' | 'b'; onClose: () => void; onPickMove: (san: string) => void; onDrill: (items: DrillItem[]) => void }) {
   const [theory, setTheory] = useState<Theory | null>(null);
   const [theoryLoading, setTheoryLoading] = useState(false);
   const [engine, setEngine] = useState<EngineEval | null>(null);
@@ -253,6 +272,7 @@ function DetailPanel({ node, color, onPickMove, onDrill }: { node: LaidNode | nu
   if (!node) {
     return (
       <aside className="clinic-detail">
+        <button className="cd-close" onClick={onClose} aria-label="Close panel" title="Close panel">×</button>
         <div className="cd-empty">Select a position to see the right continuation.</div>
       </aside>
     );
@@ -278,6 +298,7 @@ function DetailPanel({ node, color, onPickMove, onDrill }: { node: LaidNode | nu
 
   return (
     <aside className="clinic-detail">
+      <button className="cd-close" onClick={onClose} aria-label="Close panel" title="Close panel">×</button>
       <div className="cd-board-sec">
         <div className="cd-board"><OpeningBoard fen={node.fen} hl={node.hl} sqSize={30} orient={color} arrows={arrows} /></div>
         <div className="cd-head">

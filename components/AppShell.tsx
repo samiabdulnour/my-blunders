@@ -137,27 +137,31 @@ export function AppShell({
           </button>
         </div>
 
-        <button
-          type="button"
-          ref={stripRef}
-          className="stats-strip"
-          onClick={() => setStatsOpen((o) => !o)}
-          aria-label="Session stats"
-          aria-expanded={statsOpen}
-        >
-          <div className="stat s-today">
-            <span className="v pos">{stats.correct}</span>
-            <span className="lbl">solved</span>
-          </div>
-          <div className="stat s-acc">
-            <span className="v">{accuracy}%</span>
-            <span className="lbl">accuracy</span>
-          </div>
-          <div className="stat s-streak">
-            <span className="v">{stats.streak}</span>
-            <span className="lbl">streak</span>
-          </div>
-        </button>
+        <div className="topbar-spacer" />
+
+        {mode === 'puzzle' && (
+          <button
+            type="button"
+            ref={stripRef}
+            className="stats-strip"
+            onClick={() => setStatsOpen((o) => !o)}
+            aria-label="Session stats"
+            aria-expanded={statsOpen}
+          >
+            <div className="stat s-today">
+              <span className="v pos">{stats.correct}</span>
+              <span className="lbl">solved</span>
+            </div>
+            <div className="stat s-acc">
+              <span className="v">{accuracy}%</span>
+              <span className="lbl">accuracy</span>
+            </div>
+            <div className="stat s-streak">
+              <span className="v">{stats.streak}</span>
+              <span className="lbl">streak</span>
+            </div>
+          </button>
+        )}
 
         <div className="topbar-prefs">
           <Link
