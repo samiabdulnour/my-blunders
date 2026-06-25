@@ -350,11 +350,12 @@ export default function Page() {
       setIntroMove({ from: applied.from, to: applied.to });
       setTimeout(() => {
         if (currentRef.current?.id === id) setIntroMove(null);
-      }, 300);
+      }, 450);
       step += 1;
-      setTimeout(playNext, 600);
+      // Calm, readable cadence — one move roughly every second.
+      setTimeout(playNext, 1000);
     };
-    setTimeout(playNext, 450); // let the solving move's own animation land first
+    setTimeout(playNext, 600); // let the solving move's own animation land first
   };
 
   /* ── Apply a move ──
@@ -854,7 +855,6 @@ export default function Page() {
                     yourMove={yourMove}
                     attempts={attempts}
                     isOk={isOk}
-                    analysis={analysis}
                     onRetry={retry}
                     onNext={next}
                   />
