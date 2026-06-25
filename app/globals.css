@@ -174,12 +174,15 @@ select {
   background: var(--bg2);
 }
 
+/* Pushes the stats/prefs cluster to the right (and fills the gap in Opening
+   mode, where the stats strip is hidden). */
+.topbar-spacer { flex: 1; min-width: 8px; }
+
 /* Stats strip — one clickable cluster, opens the detail sheet */
 .stats-strip {
   display: flex;
   align-items: baseline;
   gap: 14px;
-  margin-left: auto;
   background: none;
   border: 1px solid transparent;
   padding: 5px 9px;
@@ -1769,7 +1772,11 @@ html[data-theme='dark'] .sq.cap-ring {
 .clinic-empty { max-width: 320px; margin: 60px auto; text-align: center; color: var(--txt-dim); padding: 24px; }
 .clinic-empty h3 { font-size: var(--fs-title); color: var(--txt); margin-bottom: 8px; }
 
-.clinic-canvas { position: relative; margin: 8px auto 40px; }
+/* The wrapper reserves the *scaled* footprint so the tree pane scrolls
+   correctly; the inner canvas keeps its natural size and is scaled with a
+   transform (origin top-left) for zoom. */
+.clinic-canvas-wrap { position: relative; margin: 8px auto 40px; }
+.clinic-canvas { position: relative; }
 .clinic-conn { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
 .cnode { position: absolute; }
 .cnode-btn { display: block; width: 100%; border: 0; background: none; padding: 0; cursor: pointer; }
@@ -1799,13 +1806,20 @@ html[data-theme='dark'] .sq.cap-ring {
 .cnode-move { display: block; font-size: 12px; font-weight: var(--fw-bold); color: var(--txt); letter-spacing: -0.01em; }
 .cnode-games { display: block; font-size: 10px; color: var(--txt-faint); margin-top: 1px; }
 
-.clinic-detail { width: 340px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--bg2); overflow-y: auto; display: flex; flex-direction: column; }
+.clinic-detail { position: relative; width: 340px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--bg2); overflow-y: auto; display: flex; flex-direction: column; }
+.cd-close {
+  position: absolute; top: 8px; right: 8px; z-index: 6; width: 26px; height: 26px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 18px;
+  color: var(--txt-dim); background: var(--bg2); border: 1px solid var(--border); border-radius: 4px;
+  cursor: pointer; transition: color 0.12s ease, border-color 0.12s ease;
+}
+.cd-close:hover { color: var(--txt); border-color: var(--border2); }
 .cd-empty { margin: auto; padding: 40px 24px; text-align: center; color: var(--txt-faint); font-size: var(--fs-base); }
 .cd-board-sec { padding: 18px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; }
 .cd-board { display: flex; justify-content: center; }
 .cd-head { width: 100%; text-align: center; }
 .cd-name { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); }
-.cd-move { font-size: var(--fs-big); font-weight: var(--fw-bold); letter-spacing: -0.02em; line-height: 1.1; }
+.cd-move { font-size: var(--fs-title); font-weight: var(--fw-bold); letter-spacing: -0.01em; line-height: 1.1; }
 .cd-sub { font-size: var(--fs-micro); color: var(--txt-dim); margin-top: 3px; }
 .cd-blund { color: var(--red); }
 .cd-sec { padding: 16px 18px; border-bottom: 1px solid var(--border); }
@@ -1883,8 +1897,8 @@ html[data-theme='dark'] .sq.cap-ring {
 
 /* Stockfish "right continuation" readout */
 .cd-engine { display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
-.ce-move { font-size: var(--fs-big); font-weight: var(--fw-bold); color: var(--green); letter-spacing: -0.01em; }
-.ce-eval { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); background: var(--bg3); padding: 2px 8px; border-radius: 3px; font-variant-numeric: tabular-nums; }
+.ce-move { font-size: var(--fs-title); font-weight: var(--fw-bold); color: var(--green); letter-spacing: -0.01em; }
+.ce-eval { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt-dim); font-variant-numeric: tabular-nums; }
 .ce-tag { font-size: 9px; text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-faint); font-weight: var(--fw-bold); margin-left: auto; }
 
 /* Per-node + per-continuation Stockfish eval (games count now lives only in the left panel) */
@@ -1902,6 +1916,121 @@ html[data-theme='dark'] .sq.cap-ring {
 .cleg .sw.hot { border: 1.5px solid var(--red); }
 .cleg .sw.gap { border: 1px dashed var(--txt-faint); }
 
+/* Zoom the tree canvas (handy on phones). Compact −/%/+ group in the bar. */
+.clinic-zoom { display: inline-flex; align-items: center; flex-shrink: 0; border: 1px solid var(--contour); border-radius: 3px; overflow: hidden; }
+.clinic-zoom button {
+  width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: var(--fw-bold); color: var(--txt-dim); background: var(--bg2);
+  border: 0; cursor: pointer; transition: color 0.12s ease, background 0.12s ease;
+}
+.clinic-zoom button:hover:not(:disabled) { color: var(--txt); background: var(--bg3); }
+.clinic-zoom button:disabled { opacity: 0.35; cursor: default; }
+.clinic-zoom .num { min-width: 40px; text-align: center; font-size: var(--fs-micro); color: var(--txt-dim); border-left: 1px solid var(--border); border-right: 1px solid var(--border); padding: 0 2px; }
+
 /* Fixed-width topbar lead (toggle + brand) ≈ sidebar width, so the Puzzles/
    Opening tabs line up with the tree content ("All openings"). */
 .topbar-lead { display: flex; align-items: center; gap: 16px; width: 300px; flex-shrink: 0; }
+
+/* ════════════════════════════════════════════════════════════════
+   Opening Drill — practice the best move in your weak positions.
+   ════════════════════════════════════════════════════════════════ */
+.odrill { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.od-topbar { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--bg2); }
+.od-back { background: none; border: 0; color: var(--txt-dim); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; padding: 4px 0; }
+.od-back:hover { color: var(--txt); }
+.od-progress { margin-left: auto; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt); letter-spacing: var(--track-caps); }
+.od-meta { display: flex; gap: 14px; font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.od-meta b { color: var(--txt); }
+.od-meta .bad { color: var(--red); }
+
+.od-body { flex: 1; display: flex; min-height: 0; }
+.od-stage { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 28px; overflow: auto; background: radial-gradient(circle at center, var(--border) 0.8px, transparent 1.2px) 0 0 / 24px 24px, var(--bg); }
+.od-board-col { display: flex; flex-direction: column; gap: 10px; }
+.od-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.od-tomove { display: inline-flex; align-items: center; gap: 7px; font-weight: var(--fw-bold); color: var(--txt); }
+.od-turndot { width: 11px; height: 11px; border-radius: 50%; background: var(--contour); border: 1.5px solid var(--contour); }
+.od-frame { --sq-size: 54px; padding: 6px; border-radius: 5px; border: 3px solid var(--border2); background: var(--bg2); transition: border-color 0.15s ease; }
+.od-frame.ok { border-color: var(--green); }
+.od-frame.bad { border-color: var(--red); }
+
+.od-panel { width: 360px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--bg2); overflow-y: auto; display: flex; flex-direction: column; }
+.od-sec { padding: 18px 20px; border-bottom: 1px solid var(--border); }
+.od-grow { flex: 1; }
+.od-eyebrow { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--red); }
+.od-title { margin-top: 9px; font-size: var(--fs-big); font-weight: var(--fw-bold); letter-spacing: -0.02em; line-height: 1.1; }
+.od-line { margin-top: 10px; padding: 9px 11px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; font-weight: var(--fw-bold); color: var(--txt); }
+.od-played { margin-top: 6px; padding: 8px 11px; background: var(--green-soft); border: 1px solid var(--green); border-radius: 4px; font-size: 12px; font-weight: var(--fw-bold); color: var(--green); letter-spacing: 0.02em; }
+.od-record { font-size: var(--fs-base); line-height: 1.5; color: var(--txt); }
+.od-record .bad { color: var(--red); }
+.od-dots { display: flex; gap: 5px; margin-top: 12px; flex-wrap: wrap; }
+.od-att { width: 22px; height: 22px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: var(--fw-bold); border: 1px solid var(--border2); }
+.od-att.bad { background: var(--red); color: #fff; border-color: var(--red); }
+.od-att.ok { background: var(--green-soft); color: var(--green); border-color: var(--green); }
+.od-prompt { padding: 13px 15px; background: var(--contour); color: var(--bg2); border-radius: 5px; display: flex; flex-direction: column; gap: 3px; }
+.od-prompt.ok { background: var(--green); color: #fff; }
+.od-prompt.bad { background: var(--red); color: #fff; }
+.od-prompt .q { font-size: var(--fs-title); font-weight: var(--fw-bold); letter-spacing: -0.01em; }
+.od-prompt .qs { font-size: 12px; opacity: 0.75; }
+.od-usual { display: flex; gap: 11px; align-items: flex-start; margin-top: 12px; padding: 11px 12px; border-radius: 4px; background: var(--red-soft); border: 1px solid var(--border2); }
+.od-usual .um { flex-shrink: 0; font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--red); }
+.od-usual .ut { font-size: 12px; color: var(--txt); line-height: 1.5; }
+.od-actions { display: flex; gap: 10px; }
+.od-btn { flex: 1; padding: 12px; border-radius: 3px; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); border: 1px solid var(--contour); cursor: pointer; transition: filter 0.1s ease, background 0.1s ease; }
+.od-btn.primary { background: var(--contour); color: var(--bg2); }
+.od-btn.primary:hover { filter: brightness(1.1); }
+.od-btn.ghost { background: var(--bg); color: var(--txt); }
+.od-btn.ghost:hover { background: var(--bg3); }
+.od-btn:disabled { opacity: 0.4; cursor: default; }
+.od-reveal { margin-top: 12px; font-size: 12px; color: var(--txt-dim); line-height: 1.55; }
+.od-reveal b { color: var(--green); font-weight: var(--fw-bold); }
+.od-reveal b.bad { color: var(--red); }
+.od-complete { margin: auto; text-align: center; color: var(--txt-dim); padding: 40px; }
+.od-complete h2 { font-size: var(--fs-big); color: var(--txt); margin-bottom: 6px; }
+.od-complete .od-next { margin-top: 16px; padding: 10px 18px; background: var(--contour); color: var(--bg2); border: 0; border-radius: 3px; font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); font-size: var(--fs-micro); cursor: pointer; }
+
+/* Drill entry buttons (clinic bar + detail panel) */
+.od-start { flex-shrink: 0; padding: 7px 12px; border-radius: 3px; background: var(--coral); color: #16140f; border: 1px solid var(--contour); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; white-space: nowrap; }
+.od-start:hover { filter: brightness(1.08); }
+.cd-drill { width: 100%; margin-top: 12px; }
+
+/* ── Opening Clinic + Drill: mobile (stack the panes, keep tabs on-screen) ── */
+@media (max-width: 900px) {
+  /* Don't reserve the sidebar-width lead, or the tabs fall off the screen. */
+  .topbar-lead { width: auto; gap: 10px; }
+
+  /* Clinic: tree on top, detail docked below (each scrolls). */
+  .main.clinic-mode { overflow: hidden; }
+  .clinic { flex-direction: column; }
+  .clinic-tree { flex: 1; min-height: 0; }
+  /* Compact bar so the canvas gets the room: crumbs share row 1 with the zoom
+     control, the (smaller) legend takes row 2, the drill button row 3. */
+  .clinic-bar { flex-wrap: wrap; gap: 6px 10px; height: auto; padding: 7px 12px; }
+  .clinic-crumbs { order: 0; flex: 1 1 auto; }
+  .clinic-zoom { order: 1; }
+  .clinic-legend { order: 2; flex: 1 1 100%; font-size: 10px; gap: 4px 10px; }
+  .od-start { order: 3; flex: 1 1 100%; text-align: center; padding: 6px 12px; }
+  .clinic-detail { width: 100%; flex-shrink: 0; border-left: 0; border-top: 1px solid var(--contour); max-height: 46vh; }
+  .cd-board-sec { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .cd-board { margin: 0 auto; }
+
+  /* Drill: board over panel; the whole drill body scrolls so the actions at
+     the bottom of the panel stay reachable. */
+  .od-topbar { padding: 0 12px; gap: 10px; }
+  .od-meta { display: none; }
+  .od-body { flex-direction: column; overflow-y: auto; }
+  .od-stage { flex: none; padding: 14px; }
+  .od-frame { --sq-size: min(42px, calc((100vw - 44px) / 8)); }
+  .od-sec { padding: 14px 16px; }
+  .od-panel { width: 100%; border-left: 0; border-top: 1px solid var(--contour); }
+}
+
+/* Phones: drop the wordmark and tighten the clusters so the mode tabs, the
+   (puzzle-only) stats strip, and the prefs icons all fit a ~390px bar. */
+@media (max-width: 560px) {
+  .topbar { gap: 6px; }
+  .brand-word { display: none; }
+  .mode-seg button { padding: 0 7px; }
+  .stats-strip { gap: 7px; padding: 5px 6px; }
+  .topbar-prefs { padding-left: 6px; margin-left: 6px; gap: 2px; }
+  .icon-btn { padding: 4px 5px; }
+}
