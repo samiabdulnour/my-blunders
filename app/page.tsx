@@ -114,6 +114,9 @@ export default function Page() {
   /** Outcome of the puzzle's *key* move ('ok' | 'fail'), so the continuation
    *  you then play out can't change the verdict shown when it ends. */
   const keyResultRef = useRef<'ok' | 'fail' | null>(null);
+  /** Set once any move is *revealed* (Show move / Show the rest), so the puzzle
+   *  is recorded as a miss even though the engine plays the move for you. */
+  const revealedRef = useRef(false);
   /** Mirror of `current` as a ref, used by handleImport to decide whether
    *  to auto-jump on the first streamed batch without stale-closure traps. */
   const currentRef = useRef<Puzzle | null>(null);
@@ -276,6 +279,7 @@ export default function Page() {
     setRevealed(false);
     setLineStep(0);
     keyResultRef.current = null;
+    revealedRef.current = false;
     setAnalysis(false);
     setYourMove(null);
     setAwaitingRetry(false);
@@ -369,6 +373,35 @@ export default function Page() {
      single-move default. */
   const makeMove = (mv: Move) => {
     if (!current) return;
+    const cur = current;
+    // Record the puzzle's outcome once (solved-status · stats · streak). A
+    // revealed move counts as a miss, like giving up, via `revealedRef`.
+    const record = (result: 'ok' | 'fail') => {
+      if (recordedRef.current === cur.id) return;
+      const final = revealedRef.current ? 'fail' : result;
+      recordedRef.current = cur.id;
+      keyResultRef.current = final;
+      const wasNew = !solved[cur.id];
+      setSolved((prev) => (prev[cur.id] ? prev : { ...prev, [cur.id]: final }));
+      if (!wasNew) return;
+      if (final === 'ok') {
+        setStats((prev) => ({
+          correct: prev.correct + 1,
+          wrong: prev.wrong,
+          streak: prev.streak + 1,
+          bestStreak: Math.max(prev.bestStreak, prev.streak + 1),
+        }));
+        recordHistory('correct');
+      } else {
+        setStats((prev) => ({
+          correct: prev.correct,
+          wrong: prev.wrong + 1,
+          streak: 0,
+          bestStreak: prev.bestStreak,
+        }));
+        recordHistory('wrong');
+      }
+    };
     const next = new Chess(chess.fen());
     let applied;
     try {
@@ -409,47 +442,21 @@ export default function Page() {
       }, 350);
 
       // Normal puzzles are scored on the KEY move — you found the best move —
-      // and then you *play out* the critical continuation yourself (forgiving).
+      // then you *play out* the critical continuation yourself (forgiving).
       // Combinations are scored on the whole line (the sac needs the follow-up).
-      if (lineStep === 0 && !current.combination && recordedRef.current !== current.id) {
-        recordedRef.current = current.id;
-        keyResultRef.current = 'ok';
-        const wasNew = !solved[current.id];
-        setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'ok' }));
-        if (wasNew) {
-          setStats((prev) => ({
-            correct: prev.correct + 1,
-            wrong: prev.wrong,
-            streak: prev.streak + 1,
-            bestStreak: Math.max(prev.bestStreak, prev.streak + 1),
-          }));
-          recordHistory('correct');
-        }
-      }
+      if (lineStep === 0 && !current.combination) record('ok');
 
       const userMovesDone = Math.floor(lineStep / 2) + 1;
       const solvedNow =
         userMovesDone >= requiredUserMoves(current) || lineStep + 1 >= line.length;
 
       if (solvedNow) {
+        record('ok'); // combinations record here; normal puzzles already did
         setRevealed(true);
-        setYourMove(line[0]); // the key move
+        // "You played" reflects what you actually did: the key move on a clean
+        // solve, otherwise your first wrong try (or — when you revealed it).
+        setYourMove(keyResultRef.current === 'fail' ? attempts[0] ?? '—' : line[0]);
         setIsOk(keyResultRef.current !== 'fail');
-        if (recordedRef.current !== current.id) {
-          recordedRef.current = current.id;
-          keyResultRef.current = 'ok';
-          const wasNew = !solved[current.id];
-          setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'ok' }));
-          if (wasNew) {
-            setStats((prev) => ({
-              correct: prev.correct + 1,
-              wrong: prev.wrong,
-              streak: prev.streak + 1,
-              bestStreak: Math.max(prev.bestStreak, prev.streak + 1),
-            }));
-            recordHistory('correct');
-          }
-        }
         // Don't auto-blast the rest of the line on the board — that felt
         // chaotic. Stop on the solved position and open free analysis; the full
         // engine line is still shown as text in the result panel.
@@ -504,23 +511,9 @@ export default function Page() {
     setAttempts((prev) => (prev.includes(applied.san) ? prev : [...prev, applied.san]));
 
     // The first unrecorded wrong move fails the puzzle. Once the key move is
-    // recorded (normal puzzles), later continuation slips are forgiving — this
-    // guard is already satisfied, so they don't touch stats or the streak.
-    if (recordedRef.current !== current.id) {
-      recordedRef.current = current.id;
-      keyResultRef.current = 'fail';
-      const wasNew = !solved[current.id];
-      setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'fail' }));
-      if (wasNew) {
-        setStats((prev) => ({
-          correct: prev.correct,
-          wrong: prev.wrong + 1,
-          streak: 0,
-          bestStreak: prev.bestStreak,
-        }));
-        recordHistory('wrong');
-      }
-    }
+    // recorded (normal puzzles), later continuation slips are forgiving —
+    // record() is already a no-op, so they don't touch stats or the streak.
+    record('fail');
 
     const beforeFen = chess.fen();
     const puzzleId = current.id;
@@ -548,9 +541,29 @@ export default function Page() {
     }, 700);
   };
 
-  /* ── Give up: reveal the engine's best move and play out the line ── */
-  const showSolution = useCallback(() => {
+  /* ── Show move: reveal just the move you're stuck on (counts as a miss),
+     then continue exactly like solving — the opponent replies and you find the
+     next move yourself. Same flow, the engine just plays this one move. ── */
+  const revealMove = () => {
     if (!current || revealed || awaitingRetry || analysis) return;
+    const san = solutionLine(current)[lineStep];
+    if (!san) return;
+    const probe = new Chess(chess.fen());
+    let mv;
+    try {
+      mv = probe.move(san);
+    } catch {
+      return;
+    }
+    if (!mv) return;
+    revealedRef.current = true; // recorded as a miss
+    makeMove(mv);
+  };
+
+  /* ── Show the rest: give up and play out the whole remaining line at once. ── */
+  const showRest = useCallback(() => {
+    if (!current || revealed || awaitingRetry || analysis) return;
+    revealedRef.current = true;
     setRevealed(true);
     setSelected(null);
     setFlashFail(null);
@@ -559,7 +572,7 @@ export default function Page() {
       // Gave up before solving — counts as a miss.
       recordedRef.current = current.id;
       keyResultRef.current = 'fail';
-      setYourMove('—');
+      setYourMove(attempts[0] ?? '—');
       setIsOk(false);
       const wasNew = !solved[current.id];
       setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'fail' }));
@@ -573,14 +586,14 @@ export default function Page() {
         recordHistory('wrong');
       }
     } else {
-      // Already solved the key move — keep that verdict, just show the rest.
-      setYourMove(solutionLine(current)[0]);
+      // Already resolved — keep that verdict, just show the rest.
+      setYourMove(keyResultRef.current === 'fail' ? attempts[0] ?? '—' : solutionLine(current)[0]);
       setIsOk(keyResultRef.current !== 'fail');
     }
     // Play out the engine line from where the user is, then open free analysis.
     revealContinuation(current, chess.fen(), lineStep);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, revealed, awaitingRetry, analysis, chess, solved, recordHistory, lineStep]);
+  }, [current, revealed, awaitingRetry, analysis, chess, solved, recordHistory, lineStep, attempts]);
 
   const retry = () => {
     if (current) loadPuzzle(current);
@@ -760,6 +773,8 @@ export default function Page() {
       : null;
   const total = stats.correct + stats.wrong;
   const accuracy = total > 0 ? Math.round((stats.correct / total) * 100) : 0;
+  // Is there still a continuation past the move you're on? (drives "Show the rest")
+  const restAvailable = !!current && solutionLine(current).length > lineStep + 1;
 
   return (
     <AppShell
@@ -937,12 +952,19 @@ export default function Page() {
                     </div>
                     <div className="help">
                       {lineStep > 0
-                        ? <>Play out the line — find each move yourself, or reveal the rest.</>
-                        : <>Click a piece, then its destination — or drag. Click <em>show solution</em> to give up.</>}
+                        ? <>Find each move yourself — or reveal just this one.</>
+                        : <>Click a piece, then its destination — or drag.</>}
                     </div>
-                    <button className="btn ghost" onClick={showSolution} disabled={awaitingRetry}>
-                      {lineStep > 0 ? 'Show the rest' : 'Show solution'}
-                    </button>
+                    <div className="btn-row">
+                      <button className="btn" onClick={revealMove} disabled={awaitingRetry}>
+                        {lineStep > 0 ? 'Show move' : 'Show solution'}
+                      </button>
+                      {restAvailable && (
+                        <button className="btn ghost" onClick={showRest} disabled={awaitingRetry}>
+                          Show the rest
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
