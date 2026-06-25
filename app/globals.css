@@ -178,16 +178,6 @@ select {
    modes (stats moved to the substrip below). */
 .topbar-spacer { flex: 1; min-width: 8px; }
 
-/* Session-stats band under the header line (puzzles only). */
-.substrip {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: flex-end;
-  padding: 6px 16px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--contour);
-}
-
 /* Stats strip — one clickable cluster, opens the detail sheet */
 .stats-strip {
   display: flex;
@@ -226,6 +216,13 @@ select {
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
   font-size: var(--fs-micro);
+}
+/* Stats live in the board window (top-right of the board column); the sheet
+   drops from the strip. */
+.pz-stats {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
 }
 .topbar-prefs {
   display: flex;
@@ -1073,7 +1070,8 @@ html[data-theme='dark'] .sq.cap-ring {
 }
 .blunder-line .v {
   color: var(--txt);
-  font-weight: var(--fw-reg);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-bold);
   margin-left: 6px;
   letter-spacing: 0;
   text-transform: none;
@@ -1087,6 +1085,9 @@ html[data-theme='dark'] .sq.cap-ring {
 }
 .tries-line .v {
   color: var(--red);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-bold);
+  margin-left: 6px;
   text-transform: none;
   letter-spacing: 0;
 }
@@ -1122,7 +1123,9 @@ html[data-theme='dark'] .sq.cap-ring {
   padding: 9px 12px;
   border-radius: 2px;
   font-size: var(--fs-micro);
-  font-weight: var(--fw-reg);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
   text-align: center;
   transition: all 0.12s var(--ease-snap);
 }
@@ -1424,8 +1427,8 @@ html[data-theme='dark'] .sq.cap-ring {
 /* ─── Stats sheet (slide-in) ─── */
 .stats-sheet {
   position: absolute;
-  top: 48px;
-  right: 16px;
+  top: calc(100% + 8px);
+  right: 0;
   z-index: 60;
   width: 360px;
   max-width: calc(100vw - 24px);
@@ -1521,9 +1524,6 @@ html[data-theme='dark'] .sq.cap-ring {
   }
   .stats-strip {
     gap: 10px;
-  }
-  .stat .lbl {
-    display: none;
   }
   .topbar-prefs {
     padding-left: 8px;

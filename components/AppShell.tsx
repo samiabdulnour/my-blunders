@@ -1,17 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import type { HistoryEntry, SessionStats } from '@/lib/types';
 import type { ThemeMode } from '@/lib/storage';
 import { BrandMark } from './BrandMark';
-import { StatsSheet } from './StatsSheet';
 
 interface AppShellProps {
-  stats: SessionStats;
-  /** Unseen puzzle count, shown as "queue" in the stats sheet. */
-  queueSize: number;
-  history: HistoryEntry[];
   randomOrder: boolean;
   onToggleRandom: () => void;
   theme: ThemeMode;
@@ -25,19 +19,15 @@ interface AppShellProps {
 
 /**
  * Outer frame for the running app: a 48px topbar (sidebar toggle · brand ·
- * stats cluster · prefs) above a body row that holds the sidebar and board
- * area. Owns the two pieces of pure UI state the chrome needs — whether the
- * sidebar is open and whether the stats sheet is showing — while puzzle and
- * preference state stay in the page and arrive as props.
+ * mode tabs · prefs) above a body row that holds the sidebar and board area.
+ * The topbar is identical in both modes; session stats live inside the board
+ * window (the page owns them). Owns just the sidebar-open state.
  *
  * The sidebar defaults open on desktop and collapses on mobile; we detect the
  * viewport after mount to avoid an SSR/CSR hydration mismatch. On mobile the
  * sidebar becomes a slide-in drawer with a click-away scrim.
  */
 export function AppShell({
-  stats,
-  queueSize,
-  history,
   randomOrder,
   onToggleRandom,
   theme,
@@ -47,9 +37,6 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const [sideOpen, setSideOpen] = useState(true);
-  const [statsOpen, setStatsOpen] = useState(false);
-  const sheetRef = useRef<HTMLDivElement | null>(null);
-  const stripRef = useRef<HTMLButtonElement | null>(null);
 
   // After mount, collapse the sidebar on narrow viewports (mobile).
   useEffect(() => {
@@ -57,36 +44,10 @@ export function AppShell({
     if (window.matchMedia('(max-width: 900px)').matches) setSideOpen(false);
   }, []);
 
-  // Click-away for the stats sheet — ignore clicks on the toggle itself.
-  useEffect(() => {
-    if (!statsOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (sheetRef.current?.contains(target)) return;
-      if (stripRef.current?.contains(target)) return;
-      setStatsOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [statsOpen]);
-
-  // Close the sheet on Escape for keyboard users.
-  useEffect(() => {
-    if (!statsOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setStatsOpen(false);
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [statsOpen]);
-
   const closeOnMobile = () => {
     if (typeof window === 'undefined') return;
     if (window.matchMedia('(max-width: 900px)').matches) setSideOpen(false);
   };
-
-  const total = stats.correct + stats.wrong;
-  const accuracy = total > 0 ? Math.round((stats.correct / total) * 100) : 0;
 
   return (
     <div className="app-root">
@@ -195,44 +156,6 @@ export function AppShell({
           </button>
         </div>
       </div>
-
-      {/* Session stats live under the header line (puzzles only) so the topbar
-          itself is identical in Puzzles and Opening modes. */}
-      {mode === 'puzzle' && (
-        <div className="substrip">
-          <button
-            type="button"
-            ref={stripRef}
-            className="stats-strip"
-            onClick={() => setStatsOpen((o) => !o)}
-            aria-label="Session stats"
-            aria-expanded={statsOpen}
-          >
-            <div className="stat s-today">
-              <span className="v pos">{stats.correct}</span>
-              <span className="lbl">solved</span>
-            </div>
-            <div className="stat s-acc">
-              <span className="v">{accuracy}%</span>
-              <span className="lbl">accuracy</span>
-            </div>
-            <div className="stat s-streak">
-              <span className="v">{stats.streak}</span>
-              <span className="lbl">streak</span>
-            </div>
-          </button>
-        </div>
-      )}
-
-      {statsOpen && (
-        <StatsSheet
-          stats={stats}
-          queueSize={queueSize}
-          history={history}
-          onClose={() => setStatsOpen(false)}
-          sheetRef={sheetRef}
-        />
-      )}
 
       <div className={'body-row' + (sideOpen ? '' : ' side-closed')}>
         {children}

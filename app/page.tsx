@@ -10,6 +10,7 @@ import { OpeningSidebar } from '@/components/OpeningSidebar';
 import { ClinicProvider } from '@/lib/clinic-context';
 import { Sidebar } from '@/components/Sidebar';
 import { ResultPanel } from '@/components/ResultPanel';
+import { StatsSheet } from '@/components/StatsSheet';
 import { Onboarding } from '@/components/Onboarding';
 import { BrandMark } from '@/components/BrandMark';
 import { apiUrl } from '@/lib/api';
@@ -102,6 +103,10 @@ export default function Page() {
   const [randomOrder, setRandomOrder] = useState(false);
   /** Color theme. Drives a `data-theme` attribute on <html>. Persisted. */
   const [theme, setTheme] = useState<ThemeMode>('light');
+  /** Session-stats sheet (opened from the stats strip in the board window). */
+  const [statsOpen, setStatsOpen] = useState(false);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const stripRef = useRef<HTMLButtonElement | null>(null);
   const hydrated = useRef(false);
   /** Puzzle id whose outcome has already been counted in stats. Prevents
    *  double-counting across multiple wrong tries on one puzzle. */
@@ -690,6 +695,26 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealed, next]);
 
+  /* ── Stats sheet: click-away + Escape to close ── */
+  useEffect(() => {
+    if (!statsOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (sheetRef.current?.contains(target)) return;
+      if (stripRef.current?.contains(target)) return;
+      setStatsOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setStatsOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [statsOpen]);
+
   const completeOnboarding = useCallback(
     (_username: string) => {
       // Show the famous-blunders library immediately so the board is never
@@ -733,12 +758,11 @@ export default function Page() {
     current?.speed && current.speed !== 'unknown'
       ? `${current.speed}${current.timeControl ? ` ${current.timeControl}` : ''}`
       : null;
+  const total = stats.correct + stats.wrong;
+  const accuracy = total > 0 ? Math.round((stats.correct / total) * 100) : 0;
 
   return (
     <AppShell
-      stats={stats}
-      queueSize={unseenCount}
-      history={history}
       randomOrder={randomOrder}
       onToggleRandom={() => setRandomOrder((o) => !o)}
       theme={theme}
@@ -789,6 +813,38 @@ export default function Page() {
           </div>
         ) : (
           <div className="board-col">
+            <div className="pz-stats">
+              <button
+                type="button"
+                ref={stripRef}
+                className="stats-strip"
+                onClick={() => setStatsOpen((o) => !o)}
+                aria-label="Session stats"
+                aria-expanded={statsOpen}
+              >
+                <div className="stat s-today">
+                  <span className="v pos">{stats.correct}</span>
+                  <span className="lbl">solved</span>
+                </div>
+                <div className="stat s-acc">
+                  <span className="v">{accuracy}%</span>
+                  <span className="lbl">accuracy</span>
+                </div>
+                <div className="stat s-streak">
+                  <span className="v">{stats.streak}</span>
+                  <span className="lbl">streak</span>
+                </div>
+              </button>
+              {statsOpen && (
+                <StatsSheet
+                  stats={stats}
+                  queueSize={unseenCount}
+                  history={history}
+                  onClose={() => setStatsOpen(false)}
+                  sheetRef={sheetRef}
+                />
+              )}
+            </div>
             <div className="ctx-line">
               <div className="ctx-l">
                 <div className="ctx-title">
