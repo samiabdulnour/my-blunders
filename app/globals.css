@@ -727,6 +727,14 @@ select {
   align-items: flex-start;
   justify-content: center;
 }
+/* Turn indicator sits directly above the board (tied to it, not floating
+   above the result panel). */
+.board-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
 
 .bwrap {
   --sq-size: 60px;

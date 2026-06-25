@@ -884,37 +884,39 @@ export default function Page() {
                   <span>{current.date.replace(/\./g, '-')}</span>
                 </div>
               </div>
-              <div
-                className={
-                  'turn-chip ' +
-                  ((analysis ? chess.turn() === 'w' : current.abdulsColor === 'white')
-                    ? 'white'
-                    : 'black')
-                }
-              >
-                <span className="dot" />
-                {(analysis ? chess.turn() === 'w' : current.abdulsColor === 'white')
-                  ? 'White to move'
-                  : 'Black to move'}
-              </div>
             </div>
 
             <div className="board-row">
-              <Board
-                chess={chess}
-                orientation={current.abdulsColor}
-                selected={selected}
-                legalFrom={legalFrom}
-                lastFrom={lastFrom}
-                lastTo={lastTo}
-                flashOk={flashOk}
-                flashFail={flashFail}
-                bounceBack={bounceBack}
-                introMove={introMove}
-                revealed={analysis ? false : revealed || awaitingRetry}
-                onSquareClick={onSquareClick}
-                onDragMove={makeMove}
-              />
+              <div className="board-stack">
+                <div
+                  className={
+                    'turn-chip ' +
+                    ((analysis ? chess.turn() === 'w' : current.abdulsColor === 'white')
+                      ? 'white'
+                      : 'black')
+                  }
+                >
+                  <span className="dot" />
+                  {(analysis ? chess.turn() === 'w' : current.abdulsColor === 'white')
+                    ? 'White to move'
+                    : 'Black to move'}
+                </div>
+                <Board
+                  chess={chess}
+                  orientation={current.abdulsColor}
+                  selected={selected}
+                  legalFrom={legalFrom}
+                  lastFrom={lastFrom}
+                  lastTo={lastTo}
+                  flashOk={flashOk}
+                  flashFail={flashFail}
+                  bounceBack={bounceBack}
+                  introMove={introMove}
+                  revealed={analysis ? false : revealed || awaitingRetry}
+                  onSquareClick={onSquareClick}
+                  onDragMove={makeMove}
+                />
+              </div>
 
               {/* Reserve the 280px slot so the board doesn't shift when the
                   result appears. Before reveal: a verdict-style prompt +
@@ -959,7 +961,9 @@ export default function Page() {
                       <button className="btn" onClick={revealMove} disabled={awaitingRetry}>
                         {lineStep > 0 ? 'Show move' : 'Show solution'}
                       </button>
-                      {restAvailable && (
+                      {/* "Show the rest" only once you're into the line — after
+                          you've solved or revealed the first move. */}
+                      {lineStep > 0 && restAvailable && (
                         <button className="btn ghost" onClick={showRest} disabled={awaitingRetry}>
                           Show the rest
                         </button>
