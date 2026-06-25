@@ -1959,6 +1959,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .od-eyebrow { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--red); }
 .od-title { margin-top: 9px; font-size: var(--fs-big); font-weight: var(--fw-bold); letter-spacing: -0.02em; line-height: 1.1; }
 .od-line { margin-top: 10px; padding: 9px 11px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; font-weight: var(--fw-bold); color: var(--txt); }
+.od-played { margin-top: 6px; padding: 8px 11px; background: var(--green-soft); border: 1px solid var(--green); border-radius: 4px; font-size: 12px; font-weight: var(--fw-bold); color: var(--green); letter-spacing: 0.02em; }
 .od-record { font-size: var(--fs-base); line-height: 1.5; color: var(--txt); }
 .od-record .bad { color: var(--red); }
 .od-dots { display: flex; gap: 5px; margin-top: 12px; flex-wrap: wrap; }

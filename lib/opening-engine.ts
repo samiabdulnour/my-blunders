@@ -37,6 +37,30 @@ export async function evalPosition(fen: string): Promise<EngineEval | null> {
   }
 }
 
+/** One candidate move from a multi-PV search (cp is white-relative). */
+export interface EngineMove {
+  uci: string;
+  san: string;
+  cp: number | null;
+  mate: number | null;
+}
+
+/**
+ * Top candidate moves at a position (multi-PV), best first. Used by the drill
+ * to pick a *varied but good* opponent reply so a line isn't always identical.
+ * Not cached — callers want fresh variety, and these are one-off per ply.
+ */
+export async function candidateMoves(fen: string, multiPv = 4, depth = 12): Promise<EngineMove[]> {
+  try {
+    const res = await getWasmEngine().analyze({ fen, depth, multiPv });
+    return res.lines
+      .map((l) => ({ uci: l.pvUci[0] ?? '', san: l.pvSan[0] ?? '', cp: l.cp, mate: l.mate }))
+      .filter((m) => m.uci);
+  } catch {
+    return [];
+  }
+}
+
 /** White-relative cp from an engine result (undefined = not computed yet). */
 export function whiteCp(e: EngineEval | null | undefined): number | null | undefined {
   if (e === undefined) return undefined;
