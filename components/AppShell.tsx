@@ -1,11 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import type { HistoryEntry, SessionStats } from '@/lib/types';
 import type { ThemeMode } from '@/lib/storage';
 import { BrandMark } from './BrandMark';
+import { StatsSheet } from './StatsSheet';
 
 interface AppShellProps {
+  stats: SessionStats;
+  /** Unseen puzzle count, shown as "queue" in the stats sheet. */
+  queueSize: number;
+  history: HistoryEntry[];
   randomOrder: boolean;
   onToggleRandom: () => void;
   theme: ThemeMode;
@@ -20,14 +26,17 @@ interface AppShellProps {
 /**
  * Outer frame for the running app: a 48px topbar (sidebar toggle · brand ·
  * mode tabs · prefs) above a body row that holds the sidebar and board area.
- * The topbar is identical in both modes; session stats live inside the board
- * window (the page owns them). Owns just the sidebar-open state.
+ * The topbar is identical in both modes; session stats are a prefs icon whose
+ * sheet drops from the top-right. Owns the sidebar-open and stats-sheet state.
  *
  * The sidebar defaults open on desktop and collapses on mobile; we detect the
  * viewport after mount to avoid an SSR/CSR hydration mismatch. On mobile the
  * sidebar becomes a slide-in drawer with a click-away scrim.
  */
 export function AppShell({
+  stats,
+  queueSize,
+  history,
   randomOrder,
   onToggleRandom,
   theme,
@@ -37,12 +46,35 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const [sideOpen, setSideOpen] = useState(true);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const statsBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // After mount, collapse the sidebar on narrow viewports (mobile).
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (window.matchMedia('(max-width: 900px)').matches) setSideOpen(false);
   }, []);
+
+  // Click-away + Escape for the stats sheet (ignore clicks on the toggle).
+  useEffect(() => {
+    if (!statsOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (sheetRef.current?.contains(target)) return;
+      if (statsBtnRef.current?.contains(target)) return;
+      setStatsOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setStatsOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [statsOpen]);
 
   const closeOnMobile = () => {
     if (typeof window === 'undefined') return;
@@ -101,6 +133,21 @@ export function AppShell({
         <div className="topbar-spacer" />
 
         <div className="topbar-prefs">
+          <button
+            type="button"
+            ref={statsBtnRef}
+            className={'icon-btn' + (statsOpen ? ' on' : '')}
+            onClick={() => setStatsOpen((o) => !o)}
+            title="Session stats"
+            aria-label="Session stats"
+            aria-expanded={statsOpen}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="6" y1="20" x2="6" y2="14" />
+              <line x1="12" y1="20" x2="12" y2="4" />
+              <line x1="18" y1="20" x2="18" y2="10" />
+            </svg>
+          </button>
           <Link
             href="/about"
             className="icon-btn"
@@ -156,6 +203,16 @@ export function AppShell({
           </button>
         </div>
       </div>
+
+      {statsOpen && (
+        <StatsSheet
+          stats={stats}
+          queueSize={queueSize}
+          history={history}
+          onClose={() => setStatsOpen(false)}
+          sheetRef={sheetRef}
+        />
+      )}
 
       <div className={'body-row' + (sideOpen ? '' : ' side-closed')}>
         {children}
