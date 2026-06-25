@@ -106,6 +106,9 @@ export default function Page() {
   /** Puzzle id whose outcome has already been counted in stats. Prevents
    *  double-counting across multiple wrong tries on one puzzle. */
   const recordedRef = useRef<string | null>(null);
+  /** Outcome of the puzzle's *key* move ('ok' | 'fail'), so the continuation
+   *  you then play out can't change the verdict shown when it ends. */
+  const keyResultRef = useRef<'ok' | 'fail' | null>(null);
   /** Mirror of `current` as a ref, used by handleImport to decide whether
    *  to auto-jump on the first streamed batch without stale-closure traps. */
   const currentRef = useRef<Puzzle | null>(null);
@@ -267,6 +270,7 @@ export default function Page() {
     setFlashFail(null);
     setRevealed(false);
     setLineStep(0);
+    keyResultRef.current = null;
     setAnalysis(false);
     setYourMove(null);
     setAwaitingRetry(false);
@@ -398,6 +402,25 @@ export default function Page() {
         if (currentRef.current?.id === okId) setIntroMove(null);
       }, 350);
 
+      // Normal puzzles are scored on the KEY move — you found the best move —
+      // and then you *play out* the critical continuation yourself (forgiving).
+      // Combinations are scored on the whole line (the sac needs the follow-up).
+      if (lineStep === 0 && !current.combination && recordedRef.current !== current.id) {
+        recordedRef.current = current.id;
+        keyResultRef.current = 'ok';
+        const wasNew = !solved[current.id];
+        setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'ok' }));
+        if (wasNew) {
+          setStats((prev) => ({
+            correct: prev.correct + 1,
+            wrong: prev.wrong,
+            streak: prev.streak + 1,
+            bestStreak: Math.max(prev.bestStreak, prev.streak + 1),
+          }));
+          recordHistory('correct');
+        }
+      }
+
       const userMovesDone = Math.floor(lineStep / 2) + 1;
       const solvedNow =
         userMovesDone >= requiredUserMoves(current) || lineStep + 1 >= line.length;
@@ -405,9 +428,10 @@ export default function Page() {
       if (solvedNow) {
         setRevealed(true);
         setYourMove(line[0]); // the key move
-        setIsOk(true);
+        setIsOk(keyResultRef.current !== 'fail');
         if (recordedRef.current !== current.id) {
           recordedRef.current = current.id;
+          keyResultRef.current = 'ok';
           const wasNew = !solved[current.id];
           setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'ok' }));
           if (wasNew) {
@@ -420,8 +444,12 @@ export default function Page() {
             recordHistory('correct');
           }
         }
-        // Play out the remaining engine line, then open free analysis.
-        revealContinuation(current, next.fen(), lineStep + 1);
+        // Don't auto-blast the rest of the line on the board — that felt
+        // chaotic. Stop on the solved position and open free analysis; the full
+        // engine line is still shown as text in the result panel.
+        setLineStep(line.length);
+        setLegalFrom(groupLegal(next));
+        setAnalysis(true);
       } else {
         // Combination still in progress: auto-play the opponent's reply, then
         // wait for the user's next move.
@@ -469,8 +497,12 @@ export default function Page() {
     setAwaitingRetry(true);
     setAttempts((prev) => (prev.includes(applied.san) ? prev : [...prev, applied.san]));
 
+    // The first unrecorded wrong move fails the puzzle. Once the key move is
+    // recorded (normal puzzles), later continuation slips are forgiving — this
+    // guard is already satisfied, so they don't touch stats or the streak.
     if (recordedRef.current !== current.id) {
       recordedRef.current = current.id;
+      keyResultRef.current = 'fail';
       const wasNew = !solved[current.id];
       setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'fail' }));
       if (wasNew) {
@@ -514,13 +546,15 @@ export default function Page() {
   const showSolution = useCallback(() => {
     if (!current || revealed || awaitingRetry || analysis) return;
     setRevealed(true);
-    setYourMove('—');
-    setIsOk(false);
     setSelected(null);
     setFlashFail(null);
 
     if (recordedRef.current !== current.id) {
+      // Gave up before solving — counts as a miss.
       recordedRef.current = current.id;
+      keyResultRef.current = 'fail';
+      setYourMove('—');
+      setIsOk(false);
       const wasNew = !solved[current.id];
       setSolved((prev) => (prev[current.id] ? prev : { ...prev, [current.id]: 'fail' }));
       if (wasNew) {
@@ -532,6 +566,10 @@ export default function Page() {
         }));
         recordHistory('wrong');
       }
+    } else {
+      // Already solved the key move — keep that verdict, just show the rest.
+      setYourMove(solutionLine(current)[0]);
+      setIsOk(keyResultRef.current !== 'fail');
     }
     // Play out the engine line from where the user is, then open free analysis.
     revealContinuation(current, chess.fen(), lineStep);
@@ -823,30 +861,31 @@ export default function Page() {
                 ) : (
                   <div className="pre-result">
                     <div className="verdict idle">
-                      <div className="verdict-ico">{current.combination ? '⚔' : '?'}</div>
+                      <div className="verdict-ico">{lineStep > 0 ? '➜' : current.combination ? '⚔' : '?'}</div>
                       <div>
                         <div className="verdict-title">
-                          {current.combination
-                            ? lineStep > 0
-                              ? 'Find the next move.'
-                              : 'Find the combination.'
-                            : 'Find the best move.'}
+                          {lineStep > 0
+                            ? 'Find the next move.'
+                            : current.combination
+                              ? 'Find the combination.'
+                              : 'Find the best move.'}
                         </div>
                         <div className="verdict-sub">
-                          {current.combination
-                            ? lineStep > 0
-                              ? 'Keep the line going.'
-                              : 'A sacrifice — find the follow-up too.'
-                            : `For ${current.abdulsColor === 'white' ? 'white' : 'black'}.`}
+                          {lineStep > 0
+                            ? 'Play the continuation — keep the advantage.'
+                            : current.combination
+                              ? 'A sacrifice — find the follow-up too.'
+                              : `For ${current.abdulsColor === 'white' ? 'white' : 'black'}.`}
                         </div>
                       </div>
                     </div>
                     <div className="help">
-                      Click a piece, then its destination — or drag. Click <em>show solution</em> to
-                      give up.
+                      {lineStep > 0
+                        ? <>Play out the line — find each move yourself, or reveal the rest.</>
+                        : <>Click a piece, then its destination — or drag. Click <em>show solution</em> to give up.</>}
                     </div>
                     <button className="btn ghost" onClick={showSolution} disabled={awaitingRetry}>
-                      Show solution
+                      {lineStep > 0 ? 'Show the rest' : 'Show solution'}
                     </button>
                   </div>
                 )}
@@ -875,16 +914,16 @@ function solutionLine(p: Puzzle): string[] {
   return p.line && p.line.length > 0 ? p.line : [p.bestMove];
 }
 
-/** Cap on how many of the user's own moves a combination puzzle requires —
- *  keeps long engine lines from turning into a slog. */
-const MAX_REQUIRED_USER_MOVES = 3;
-
-/** How many of the user's moves must be found to solve the puzzle: just the
- *  key move normally, or the whole combination (capped) for sacrifices. */
+/** How many of the user's moves a puzzle asks you to play out, rather than
+ *  auto-showing. Normal puzzles ask for the key move plus the immediate
+ *  critical follow-up (find it yourself — the move that holds the advantage);
+ *  combinations make you play the whole forcing line, since the sacrifice only
+ *  works with it. Capped so deep engine lines don't drag — any remainder is
+ *  shown calmly afterwards. Single-move lines stay one move. */
 function requiredUserMoves(p: Puzzle): number {
-  if (!p.combination) return 1;
   const userPlies = Math.ceil(solutionLine(p).length / 2); // user moves at even indices
-  return Math.min(Math.max(userPlies, 1), MAX_REQUIRED_USER_MOVES);
+  const cap = p.combination ? 3 : 2;
+  return Math.min(Math.max(userPlies, 1), cap);
 }
 
 /** Group all legal moves at the current position by their `from` square. */
