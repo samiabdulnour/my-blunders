@@ -8,8 +8,6 @@ interface ResultPanelProps {
   /** SANs of every wrong move tried before solving (or giving up). */
   attempts: string[];
   isOk: boolean;
-  /** True once the continuation has played out and the board is free to explore. */
-  analysis?: boolean;
   onRetry: () => void;
   onNext: () => void;
 }
@@ -48,18 +46,12 @@ export function ResultPanel({
   yourMove,
   attempts,
   isOk,
-  analysis,
   onRetry,
   onNext,
 }: ResultPanelProps) {
   const gaveUp = yourMove === '—';
   const engineLine = puzzle.line && puzzle.line.length > 1 ? puzzle.line : null;
   const verdictText = isOk ? 'Correct.' : gaveUp ? 'Solution shown.' : 'Suboptimal.';
-  const verdictSub = isOk
-    ? 'Engine line found.'
-    : gaveUp
-      ? 'Try the next one.'
-      : 'Stockfish prefers a different move.';
 
   // Map evals from −8..+8 onto 0..100% and draw the drop as a filled span.
   const pctBefore = ((clamp(puzzle.evalBefore, -8, 8) + 8) / 16) * 100;
@@ -92,11 +84,8 @@ export function ResultPanel({
   return (
     <div className="result">
       <div className={'verdict ' + (isOk ? 'ok' : 'bad')}>
-        <div className="verdict-ico">{isOk ? '✓' : '✗'}</div>
-        <div>
-          <div className="verdict-text">{verdictText}</div>
-          <div className="verdict-sub">{verdictSub}</div>
-        </div>
+        <span className="verdict-ico">{isOk ? '✓' : '✗'}</span>
+        <span className="verdict-text">{verdictText}</span>
       </div>
 
       <div className="eval-bar">
@@ -133,10 +122,6 @@ export function ResultPanel({
             {formatEngineLine(engineLine, puzzle.setupMoves.length)}
           </div>
         </div>
-      )}
-
-      {analysis && (
-        <div className="analysis-note">Board unlocked — move pieces to explore the position.</div>
       )}
 
       <div className="blunder-line">

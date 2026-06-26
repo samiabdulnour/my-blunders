@@ -25,10 +25,9 @@ interface AppShellProps {
 
 /**
  * Outer frame for the running app: a 48px topbar (sidebar toggle · brand ·
- * stats cluster · prefs) above a body row that holds the sidebar and board
- * area. Owns the two pieces of pure UI state the chrome needs — whether the
- * sidebar is open and whether the stats sheet is showing — while puzzle and
- * preference state stay in the page and arrive as props.
+ * mode tabs · prefs) above a body row that holds the sidebar and board area.
+ * The topbar is identical in both modes; session stats are a prefs icon whose
+ * sheet drops from the top-right. Owns the sidebar-open and stats-sheet state.
  *
  * The sidebar defaults open on desktop and collapses on mobile; we detect the
  * viewport after mount to avoid an SSR/CSR hydration mismatch. On mobile the
@@ -49,7 +48,7 @@ export function AppShell({
   const [sideOpen, setSideOpen] = useState(true);
   const [statsOpen, setStatsOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement | null>(null);
-  const stripRef = useRef<HTMLButtonElement | null>(null);
+  const statsBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // After mount, collapse the sidebar on narrow viewports (mobile).
   useEffect(() => {
@@ -57,36 +56,30 @@ export function AppShell({
     if (window.matchMedia('(max-width: 900px)').matches) setSideOpen(false);
   }, []);
 
-  // Click-away for the stats sheet — ignore clicks on the toggle itself.
+  // Click-away + Escape for the stats sheet (ignore clicks on the toggle).
   useEffect(() => {
     if (!statsOpen) return;
     const onDoc = (e: MouseEvent) => {
       const target = e.target as Node;
       if (sheetRef.current?.contains(target)) return;
-      if (stripRef.current?.contains(target)) return;
+      if (statsBtnRef.current?.contains(target)) return;
       setStatsOpen(false);
     };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [statsOpen]);
-
-  // Close the sheet on Escape for keyboard users.
-  useEffect(() => {
-    if (!statsOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setStatsOpen(false);
     };
+    document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [statsOpen]);
 
   const closeOnMobile = () => {
     if (typeof window === 'undefined') return;
     if (window.matchMedia('(max-width: 900px)').matches) setSideOpen(false);
   };
-
-  const total = stats.correct + stats.wrong;
-  const accuracy = total > 0 ? Math.round((stats.correct / total) * 100) : 0;
 
   return (
     <div className="app-root">
@@ -139,31 +132,22 @@ export function AppShell({
 
         <div className="topbar-spacer" />
 
-        {mode === 'puzzle' && (
+        <div className="topbar-prefs">
           <button
             type="button"
-            ref={stripRef}
-            className="stats-strip"
+            ref={statsBtnRef}
+            className={'icon-btn' + (statsOpen ? ' on' : '')}
             onClick={() => setStatsOpen((o) => !o)}
+            title="Session stats"
             aria-label="Session stats"
             aria-expanded={statsOpen}
           >
-            <div className="stat s-today">
-              <span className="v pos">{stats.correct}</span>
-              <span className="lbl">solved</span>
-            </div>
-            <div className="stat s-acc">
-              <span className="v">{accuracy}%</span>
-              <span className="lbl">accuracy</span>
-            </div>
-            <div className="stat s-streak">
-              <span className="v">{stats.streak}</span>
-              <span className="lbl">streak</span>
-            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="6" y1="20" x2="6" y2="14" />
+              <line x1="12" y1="20" x2="12" y2="4" />
+              <line x1="18" y1="20" x2="18" y2="10" />
+            </svg>
           </button>
-        )}
-
-        <div className="topbar-prefs">
           <Link
             href="/about"
             className="icon-btn"

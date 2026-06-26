@@ -174,8 +174,8 @@ select {
   background: var(--bg2);
 }
 
-/* Pushes the stats/prefs cluster to the right (and fills the gap in Opening
-   mode, where the stats strip is hidden). */
+/* Pushes the prefs cluster to the right; the topbar is now identical in both
+   modes (stats moved to the substrip below). */
 .topbar-spacer { flex: 1; min-width: 8px; }
 
 /* Stats strip — one clickable cluster, opens the detail sheet */
@@ -917,30 +917,19 @@ html[data-theme='dark'] .sq.cap-ring {
   gap: 10px;
 }
 .verdict-ico {
-  width: 32px;
-  height: 32px;
-  border-radius: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: var(--fw-bold);
   font-size: var(--fs-title);
+  font-weight: var(--fw-bold);
+  line-height: 1;
   flex-shrink: 0;
 }
 .verdict.ok .verdict-ico {
-  background: var(--mint);
-  color: #16140f;
-  border: 1px solid var(--contour);
+  color: var(--green);
 }
 .verdict.bad .verdict-ico {
-  background: var(--coral);
-  color: #16140f;
-  border: 1px solid var(--contour);
+  color: var(--red);
 }
 .verdict.idle .verdict-ico {
-  background: var(--bg3);
   color: var(--txt-dim);
-  border: 1px solid var(--border);
 }
 .verdict-text {
   font-size: var(--fs-title);
@@ -1074,7 +1063,8 @@ html[data-theme='dark'] .sq.cap-ring {
 }
 .blunder-line .v {
   color: var(--txt);
-  font-weight: var(--fw-reg);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-bold);
   margin-left: 6px;
   letter-spacing: 0;
   text-transform: none;
@@ -1088,6 +1078,9 @@ html[data-theme='dark'] .sq.cap-ring {
 }
 .tries-line .v {
   color: var(--red);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-bold);
+  margin-left: 6px;
   text-transform: none;
   letter-spacing: 0;
 }
@@ -1105,16 +1098,10 @@ html[data-theme='dark'] .sq.cap-ring {
   margin-bottom: 3px;
 }
 .engine-line-moves {
-  font-size: var(--fs-sm, 13px);
+  font-size: var(--fs-base);
   color: var(--txt);
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
-}
-/* Hint that the board is now free to explore. */
-.analysis-note {
-  font-size: var(--fs-micro);
-  color: var(--mint-ink, var(--txt-dim));
-  font-style: italic;
 }
 
 .actions {
@@ -1129,7 +1116,9 @@ html[data-theme='dark'] .sq.cap-ring {
   padding: 9px 12px;
   border-radius: 2px;
   font-size: var(--fs-micro);
-  font-weight: var(--fw-reg);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
   text-align: center;
   transition: all 0.12s var(--ease-snap);
 }
@@ -1529,9 +1518,6 @@ html[data-theme='dark'] .sq.cap-ring {
   .stats-strip {
     gap: 10px;
   }
-  .stat .lbl {
-    display: none;
-  }
   .topbar-prefs {
     padding-left: 8px;
     margin-left: 8px;
@@ -1578,9 +1564,6 @@ html[data-theme='dark'] .sq.cap-ring {
   }
 }
 @media (max-width: 480px) {
-  .stats-strip .stat:not(.s-streak) {
-    display: none;
-  }
   .bwrap {
     --sq-size: calc((100vw - 36px) / 8);
   }
