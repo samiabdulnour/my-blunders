@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { loadOpeningGames, loadUsername } from './storage';
+import { loadOpeningGames, loadUsername, loadSource } from './storage';
 import { importOpeningGames } from './opening-import';
 import {
   buildOpeningTree,
@@ -13,7 +13,8 @@ import {
 
 const FETCHED_KEY = 'bt.openingFetchedUser';
 // Bump when the summary shape changes so users re-pull. 'e1' = added per-ply evals.
-const FETCH_TAG = (u: string) => `${u}:e1`;
+// Keyed by source too, so switching Lichess ↔ chess.com re-pulls.
+const FETCH_TAG = (u: string, src: string) => `${src}:${u}:e1`;
 
 interface ClinicValue {
   ready: boolean;
@@ -64,14 +65,15 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!username || fetchStarted.current) return;
-    if (typeof window !== 'undefined' && window.localStorage.getItem(FETCHED_KEY) === FETCH_TAG(username)) return;
+    const source = loadSource();
+    if (typeof window !== 'undefined' && window.localStorage.getItem(FETCHED_KEY) === FETCH_TAG(username, source)) return;
     fetchStarted.current = true;
     setFetching(true);
-    importOpeningGames(username)
+    importOpeningGames(username, source)
       .then(() => {
         setGames(loadOpeningGames());
         try {
-          window.localStorage.setItem(FETCHED_KEY, FETCH_TAG(username));
+          window.localStorage.setItem(FETCHED_KEY, FETCH_TAG(username, source));
         } catch {
           /* ignore quota */
         }

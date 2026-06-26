@@ -2,6 +2,7 @@ import { apiUrl } from './api';
 import { parsePgn, oldestGameStartMs } from './pgn';
 import { summarizeGame, type OpeningGame } from './opening-tree';
 import { loadOpeningGames, saveOpeningGames, mergeOpeningGames } from './storage';
+import type { GameSource } from './types';
 
 /**
  * Decoupled, engine-free game fetch for the Opening Clinic.
@@ -20,16 +21,18 @@ const PAGES = 3; // ~150 games
 
 export async function importOpeningGames(
   username: string,
+  source: GameSource = 'lichess',
   onProgress?: (count: number) => void,
 ): Promise<number> {
   const name = username.trim();
   if (!name) return 0;
 
+  const proxy = source === 'chesscom' ? '/api/chesscom/pgn' : '/api/lichess/pgn';
   const collected: OpeningGame[] = [];
   let until: number | undefined;
 
   for (let p = 0; p < PAGES; p++) {
-    const url = new URL(apiUrl('/api/lichess/pgn'), window.location.origin);
+    const url = new URL(apiUrl(proxy), window.location.origin);
     url.searchParams.set('username', name);
     url.searchParams.set('max', String(PAGE));
     if (until) url.searchParams.set('until', String(until));

@@ -190,6 +190,46 @@ export async function generatePuzzlesFromGame(
   return puzzles;
 }
 
+/** Depth for the eval-annotation pass on engine-less PGNs (chess.com / uploads).
+ *  A touch lower than the best-move search (18) to bound time — drops big enough
+ *  to be puzzles are detected reliably here. Tune for the time vs. quality ratio. */
+export const ANNOTATE_DEPTH = 16;
+
+/**
+ * Fill in per-ply evals with the engine when a game has none — chess.com games,
+ * or PGNs uploaded without analysis. Lichess ships `[%eval]` already, so this is
+ * a no-op for those. Mutates `game.moves` in place: afterwards the game looks
+ * exactly like an annotated Lichess game, so blunder detection *and* the
+ * opening-tree summaries work unchanged downstream.
+ *
+ * Each ply is scored by analysing the position *after* the move (white-relative
+ * cp/mate), matching `ParsedMove.evalCp`'s contract. Returns true if it ran.
+ */
+export async function annotateEvalsIfMissing(
+  game: ParsedGame,
+  engine: ChessEngine,
+  onPly?: (done: number, total: number) => void,
+  depth = ANNOTATE_DEPTH
+): Promise<boolean> {
+  if (game.moves.some((m) => m.evalCp !== null || m.mate !== null)) return false;
+  const total = game.moves.length;
+  for (let i = 0; i < total; i++) {
+    const mv = game.moves[i];
+    try {
+      const res = await engine.analyze({ fen: mv.fenAfter, depth });
+      const top = res.lines[0];
+      if (top) {
+        mv.evalCp = top.cp;
+        mv.mate = top.mate;
+      }
+    } catch {
+      // Leave this ply null — it just won't be eligible to spawn a puzzle.
+    }
+    onPly?.(i + 1, total);
+  }
+  return true;
+}
+
 /** Material balance from `userColor`'s point of view at the given position. */
 function materialBalance(chess: Chess, userColor: 'w' | 'b'): number {
   let bal = 0;

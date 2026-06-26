@@ -1,4 +1,4 @@
-import type { HistoryEntry, Puzzle, SessionStats } from './types';
+import type { GameSource, HistoryEntry, Puzzle, SessionStats } from './types';
 import type { OpeningGame } from './opening-tree';
 
 /**
@@ -19,6 +19,7 @@ import type { OpeningGame } from './opening-tree';
 
 const KEY_PUZZLES = 'bt.puzzles';
 const KEY_USERNAME = 'bt.username';
+const KEY_SOURCE = 'bt.source';
 const KEY_SOLVED = 'bt.solved';
 const KEY_OLDEST = 'bt.oldestFetchedMs';
 const KEY_FETCHED = 'bt.fetchedGames';
@@ -57,6 +58,17 @@ export function loadUsername(): string {
 export function saveUsername(username: string): void {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(KEY_USERNAME, username);
+}
+
+/** Which site the user imports from. Defaults to Lichess. */
+export function loadSource(): GameSource {
+  if (typeof window === 'undefined') return 'lichess';
+  return window.localStorage.getItem(KEY_SOURCE) === 'chesscom' ? 'chesscom' : 'lichess';
+}
+
+export function saveSource(source: GameSource): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(KEY_SOURCE, source);
 }
 
 export function loadSolved(): Record<string, 'ok' | 'fail'> {

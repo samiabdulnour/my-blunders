@@ -27,7 +27,7 @@ type Phase = 'idle' | 'running' | 'done' | 'error';
 export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingProps) {
   // autoImport off: the import here is driven explicitly by the CTA, not by
   // the queue-drain loop (there's no queue on screen yet).
-  const { username, setUsername, status, runImport, importFile } = useImporter({
+  const { username, setUsername, source, setSource, status, runImport, importFile } = useImporter({
     onImport,
     onGamesFetched,
     unseenCount: 0,
@@ -105,8 +105,8 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
           Train on <em>your own</em> blunders.
         </div>
         <div className="onb-sub">
-          We&apos;ll pull your recent Lichess games, run Stockfish on each move, and turn your
-          mistakes into puzzles.
+          We&apos;ll pull your recent Lichess or chess.com games, run Stockfish on each move, and
+          turn your mistakes into puzzles.
         </div>
       </div>
 
@@ -114,8 +114,8 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
         <div className={stepClass(1)}>
           <div className="n">1</div>
           <div>
-            <h4>Your Lichess username</h4>
-            <p>We use it to fetch your public game history.</p>
+            <h4>Your username</h4>
+            <p>Lichess or chess.com — we fetch your public game history.</p>
           </div>
         </div>
         <div className={stepClass(2)}>
@@ -136,9 +136,29 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
 
       {phase === 'idle' && (
         <div className="onb-form">
+          <div className="seg-tabs src-seg" role="tablist" aria-label="Import source">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={source === 'lichess'}
+              className={'seg-tab' + (source === 'lichess' ? ' on' : '')}
+              onClick={() => setSource('lichess')}
+            >
+              Lichess
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={source === 'chesscom'}
+              className={'seg-tab' + (source === 'chesscom' ? ' on' : '')}
+              onClick={() => setSource('chesscom')}
+            >
+              Chess.com
+            </button>
+          </div>
           <input
             className="onb-input"
-            placeholder="e.g. magnuscarlsen"
+            placeholder={source === 'chesscom' ? 'e.g. hikaru' : 'e.g. magnuscarlsen'}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && start()}
