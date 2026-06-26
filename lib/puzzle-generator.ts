@@ -191,9 +191,10 @@ export async function generatePuzzlesFromGame(
 }
 
 /** Depth for the eval-annotation pass on engine-less PGNs (chess.com / uploads).
- *  A touch lower than the best-move search (18) to bound time — drops big enough
- *  to be puzzles are detected reliably here. Tune for the time vs. quality ratio. */
-export const ANNOTATE_DEPTH = 16;
+ *  Matches the best-move search depth so the detected drop and the best-move
+ *  verdict are computed at the same strength — no depth mismatch that could let
+ *  a subtler mistake slip through. Tune for the time vs. quality ratio. */
+export const ANNOTATE_DEPTH = 18;
 
 /**
  * Fill in per-ply evals with the engine when a game has none — chess.com games,
