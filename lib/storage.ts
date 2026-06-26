@@ -105,9 +105,10 @@ export function mergePuzzles(a: Puzzle[], b: Puzzle[]): Puzzle[] {
  * doesn't have to retype it after clearing. Seed puzzles served from
  * `/api/puzzles` are unaffected (they live in code, not storage).
  *
- * Note we keep the clinic's "already fetched" marker (`bt.openingFetchedUser`):
- * clearing should leave the Opening Clinic empty until the user re-imports, not
- * silently re-pull the same games and make the openings reappear.
+ * The Opening Clinic corpus is wiped too, and its background-fetch cursor is
+ * marked "done" for the current account so clearing leaves the clinic empty
+ * until the user re-imports — rather than the background build silently
+ * re-pulling the same games and making the openings reappear.
  */
 export function clearAll(): void {
   if (typeof window === 'undefined') return;
@@ -116,6 +117,9 @@ export function clearAll(): void {
   window.localStorage.removeItem(KEY_OLDEST);
   window.localStorage.removeItem(KEY_FETCHED);
   window.localStorage.removeItem(KEY_OPENING_GAMES);
+  const u = loadUsername().trim();
+  if (u) saveOpeningFetchState({ key: openingFetchKey(loadSource(), u), until: null, done: true });
+  else window.localStorage.removeItem(KEY_OPENING_CURSOR);
 }
 
 /**
@@ -285,4 +289,48 @@ export function mergeOpeningGames(existing: OpeningGame[], incoming: OpeningGame
   for (const g of existing) map.set(g.gameId, g);
   for (const g of incoming) map.set(g.gameId, g);
   return Array.from(map.values());
+}
+
+/* ── Opening Clinic background-fetch cursor ──
+   The clinic builds its corpus toward a sensible target (a few hundred games),
+   pulled in the background across pages — and across sessions. This persisted
+   cursor records how far we've paged (`until`) and whether we've reached the
+   target / run out of history (`done`), so a returning user resumes instead of
+   re-fetching, and a finished corpus isn't re-pulled. */
+const KEY_OPENING_CURSOR = 'bt.openingCursor';
+
+export interface OpeningFetchState {
+  /** `${source}:${username}` — a different account or site invalidates the cursor. */
+  key: string;
+  /** UNIX ms to page strictly older than next time (oldest fetched − 1); null = from newest. */
+  until: number | null;
+  /** True once the corpus hit its target size or we paged past the oldest game. */
+  done: boolean;
+}
+
+/** Canonical cursor key for an account, so case/whitespace don't fork it. */
+export function openingFetchKey(source: GameSource, username: string): string {
+  return `${source}:${username.trim().toLowerCase()}`;
+}
+
+export function loadOpeningFetchState(): OpeningFetchState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(KEY_OPENING_CURSOR);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (p && typeof p.key === 'string' && typeof p.done === 'boolean') return p as OpeningFetchState;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveOpeningFetchState(state: OpeningFetchState): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(KEY_OPENING_CURSOR, JSON.stringify(state));
+  } catch {
+    /* ignore quota */
+  }
 }

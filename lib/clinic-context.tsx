@@ -1,7 +1,13 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { loadOpeningGames, loadUsername, loadSource } from './storage';
+import {
+  loadOpeningGames,
+  loadUsername,
+  loadSource,
+  loadOpeningFetchState,
+  openingFetchKey,
+} from './storage';
 import { importOpeningGames } from './opening-import';
 import {
   buildOpeningTree,
@@ -11,10 +17,6 @@ import {
   type TreeNode,
 } from './opening-tree';
 
-const FETCHED_KEY = 'bt.openingFetchedUser';
-// Bump when the summary shape changes so users re-pull. 'e1' = added per-ply evals.
-// Keyed by source too, so switching Lichess ↔ chess.com re-pulls.
-const FETCH_TAG = (u: string, src: string) => `${src}:${u}:e1`;
 
 interface ClinicValue {
   ready: boolean;
@@ -66,18 +68,15 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!username || fetchStarted.current) return;
     const source = loadSource();
-    if (typeof window !== 'undefined' && window.localStorage.getItem(FETCHED_KEY) === FETCH_TAG(username, source)) return;
+    // Skip only when the corpus is already built for this account; otherwise
+    // (re)start the background build, which resumes from the persisted cursor.
+    const state = loadOpeningFetchState();
+    if (state && state.key === openingFetchKey(source, username) && state.done) return;
     fetchStarted.current = true;
     setFetching(true);
-    importOpeningGames(username, source)
-      .then(() => {
-        setGames(loadOpeningGames());
-        try {
-          window.localStorage.setItem(FETCHED_KEY, FETCH_TAG(username, source));
-        } catch {
-          /* ignore quota */
-        }
-      })
+    // Grow the tree live: re-read the store after each page lands.
+    importOpeningGames(username, source, () => setGames(loadOpeningGames()))
+      .then(() => setGames(loadOpeningGames()))
       .finally(() => setFetching(false));
   }, [username]);
 
