@@ -100,10 +100,14 @@ export function mergePuzzles(a: Puzzle[], b: Puzzle[]): Puzzle[] {
 }
 
 /**
- * Wipe all imported puzzles, solved progress, and the pagination cursor
- * from localStorage. The username is preserved so the user doesn't have to
- * retype it after clearing. Seed puzzles served from `/api/puzzles` are
- * unaffected (they live in code, not storage).
+ * Wipe all imported puzzles, solved progress, the pagination cursor, and the
+ * mapped opening games from localStorage. The username is preserved so the user
+ * doesn't have to retype it after clearing. Seed puzzles served from
+ * `/api/puzzles` are unaffected (they live in code, not storage).
+ *
+ * Note we keep the clinic's "already fetched" marker (`bt.openingFetchedUser`):
+ * clearing should leave the Opening Clinic empty until the user re-imports, not
+ * silently re-pull the same games and make the openings reappear.
  */
 export function clearAll(): void {
   if (typeof window === 'undefined') return;
@@ -111,6 +115,7 @@ export function clearAll(): void {
   window.localStorage.removeItem(KEY_SOLVED);
   window.localStorage.removeItem(KEY_OLDEST);
   window.localStorage.removeItem(KEY_FETCHED);
+  window.localStorage.removeItem(KEY_OPENING_GAMES);
 }
 
 /**

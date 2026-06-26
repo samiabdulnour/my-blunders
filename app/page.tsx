@@ -53,6 +53,9 @@ export default function Page() {
   const [all, setAll] = useState<Puzzle[]>([]);
   // Puzzle solver vs. Opening Clinic — the two modes of the trainer.
   const [mode, setMode] = useState<'puzzle' | 'opening'>('puzzle');
+  // Bumped on "Clear all" to remount the clinic so it drops its in-memory games
+  // (clearAll() has emptied the store; the provider re-reads it on remount).
+  const [clinicEpoch, setClinicEpoch] = useState(0);
   // Start on 'new' so the user always lands on something fresh rather
   // than re-seeing puzzles they've already solved.
   const [filter, setFilter] = useState<Filter>('new');
@@ -673,6 +676,7 @@ export default function Page() {
     setAll([]);
     setRevealed(false);
     setYourMove(null);
+    setClinicEpoch((e) => e + 1); // remount the clinic so its tree empties too
 
     if (!isGuest) return; // account-holder: empty queue, no placeholders
 
@@ -762,7 +766,7 @@ export default function Page() {
       onModeChange={setMode}
     >
       {mode === 'opening' ? (
-        <ClinicProvider>
+        <ClinicProvider key={clinicEpoch}>
           <OpeningSidebar
             onImport={handleImport}
             onGamesFetched={handleGamesFetched}
