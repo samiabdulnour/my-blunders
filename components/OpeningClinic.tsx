@@ -329,6 +329,10 @@ function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: Laid
         <div className="cd-head">
           {node.name && <div className="cd-name">{node.name}</div>}
           <div className="cd-move">{node.label}</div>
+          <div className="cd-record num" title="Your score from this position (wins + ½ draws)">
+            <span className={'cd-score ' + node.perf}>{node.score}%</span>
+            <span className="cd-wdl">{node.wins}W · {node.draws}D · {node.losses}L</span>
+          </div>
           {node.blunders > 0 && (
             <div className="cd-sub num"><span className="cd-blund">blundered {node.blunders}×</span></div>
           )}
@@ -405,6 +409,7 @@ function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: Laid
                   <span className="c-san">{c.san}</span>
                   <span className="c-meta num">
                     {c.eval != null && <span className="c-eval">{formatEval(c.eval)}</span>}
+                    <span className={'c-score ' + c.perf} title={`Your score down this line: ${c.wins}W · ${c.draws}D · ${c.losses}L`}>{c.score}%</span>
                     {c.blunders > 0 && <span className="c-warn"><IconWarn size={9} /> {c.blunders}</span>}
                   </span>
                 </button>

@@ -1805,6 +1805,10 @@ html[data-theme='dark'] .sq.cap-ring {
 .cd-move { font-size: var(--fs-title); font-weight: var(--fw-bold); letter-spacing: -0.01em; line-height: 1.1; }
 .cd-sub { font-size: var(--fs-micro); color: var(--txt-dim); margin-top: 3px; }
 .cd-blund { color: var(--red); }
+/* Your win rate (score %) + W/D/L from the selected position */
+.cd-record { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin-top: 4px; font-size: var(--fs-micro); }
+.cd-score { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+.cd-wdl { color: var(--txt-dim); font-variant-numeric: tabular-nums; }
 .cd-sec { padding: 16px 18px; border-bottom: 1px solid var(--border); }
 .cd-eyebrow { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt); margin-bottom: 10px; }
 .cd-src { color: var(--txt-faint); font-weight: var(--fw-reg); letter-spacing: 0.06em; }
@@ -1829,6 +1833,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .cont-row.bad { border-color: var(--red); }
 .cont-row .c-san { font-size: var(--fs-base); font-weight: var(--fw-bold); }
 .cont-row .c-meta { font-size: var(--fs-micro); color: var(--txt-dim); display: inline-flex; align-items: center; gap: 6px; }
+.c-score { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
 .c-warn { display: inline-flex; align-items: center; gap: 2px; color: var(--red); font-weight: var(--fw-bold); }
 
 /* Puzzle ↔ Opening — tabs in the shared topbar (active = coral underline) */
@@ -1874,9 +1879,9 @@ html[data-theme='dark'] .sq.cap-ring {
 .crumb-sep { color: var(--txt-faint); }
 
 /* Win-rate, shown as a secondary stat (correct continuation stays primary) */
-.cnode-score.green, .op-score.green { color: var(--green); }
-.cnode-score.amber, .op-score.amber { color: var(--yellow); }
-.cnode-score.red, .op-score.red { color: var(--red); }
+.cnode-score.green, .op-score.green, .cd-score.green, .c-score.green { color: var(--green); }
+.cnode-score.amber, .op-score.amber, .cd-score.amber, .c-score.amber { color: var(--yellow); }
+.cnode-score.red, .op-score.red, .cd-score.red, .c-score.red { color: var(--red); }
 
 /* Stockfish "right continuation" readout */
 .cd-engine { display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
