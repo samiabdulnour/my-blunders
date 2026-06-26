@@ -112,7 +112,7 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
           disabled={working}
           onClick={() => runImport(oldestMs ?? undefined)}
         >
-          {working ? 'Importing' : 'Import'}
+          {working ? 'Importing' : fetchedCount > 0 ? 'Import more' : 'Import'}
         </button>
       </div>
 

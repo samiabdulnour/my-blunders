@@ -339,7 +339,9 @@ export function useImporter({
           ctx
         );
         try {
-          // chess.com / un-annotated PGNs: score every ply first (no-op for Lichess).
+          // One pipeline for both sources: score any game that lacks evals with
+          // the engine (chess.com always; Lichess games it never analysed), so
+          // every game can yield puzzles. A no-op when evals are already present.
           await annotateEvalsIfMissing(game, engine, (done, total) => {
             if (done % 6 === 0 || done === total) {
               setStatus({
