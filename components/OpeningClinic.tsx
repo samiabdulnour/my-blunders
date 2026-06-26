@@ -16,15 +16,29 @@ function evalText(e: EngineEval): string {
   return (cp > 0 ? '+' : '') + cp.toFixed(1);
 }
 
-/** Colour a connector by how much eval the move (parent→child) loses for the
- *  side that played it: green = good, amber = risky, red = blunder, neutral when
- *  the eval isn't known. This draws the correct vs. wrong path through the tree. */
+/** White's win probability from a white-relative centipawn eval — a logistic
+ *  (Elo-style expected score): cp 0 → .50, +300 → ~.85, −300 → ~.15. This is what
+ *  makes the marking precise: an equal centipawn loss means very different things
+ *  near a decided position (+6.0→+5.0 is nothing) versus near equality
+ *  (+0.5→−0.5 throws the game), and win probability captures that where raw
+ *  centipawns can't. */
+function winProb(cp: number): number {
+  return 1 / (1 + Math.pow(10, -cp / 400));
+}
+
+/** Colour a connector by how much the move (parent→child) hurt the side that
+ *  played it — the drop in *that side's* win probability, not raw centipawns.
+ *  green = held the position, amber = an inaccuracy that let the advantage slip,
+ *  red = a mistake/blunder. Neutral when the eval isn't known. Thresholds are in
+ *  win-probability points (~Lichess: ≥0.10 inaccuracy, ≥0.20 mistake). */
 function edgeStroke(parentFen: string, parentEval: number | null, childEval: number | null): string {
   if (parentEval == null || childEval == null) return 'var(--border2)';
   const whiteToMove = parentFen.split(' ')[1] === 'w';
-  const loss = whiteToMove ? parentEval - childEval : childEval - parentEval;
-  if (loss >= 200) return 'var(--red)';
-  if (loss >= 90) return 'var(--yellow)';
+  const before = whiteToMove ? winProb(parentEval) : 1 - winProb(parentEval);
+  const after = whiteToMove ? winProb(childEval) : 1 - winProb(childEval);
+  const drop = before - after;
+  if (drop >= 0.2) return 'var(--red)';
+  if (drop >= 0.1) return 'var(--yellow)';
   return 'var(--green)';
 }
 
