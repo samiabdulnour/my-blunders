@@ -27,6 +27,8 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
   const {
     username,
     setUsername,
+    source,
+    setSource,
     status,
     setStatus,
     oldestMs,
@@ -67,12 +69,34 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
 
   return (
     <div className="side-block import-bar">
-      <div className="side-h">Lichess username</div>
+      <div className="side-h">Import games</div>
+      <div className="seg-tabs src-seg" role="tablist" aria-label="Import source">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={source === 'lichess'}
+          className={'seg-tab' + (source === 'lichess' ? ' on' : '')}
+          onClick={() => setSource('lichess')}
+          disabled={working}
+        >
+          Lichess
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={source === 'chesscom'}
+          className={'seg-tab' + (source === 'chesscom' ? ' on' : '')}
+          onClick={() => setSource('chesscom')}
+          disabled={working}
+        >
+          Chess.com
+        </button>
+      </div>
       <div className="username-row">
         <input
           type="text"
           className="username-input"
-          placeholder="your username"
+          placeholder={source === 'chesscom' ? 'chess.com username' : 'Lichess username'}
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           onKeyDown={(e) => {
@@ -88,7 +112,7 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
           disabled={working}
           onClick={() => runImport(oldestMs ?? undefined)}
         >
-          {working ? 'Importing' : 'Import'}
+          {working ? 'Importing' : fetchedCount > 0 ? 'Import more' : 'Import'}
         </button>
       </div>
 

@@ -156,11 +156,24 @@ function parseSingleGame(pgnBlock: string): ParsedGame | null {
     });
   }
 
-  // Derive Lichess game id from the Site header (e.g. "https://lichess.org/abcd1234")
+  // Derive a stable game id + canonical URL from the headers. Lichess puts the
+  // game URL in [Site] ("https://lichess.org/abcd1234"); chess.com puts it in
+  // [Link] ("https://www.chess.com/game/live/123456789"). A stable, unique id
+  // matters — puzzle ids are `${gameId}_${ply}`, so a missing id collides every
+  // game onto "unknown_<ply>".
   const siteHeader = lcHeaders['site'] ?? '';
+  const linkHeader = lcHeaders['link'] ?? '';
   const lichessMatch = siteHeader.match(/lichess\.org\/([a-zA-Z0-9]{8})/);
-  const gameId = lichessMatch ? lichessMatch[1] : null;
-  const site = gameId ? `https://lichess.org/${gameId}` : siteHeader || null;
+  const ccMatch = (linkHeader || siteHeader).match(/chess\.com\/(?:[a-z]+\/)*(\d{6,})/i);
+  let gameId: string | null = null;
+  let site: string | null = siteHeader || null;
+  if (lichessMatch) {
+    gameId = lichessMatch[1];
+    site = `https://lichess.org/${gameId}`;
+  } else if (ccMatch) {
+    gameId = `cc_${ccMatch[1]}`;
+    site = linkHeader || siteHeader || null;
+  }
 
   return {
     headers: lcHeaders,

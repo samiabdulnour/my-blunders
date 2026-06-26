@@ -1,16 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Puzzle } from './types';
+import type { GameSource, Puzzle } from './types';
 import { apiUrl } from './api';
 import { isNativeApp } from './platform';
 import { parsePgn, oldestGameStartMs, type ParsedGame } from './pgn';
-import { generatePuzzlesFromGame } from './puzzle-generator';
+import { generatePuzzlesFromGame, annotateEvalsIfMissing } from './puzzle-generator';
 import { summarizeGame, type OpeningGame } from './opening-tree';
 import { getWasmEngine } from './engine/wasm-engine';
 import {
   loadUsername,
   saveUsername,
+  loadSource,
+  saveSource,
   loadOldestFetchedMs,
   saveOldestFetchedMs,
   loadFetchedGameCount,
@@ -19,6 +21,12 @@ import {
   saveOpeningGames,
   mergeOpeningGames,
 } from './storage';
+
+/** PGN proxy for each source. */
+const PGN_PROXY: Record<GameSource, string> = {
+  lichess: '/api/lichess/pgn',
+  chesscom: '/api/chesscom/pgn',
+};
 
 /** Persist compact opening-tree summaries for an imported batch (web path). */
 function persistOpeningGames(games: ParsedGame[], username: string): void {
@@ -95,6 +103,7 @@ export function useImporter({
   onGamesFetched,
 }: UseImporterOptions) {
   const [username, setUsername] = useState('');
+  const [source, setSourceState] = useState<GameSource>('lichess');
   const [status, setStatus] = useState<ImportStatus>({ kind: 'idle' });
   /**
    * UNIX ms of the oldest Lichess game already imported. Serves as the
@@ -129,9 +138,19 @@ export function useImporter({
 
   useEffect(() => {
     setUsername(loadUsername());
+    setSourceState(loadSource());
     setOldestMs(loadOldestFetchedMs());
     setFetchedCount(loadFetchedGameCount());
     setHydrated(true);
+  }, []);
+
+  /** Switch import source. Resets the pagination cursor — a different site means
+   *  a different account/history, so the old cursor no longer applies. */
+  const setSource = useCallback((s: GameSource) => {
+    setSourceState(s);
+    saveSource(s);
+    setOldestMs(null);
+    setExhausted(false);
   }, []);
 
   /* ── Shared event handling ──
@@ -276,13 +295,16 @@ export function useImporter({
     [processEvent]
   );
 
-  /* ── Web path: fetch PGN, analyze locally with WASM Stockfish ── */
+  /* ── Web path: fetch PGN, analyze locally with WASM Stockfish ──
+     For chess.com (and any eval-less PGN) each game is first run through the
+     engine to *find* the blunders — Lichess games already ship evals, so that
+     pass is a no-op and the flow is identical. */
   const runWasmImport = useCallback(
-    async (name: string, untilCursor?: number | null) => {
+    async (name: string, src: GameSource, untilCursor?: number | null) => {
       const ctx: ImportCtx = { parsedGames: 0, totalPuzzles: 0 };
 
       processEvent({ type: 'status', message: `fetching up to ${BATCH_SIZE} games...` }, ctx);
-      const url = new URL(apiUrl('/api/lichess/pgn'), window.location.origin);
+      const url = new URL(apiUrl(PGN_PROXY[src]), window.location.origin);
       url.searchParams.set('username', name);
       url.searchParams.set('max', String(BATCH_SIZE));
       if (untilCursor) url.searchParams.set('until', String(untilCursor));
@@ -298,7 +320,6 @@ export function useImporter({
       processEvent({ type: 'status', message: 'parsing PGN...' }, ctx);
       const games = parsePgn(pgn);
       processEvent({ type: 'parsed', total: games.length }, ctx);
-      persistOpeningGames(games, name); // feed the Opening Clinic
 
       if (games.length === 0) {
         processEvent({ type: 'done', parsedGames: 0, generated: 0, oldestMs: null }, ctx);
@@ -313,11 +334,23 @@ export function useImporter({
             type: 'progress',
             current: i,
             total: games.length,
-            message: `analyzing game ${i + 1}/${games.length}${game.gameId ? ` (${game.gameId})` : ''}`,
+            message: `analyzing game ${i + 1}/${games.length}...`,
           },
           ctx
         );
         try {
+          // One pipeline for both sources: score any game that lacks evals with
+          // the engine (chess.com always; Lichess games it never analysed), so
+          // every game can yield puzzles. A no-op when evals are already present.
+          await annotateEvalsIfMissing(game, engine, (done, total) => {
+            if (done % 6 === 0 || done === total) {
+              setStatus({
+                kind: 'working',
+                message: `analyzing game ${i + 1}/${games.length} — move ${Math.ceil(done / 2)}/${Math.ceil(total / 2)}`,
+                progress: { current: i, total: games.length },
+              });
+            }
+          });
           const puzzles = await generatePuzzlesFromGame(game, name, engine);
           processEvent({ type: 'puzzles', gameIndex: i, gameId: game.gameId, puzzles }, ctx);
         } catch (err) {
@@ -327,6 +360,9 @@ export function useImporter({
           );
         }
       }
+
+      // Feed the Opening Clinic from the (now eval-annotated) games.
+      persistOpeningGames(games, name);
 
       processEvent(
         {
@@ -346,20 +382,24 @@ export function useImporter({
     async (untilCursor?: number | null) => {
       const name = username.trim();
       if (!name) {
-        setStatus({ kind: 'error', message: 'enter your Lichess username first' });
+        const site = source === 'chesscom' ? 'chess.com' : 'Lichess';
+        setStatus({ kind: 'error', message: `enter your ${site} username first` });
         return;
       }
       saveUsername(name);
+      saveSource(source);
 
       workingRef.current = true;
       const label = untilCursor ? 'older ' : '';
       setStatus({ kind: 'working', message: `importing up to ${BATCH_SIZE} ${label}games...` });
 
       try {
-        if (isNativeApp()) {
+        // The native server path runs Stockfish on the Lichess backend; chess.com
+        // (no server route) always uses the local WASM pipeline.
+        if (isNativeApp() && source === 'lichess') {
           await runServerImport(name, untilCursor);
         } else {
-          await runWasmImport(name, untilCursor);
+          await runWasmImport(name, source, untilCursor);
         }
       } catch (err) {
         setStatus({ kind: 'error', message: (err as Error).message });
@@ -367,7 +407,7 @@ export function useImporter({
         workingRef.current = false;
       }
     },
-    [username, runServerImport, runWasmImport]
+    [username, source, runServerImport, runWasmImport]
   );
 
   /* ── PGN file upload fallback ──
@@ -408,18 +448,15 @@ export function useImporter({
           return;
         }
 
-        // Web: parse + analyze locally with WASM.
+        // Web: parse + analyze locally with WASM. Eval-less PGNs (chess.com
+        // exports and the like) are annotated by the engine first.
         const games = parsePgn(pgn);
         if (games.length === 0) {
-          setStatus({
-            kind: 'error',
-            message: 'No games found in PGN. Did you export with evals=true?',
-          });
+          setStatus({ kind: 'error', message: 'No games found in that PGN file.' });
           return;
         }
         // Real games are in hand — drop any guest placeholders right away.
         onGamesFetched?.();
-        persistOpeningGames(games, name); // feed the Opening Clinic
         const engine = getWasmEngine();
         let total = 0;
         for (let i = 0; i < games.length; i++) {
@@ -429,6 +466,15 @@ export function useImporter({
             progress: { current: i, total: games.length },
           });
           try {
+            await annotateEvalsIfMissing(games[i], engine, (done, t) => {
+              if (done % 6 === 0 || done === t) {
+                setStatus({
+                  kind: 'working',
+                  message: `analyzing game ${i + 1}/${games.length} — move ${Math.ceil(done / 2)}/${Math.ceil(t / 2)}`,
+                  progress: { current: i, total: games.length },
+                });
+              }
+            });
             const puzzles = await generatePuzzlesFromGame(games[i], name, engine);
             if (puzzles.length > 0) {
               onImport(puzzles);
@@ -438,6 +484,7 @@ export function useImporter({
             console.warn(`game ${games[i].gameId ?? '?'} failed:`, (err as Error).message);
           }
         }
+        persistOpeningGames(games, name); // feed the Opening Clinic (now annotated)
         setStatus({ kind: 'ok', message: `imported ${games.length} games → ${total} puzzles` });
       } catch (err) {
         setStatus({ kind: 'error', message: (err as Error).message });
@@ -474,6 +521,8 @@ export function useImporter({
   return {
     username,
     setUsername,
+    source,
+    setSource,
     status,
     setStatus,
     oldestMs,

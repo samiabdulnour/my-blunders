@@ -62,6 +62,9 @@ export interface Puzzle {
 
 export type SolveStatus = 'ok' | 'fail';
 
+/** Where a user's games are imported from. */
+export type GameSource = 'lichess' | 'chesscom';
+
 /**
  * Progress filter for the puzzle list:
  *   · new   — never attempted
