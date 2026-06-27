@@ -421,6 +421,9 @@ export function useImporter({
         setStatus({ kind: 'error', message: (err as Error).message });
       } finally {
         workingRef.current = false;
+        // If a clear aborted this run mid-flight, the last progress event may
+        // have left the bar stuck on "working" — settle it so Import re-enables.
+        if (cancelRef.current) setStatus({ kind: 'ok', message: 'cache cleared' });
       }
     },
     [username, source, runServerImport, runWasmImport]

@@ -8,7 +8,7 @@ import {
   loadOpeningFetchState,
   openingFetchKey,
 } from './storage';
-import { importOpeningGames } from './opening-import';
+import { importOpeningGames, OPENING_TARGET_GAMES } from './opening-import';
 import {
   buildOpeningTree,
   namedOpenings,
@@ -68,10 +68,12 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!username || fetchStarted.current) return;
     const source = loadSource();
-    // Skip only when the corpus is already built for this account; otherwise
-    // (re)start the background build, which resumes from the persisted cursor.
+    // Build whenever the corpus is below target and history isn't exhausted —
+    // gating on the actual size (not a sticky flag) means a cleared or
+    // never-built corpus always rebuilds, while a full one is left alone.
+    if (loadOpeningGames().length >= OPENING_TARGET_GAMES) return;
     const state = loadOpeningFetchState();
-    if (state && state.key === openingFetchKey(source, username) && state.done) return;
+    if (state && state.key === openingFetchKey(source, username) && state.exhausted) return;
     fetchStarted.current = true;
     setFetching(true);
     // Grow the tree live: re-read the store after each page lands.

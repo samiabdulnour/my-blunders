@@ -270,12 +270,23 @@ function isCombination(
   if (!winning) return false;
 
   const c = new Chess(fenBefore);
+  // A forced move (responding to check) is never a *chosen* sacrifice.
+  if (c.isCheck()) return false;
   const before = materialBalance(c, userColor);
+  let m0, m1;
   try {
-    c.move(line[0]); // the user's (sacrificial) move
-    if (line[1]) c.move(line[1]); // the forced reply
+    m0 = c.move(line[0]); // the user's (sacrificial) move
+    m1 = line[1] ? c.move(line[1]) : null; // the forced reply
   } catch {
     return false;
   }
+  if (!m1) return false;
+  // A real sacrifice: the opponent's forced reply captures the very piece the
+  // user just offered — a recapture on the move's destination square — leaving
+  // the user down material. Requiring this avoids mislabelling lines where the
+  // user makes a move and the opponent grabs material *elsewhere* (e.g. a king
+  // step out of check while a knight snaps off a pawn) as a "sacrifice".
+  const recapturedOffer = !!m1.captured && m1.to === m0.to;
+  if (!recapturedOffer) return false;
   return materialBalance(c, userColor) <= before - 1; // gave up ≥ a pawn
 }

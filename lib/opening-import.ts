@@ -67,13 +67,21 @@ async function buildOpeningCorpus(
 ): Promise<number> {
   let state = loadOpeningFetchState();
   // A cursor for a different account/site doesn't apply — start fresh.
-  if (!state || state.key !== key) state = { key, until: null, done: false };
-  if (state.done) return loadOpeningGames().length; // corpus already built
+  if (!state || state.key !== key) state = { key, until: null, exhausted: false };
+
+  let stored = loadOpeningGames();
+  // Gate on the *actual* corpus size, not a sticky "done" flag: already have
+  // enough, or no history left to pull → nothing to do. This self-heals — after
+  // a clear (or any reset to 0) the corpus simply rebuilds.
+  if (stored.length >= OPENING_TARGET_GAMES || state.exhausted) {
+    saveOpeningFetchState(state);
+    return stored.length;
+  }
 
   const proxy = source === 'chesscom' ? '/api/chesscom/pgn' : '/api/lichess/pgn';
-  let stored = loadOpeningGames();
   let until = state.until ?? undefined;
   let pages = 0;
+  let fetchedSome = false;
 
   while (stored.length < OPENING_TARGET_GAMES && pages < MAX_PAGES_PER_RUN) {
     pages++;
@@ -85,17 +93,21 @@ async function buildOpeningCorpus(
     let pgn: string;
     try {
       const res = await fetch(url.toString());
-      if (!res.ok) break; // transient — keep what we have and resume next time
+      if (!res.ok) break; // transient — keep what we have and retry next visit
       pgn = await res.text();
     } catch {
-      break; // network hiccup — resume next time
+      break; // network hiccup — retry next visit
     }
 
     const games = parsePgn(pgn);
     if (games.length === 0) {
-      state.done = true; // paged past the user's oldest game
+      // Empty page is the end of history only if we'd already pulled some this
+      // run; a blank first page is likely transient, so don't permanently
+      // disable the build (the user clearly has games — they have puzzles).
+      if (fetchedSome) state.exhausted = true;
       break;
     }
+    fetchedSome = true;
 
     const summaries: OpeningGame[] = [];
     for (const g of games) {
@@ -114,12 +126,11 @@ async function buildOpeningCorpus(
     onProgress?.(stored.length);
 
     if (games.length < PAGE) {
-      state.done = true; // reached the end of their history
+      state.exhausted = true; // a short page means we reached their oldest game
       break;
     }
   }
 
-  if (stored.length >= OPENING_TARGET_GAMES) state.done = true;
   saveOpeningFetchState(state);
   return stored.length;
 }
