@@ -1116,22 +1116,8 @@ html[data-theme='dark'] .sq.cap-ring {
   text-transform: none;
 }
 
-.tries-line {
-  font-size: var(--fs-micro);
-  color: var(--txt-dim);
-  text-transform: uppercase;
-  letter-spacing: var(--track-caps);
-}
-.tries-line .v {
-  color: var(--red);
-  font-size: var(--fs-base);
-  font-weight: var(--fw-bold);
-  margin-left: 6px;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-/* Engine continuation / winning line shown after solving. */
+/* Engine continuation / winning line shown after solving — clickable notation
+ * that seeks the board to each position. */
 .engine-line {
   padding: 6px 0;
   border-top: 1px solid var(--border);
@@ -1141,14 +1127,24 @@ html[data-theme='dark'] .sq.cap-ring {
   color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
-  margin-bottom: 3px;
+  margin-bottom: 4px;
 }
 .engine-line-moves {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 1px 3px;
   font-size: var(--fs-base);
-  color: var(--txt);
-  line-height: 1.5;
   font-variant-numeric: tabular-nums;
 }
+.el-tok { display: inline-flex; align-items: baseline; gap: 3px; }
+.el-no { color: var(--txt-faint); }
+.el-move {
+  background: none; border: 0; padding: 1px 5px; border-radius: 3px;
+  font: inherit; font-weight: var(--fw-bold); color: var(--txt); cursor: pointer;
+}
+.el-move:hover { background: var(--bg3); }
+.el-move.cur { background: var(--contour); color: var(--bg); }
 
 .actions {
   display: flex;

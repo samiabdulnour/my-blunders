@@ -82,6 +82,9 @@ export default function Page() {
   const [analysis, setAnalysis] = useState(false);
   const [yourMove, setYourMove] = useState<string | null>(null);
   const [isOk, setIsOk] = useState(false);
+  /** Engine-line move index currently shown via the result panel's clickable
+   *  notation (null = not navigating the line). */
+  const [seekPly, setSeekPly] = useState<number | null>(null);
   /** True while a wrong move is flashing red and being undone. */
   const [awaitingRetry, setAwaitingRetry] = useState(false);
   /** Piece at `.from` slides back from `.to` — the wrong-move bounce. */
@@ -286,6 +289,7 @@ export default function Page() {
     setAwaitingRetry(false);
     setBounceBack(null);
     setAttempts([]);
+    setSeekPly(null);
     setLegalFrom(groupLegal(c));
 
     if (lastMoveFrom && lastMoveTo) {
@@ -368,6 +372,31 @@ export default function Page() {
     setTimeout(playNext, 600); // let the solving move's own animation land first
   };
 
+  /* ── Jump the board to a position in the engine line (clickable notation in
+     the result panel). Replays the setup moves + the line up to `ply`, then
+     leaves the board in free-analysis so you can explore from there. */
+  const seekToLine = useCallback((ply: number) => {
+    if (!current) return;
+    const line = current.line && current.line.length > 0 ? current.line : [current.bestMove];
+    const c = new Chess();
+    for (const m of current.setupMoves) { try { c.move(m); } catch { /* odd SAN — skip */ } }
+    let last: Move | null = null;
+    for (let i = 0; i <= ply && i < line.length; i++) {
+      try { last = c.move(line[i]); } catch { break; }
+    }
+    setChess(new Chess(c.fen()));
+    setSelected(null);
+    setLastFrom(last?.from ?? null);
+    setLastTo(last?.to ?? null);
+    setFlashOk(null);
+    setFlashFail(null);
+    setBounceBack(null);
+    setIntroMove(null);
+    setAnalysis(true);
+    setLegalFrom(groupLegal(c));
+    setSeekPly(ply);
+  }, [current]);
+
   /* ── Apply a move ──
      Three modes: free analysis (after solve — any legal move), multi-move
      solving (combination puzzles play out the engine line), and the
@@ -416,6 +445,7 @@ export default function Page() {
     if (analysis) {
       setChess(next);
       setSelected(null);
+      setSeekPly(null); // a free move leaves the engine line
       setLastFrom(mv.from);
       setLastTo(mv.to);
       setLegalFrom(groupLegal(next));
@@ -879,8 +909,9 @@ export default function Page() {
                   <ResultPanel
                     puzzle={current}
                     yourMove={yourMove}
-                    attempts={attempts}
                     isOk={isOk}
+                    onSeek={seekToLine}
+                    seekPly={seekPly}
                     onRetry={retry}
                     onNext={next}
                   />
