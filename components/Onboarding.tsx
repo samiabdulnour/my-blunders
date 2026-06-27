@@ -231,9 +231,16 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
             <span>{phase === 'error' ? status.message ?? 'Import failed' : 'Loading your games…'}</span>
           </div>
           {phase === 'error' ? (
-            <div className="onb-alt">
-              <a onClick={() => enterApp(username.trim())}>continue anyway →</a>
-            </div>
+            <>
+              {/* A bad username is the common case — let them go straight back to
+                  the form (the entered name is kept, ready to fix). */}
+              <button className="onb-go" onClick={() => setPhase('idle')}>
+                ← Try a different name
+              </button>
+              <div className="onb-alt">
+                <a onClick={() => enterApp(username.trim())}>continue anyway →</a>
+              </div>
+            </>
           ) : (
             <>
               <div className="progress-note">opening now — play famous blunders while your own puzzles analyse in the background</div>
