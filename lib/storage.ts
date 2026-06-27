@@ -119,10 +119,9 @@ export function mergePuzzles(a: Puzzle[], b: Puzzle[]): Puzzle[] {
  * doesn't have to retype it after clearing. Seed puzzles served from
  * `/api/puzzles` are unaffected (they live in code, not storage).
  *
- * The Opening Clinic corpus is wiped too, and its background-fetch cursor is
- * marked "done" for the current account so clearing leaves the clinic empty
- * until the user re-imports — rather than the background build silently
- * re-pulling the same games and making the openings reappear.
+ * The Opening Clinic corpus and its background-fetch cursor are wiped too, so
+ * the clinic rebuilds a fresh tree from the next import (rather than showing a
+ * stale tree or staying permanently empty).
  */
 export function clearAll(): void {
   if (typeof window === 'undefined') return;
@@ -131,9 +130,7 @@ export function clearAll(): void {
   window.localStorage.removeItem(KEY_OLDEST);
   window.localStorage.removeItem(KEY_FETCHED);
   window.localStorage.removeItem(KEY_OPENING_GAMES);
-  const u = loadUsername().trim();
-  if (u) saveOpeningFetchState({ key: openingFetchKey(loadSource(), u), until: null, done: true });
-  else window.localStorage.removeItem(KEY_OPENING_CURSOR);
+  window.localStorage.removeItem(KEY_OPENING_CURSOR);
 }
 
 /**
@@ -318,8 +315,10 @@ export interface OpeningFetchState {
   key: string;
   /** UNIX ms to page strictly older than next time (oldest fetched − 1); null = from newest. */
   until: number | null;
-  /** True once the corpus hit its target size or we paged past the oldest game. */
-  done: boolean;
+  /** True once we've paged past the user's oldest game (no more history to pull).
+   *  NOT set when merely reaching the target — that's gated on the corpus size —
+   *  and NOT set by clearing, so the clinic always rebuilds when it has room. */
+  exhausted: boolean;
 }
 
 /** Canonical cursor key for an account, so case/whitespace don't fork it. */
@@ -333,7 +332,10 @@ export function loadOpeningFetchState(): OpeningFetchState | null {
     const raw = window.localStorage.getItem(KEY_OPENING_CURSOR);
     if (!raw) return null;
     const p = JSON.parse(raw);
-    if (p && typeof p.key === 'string' && typeof p.done === 'boolean') return p as OpeningFetchState;
+    // Accept old cursors too (they had `done` instead of `exhausted`); the
+    // missing field reads as falsy, so a previously-"done" corpus simply
+    // rebuilds — which is what we want after the gate became size-based.
+    if (p && typeof p.key === 'string') return p as OpeningFetchState;
     return null;
   } catch {
     return null;
