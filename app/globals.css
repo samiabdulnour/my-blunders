@@ -1439,6 +1439,15 @@ html[data-theme='dark'] .sq.cap-ring {
   background: var(--green);
   transition: width 0.4s;
 }
+/* No honest ETA while we wait on the first puzzle — a gentle indeterminate sweep. */
+.onb-running .progress-fill.indeterminate {
+  width: 40%;
+  animation: onb-indeterminate 1.15s ease-in-out infinite;
+}
+@keyframes onb-indeterminate {
+  0% { left: -45%; }
+  100% { left: 100%; }
+}
 .onb-running .progress-text {
   font-size: var(--fs-micro);
   color: var(--txt-dim);
@@ -1446,6 +1455,7 @@ html[data-theme='dark'] .sq.cap-ring {
   justify-content: space-between;
   gap: 8px;
 }
+.onb-running .progress-text.solo { justify-content: center; }
 .onb-running .progress-note {
   font-size: var(--fs-micro);
   color: var(--txt-faint);
