@@ -66,9 +66,10 @@ function useSession() {
   return { running, over, elapsed, correct, wrong, setCorrect, setWrong, start, finish };
 }
 
-/** The session control: a primary action (Start/Finish/Go again) and the
- *  time / done readout, grouped together. Board options live separately. */
-function SessionBar({ running, over, elapsed, correct, onStart, onFinish }: { running: boolean; over: boolean; elapsed: number; correct: number; onStart: () => void; onFinish: () => void }) {
+/** One control line for the whole drill: the primary action (Start/Finish/Go
+ *  again), the time / done readout, and — via `children` — any board options,
+ *  all on a single centred row so nothing floats off in a mismatched second row. */
+function SessionBar({ running, over, elapsed, correct, onStart, onFinish, children }: { running: boolean; over: boolean; elapsed: number; correct: number; onStart: () => void; onFinish: () => void; children?: React.ReactNode }) {
   return (
     <div className="ct-bar">
       {running
@@ -78,6 +79,12 @@ function SessionBar({ running, over, elapsed, correct, onStart, onFinish }: { ru
         <span className="ct-stat"><b className="num">{mmss(elapsed)}</b> time</span>
         <span className="ct-stat"><b className="num">{correct}</b> done</span>
       </div>
+      {children && (
+        <>
+          <span className="ct-bar-sep" aria-hidden="true" />
+          <div className="ct-opts">{children}</div>
+        </>
+      )}
     </div>
   );
 }
@@ -151,18 +158,15 @@ function FindMode() {
   };
 
   // The board stays centred and in the same place in every state (idle/running/
-  // finished); only the prompt above it changes. Session control sits in the
-  // bar; board options sit on their own row, aligned to the board.
+  // finished); only the prompt above it changes. Everything else — action,
+  // clock, and board options — lives on the one control line above it.
   return (
     <div className="ct-pane ct-find">
-      <SessionBar running={running} over={over} elapsed={elapsed} correct={correct} onStart={begin} onFinish={finish} />
-      <div className="ct-board-controls">
+      <SessionBar running={running} over={over} elapsed={elapsed} correct={correct} onStart={begin} onFinish={finish}>
         <span className="ct-persp">Board from <b>{orientation === 'white' ? 'White' : 'Black'}</b>’s side</span>
-        <div className="ct-board-opts">
-          <label className="ct-toggle"><input type="checkbox" checked={showCoords} onChange={(e) => setShowCoords(e.target.checked)} /> Coords</label>
-          <button className="ct-flip" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip</button>
-        </div>
-      </div>
+        <label className="ct-toggle"><input type="checkbox" checked={showCoords} onChange={(e) => setShowCoords(e.target.checked)} /> Coords</label>
+        <button className="ct-flip" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip</button>
+      </SessionBar>
       <div className="ct-prompt small">
         <Prompt running={running} over={over} elapsed={elapsed} correct={correct} wrong={wrong} idle="">
           Find <span className="ct-coord">{target}</span>

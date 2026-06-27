@@ -2216,15 +2216,17 @@ html[data-theme='dark'] .sq.cap-ring {
 
 .ct-pane { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; }
 /* Session control: action button + time/done readout, grouped together. */
-.ct-bar { display: inline-flex; align-items: center; gap: 18px; padding: 4px 4px 4px 4px; }
+/* One centred control line — action · clock · (board options). Wraps as a unit
+   on narrow screens instead of leaving a row stranded under it. */
+.ct-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 16px; padding: 4px; max-width: min(760px, 94vw); }
+.ct-bar-sep { width: 1px; height: 24px; background: var(--border); }
+.ct-opts { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; }
 .ct-action { padding: 10px 22px; border: 0; border-radius: 5px; background: var(--coral); color: #fff; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
 .ct-action:hover { filter: brightness(1.05); }
 .ct-stats { display: inline-flex; align-items: baseline; gap: 18px; }
 .ct-stat { display: inline-flex; align-items: baseline; gap: 5px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); }
 .ct-stat b { font-size: var(--fs-title); font-weight: var(--fw-bold); color: var(--txt); text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 /* Board options, aligned to the board's width on their own row. */
-.ct-board-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: min(460px, 92vw); }
-.ct-board-opts { display: flex; align-items: center; gap: 12px; }
 .ct-flip { padding: 6px 12px; border: 1px solid var(--border2); border-radius: 4px; background: var(--bg); color: var(--txt); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
 .ct-flip:hover { border-color: var(--contour); }
 
