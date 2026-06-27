@@ -66,33 +66,25 @@ function useSession() {
   return { running, over, elapsed, correct, wrong, setCorrect, setWrong, start, finish };
 }
 
-function SessionBar({ running, elapsed, correct, onFinish, children }: { running: boolean; elapsed: number; correct: number; onFinish: () => void; children?: React.ReactNode }) {
+function SessionBar({ running, over, elapsed, correct, onStart, onFinish, children }: { running: boolean; over: boolean; elapsed: number; correct: number; onStart: () => void; onFinish: () => void; children?: React.ReactNode }) {
   return (
     <div className="ct-bar">
       <div className="ct-stat"><span className="ct-stat-n num">{mmss(elapsed)}</span><span className="ct-stat-l">time</span></div>
       <div className="ct-stat"><span className="ct-stat-n num">{correct}</span><span className="ct-stat-l">done</span></div>
-      {running && <button className="ct-finish" onClick={onFinish}>Finish</button>}
+      {running
+        ? <button className="ct-finish" onClick={onFinish}>Finish</button>
+        : <button className="ct-go-sm" onClick={onStart}>{over ? 'Go again' : 'Start'}</button>}
       {children}
     </div>
   );
 }
 
-function StartCard({ over, correct, wrong, elapsed, onStart, blurb }: { over: boolean; correct: number; wrong: number; elapsed: number; onStart: () => void; blurb: string }) {
-  return (
-    <div className="ct-start">
-      {over ? (
-        <>
-          <div className="ct-final"><b>{correct}</b> correct in {mmss(elapsed)}{wrong > 0 ? ` · ${wrong} missed` : ''}</div>
-          <button className="ct-go" onClick={onStart}>Go again</button>
-        </>
-      ) : (
-        <>
-          <p className="ct-blurb">{blurb}</p>
-          <button className="ct-go" onClick={onStart}>Start</button>
-        </>
-      )}
-    </div>
-  );
+/** Prompt slot shown above the board/buttons — fixed structure so nothing jumps
+ *  between idle, running and finished states. */
+function Prompt({ running, over, elapsed, correct, wrong, idle, children }: { running: boolean; over: boolean; elapsed: number; correct: number; wrong: number; idle: string; children?: React.ReactNode }) {
+  if (running) return <>{children}</>;
+  if (over) return <span className="ct-idle"><b>{correct}</b> correct in {mmss(elapsed)}{wrong > 0 ? ` · ${wrong} missed` : ''}</span>;
+  return <span className="ct-idle">{idle}</span>;
 }
 
 function ColorMode() {
@@ -108,8 +100,8 @@ function ColorMode() {
       setFb('ok');
       window.setTimeout(() => { setFb(null); setTarget(randomSquare()); }, 350);
     } else {
-      // Wrong: count it, show it, and stay on this square so guessing can't farm
-      // points — you have to actually get it right to move on.
+      // Wrong: count it, show it, and stay on this square so guessing one colour
+      // can't farm points — you have to actually get it right to move on.
       setWrong((w) => w + 1);
       setFb('fail');
       window.setTimeout(() => setFb(null), 600);
@@ -118,23 +110,18 @@ function ColorMode() {
 
   return (
     <div className="ct-pane">
-      <SessionBar running={running} elapsed={elapsed} correct={correct} onFinish={finish} />
-      {running ? (
-        <>
-          <div className={'ct-prompt' + (fb ? ' f-' + fb : '')}>
-            <span className="ct-coord">{target}</span>
-            {fb === 'ok' && <span className="ct-check ok">✓</span>}
-            {fb === 'fail' && <span className="ct-check fail">✗ it&apos;s {isLight(target) ? 'light' : 'dark'}</span>}
-          </div>
-          <div className="ct-color-btns">
-            <button className="ct-color-btn light" onClick={() => answer(true)}>Light</button>
-            <button className="ct-color-btn dark" onClick={() => answer(false)}>Dark</button>
-          </div>
-        </>
-      ) : (
-        <StartCard over={over} correct={correct} wrong={wrong} elapsed={elapsed} onStart={begin}
-          blurb="A coordinate is shown — say whether it's a light or dark square. Take your time; press Finish when you're done." />
-      )}
+      <SessionBar running={running} over={over} elapsed={elapsed} correct={correct} onStart={begin} onFinish={finish} />
+      <div className={'ct-prompt' + (fb ? ' f-' + fb : '')}>
+        <Prompt running={running} over={over} elapsed={elapsed} correct={correct} wrong={wrong} idle="Light or dark square?">
+          <span className="ct-coord">{target}</span>
+          {fb === 'ok' && <span className="ct-check ok">✓</span>}
+          {fb === 'fail' && <span className="ct-check fail">✗ it&apos;s {isLight(target) ? 'light' : 'dark'}</span>}
+        </Prompt>
+      </div>
+      <div className="ct-color-btns">
+        <button className="ct-color-btn light" onClick={() => answer(true)} disabled={!running}>Light</button>
+        <button className="ct-color-btn dark" onClick={() => answer(false)} disabled={!running}>Dark</button>
+      </div>
     </div>
   );
 }
@@ -160,25 +147,21 @@ function FindMode() {
     }
   };
 
+  // The board stays centred and in the same place in every state (idle/running/
+  // finished); only the prompt above it changes. Controls live in the bar.
   return (
     <div className="ct-pane ct-find">
-      <SessionBar running={running} elapsed={elapsed} correct={correct} onFinish={finish}>
+      <SessionBar running={running} over={over} elapsed={elapsed} correct={correct} onStart={begin} onFinish={finish}>
         <label className="ct-toggle"><input type="checkbox" checked={showCoords} onChange={(e) => setShowCoords(e.target.checked)} /> Coords</label>
         <button className="ct-flip" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip</button>
       </SessionBar>
       <div className="ct-persp">Board from <b>{orientation === 'white' ? 'White' : 'Black'}</b>’s side</div>
-      {running ? (
-        <>
-          <div className="ct-prompt small">Find <span className="ct-coord">{target}</span></div>
-          <CoordBoard orientation={orientation} onPick={pick} flash={flash} interactive showCoords={showCoords} />
-        </>
-      ) : (
-        <div className="ct-find-row">
-          <CoordBoard orientation={orientation} onPick={() => {}} flash={null} interactive={false} showCoords={showCoords} />
-          <StartCard over={over} correct={correct} wrong={wrong} elapsed={elapsed} onStart={begin}
-            blurb="A coordinate is named — click that square on the board. Flip the board or show the edge coordinates from the bar above." />
-        </div>
-      )}
+      <div className="ct-prompt small">
+        <Prompt running={running} over={over} elapsed={elapsed} correct={correct} wrong={wrong} idle="Press Start, then click the named square">
+          Find <span className="ct-coord">{target}</span>
+        </Prompt>
+      </div>
+      <CoordBoard orientation={orientation} onPick={running ? pick : () => {}} flash={flash} interactive={running} showCoords={showCoords} />
     </div>
   );
 }
@@ -242,6 +225,14 @@ function ReplayMode() {
     setPly(0); setSelected(null); setLastMove(null); setWrong(null);
   }, [gameIdx]);
 
+  // Keep the move to play in view as the game advances (scroll the list, not the page).
+  const movesRef = useRef<HTMLOListElement | null>(null);
+  useEffect(() => {
+    const ol = movesRef.current;
+    const next = ol?.querySelector<HTMLElement>('.ct-ply.next');
+    if (ol && next) ol.scrollTop = next.offsetTop - ol.clientHeight / 2;
+  }, [ply]);
+
   const boardChess = useMemo(() => new Chess(fen), [fen]);
   const done = ply >= moves.length;
   const expected = done ? null : moves[ply];
@@ -304,6 +295,21 @@ function ReplayMode() {
 
   return (
     <div className="ct-replay">
+      {/* Move list on the left — its own scroll area, so long games don't make
+          you scroll the whole page, and it never drops out of view. */}
+      <aside className="ct-replay-moves ps-block">
+        <div className="ps-h">Moves · {Math.ceil(moves.length / 2)}</div>
+        <ol className="ps-moves ct-moves" ref={movesRef}>
+          {rows.map((r) => (
+            <li className="ps-move-row" key={r.n}>
+              <span className="ps-move-no num">{r.n}.</span>
+              <span className={'ct-ply' + (r.wPly < ply ? ' done' : '') + (r.wPly === ply ? ' next' : '')}>{r.w}</span>
+              <span className={'ct-ply' + (r.b ? (r.bPly < ply ? ' done' : '') + (r.bPly === ply ? ' next' : '') : '')}>{r.b ?? ''}</span>
+            </li>
+          ))}
+        </ol>
+      </aside>
+
       <div className="ct-replay-board">
         <Board
           chess={boardChess}
@@ -346,19 +352,6 @@ function ReplayMode() {
             <button className="ps-btn" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip board</button>
             <button className="ps-btn" onClick={restart} disabled={ply === 0}>Restart</button>
           </div>
-        </div>
-
-        <div className="ps-block ct-moves-block">
-          <div className="ps-h">Moves · {Math.ceil(moves.length / 2)}</div>
-          <ol className="ps-moves ct-moves">
-            {rows.map((r) => (
-              <li className="ps-move-row" key={r.n}>
-                <span className="ps-move-no num">{r.n}.</span>
-                <span className={'ct-ply' + (r.wPly < ply ? ' done' : '') + (r.wPly === ply ? ' next' : '')}>{r.w}</span>
-                <span className={'ct-ply' + (r.b ? (r.bPly < ply ? ' done' : '') + (r.bPly === ply ? ' next' : '') : '')}>{r.b ?? ''}</span>
-              </li>
-            ))}
-          </ol>
         </div>
       </aside>
     </div>
