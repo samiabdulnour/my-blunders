@@ -336,17 +336,17 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
     return () => { cancelled = true; };
   }, [node?.fen]);
 
-  // Only analyse the parent when *your* move reached this node (so we can show
-  // what you should have played); skip for the opponent's moves and the root.
+  // Analyse the parent for *every* move (your moves and the opponent's), so the
+  // best-vs-played arrows are consistent on every node; skip only the root.
   const movedColor = node ? ((node.fen.split(' ')[1] ?? 'w') === 'w' ? 'b' : 'w') : null;
   const reachedByUser = !!node && node.depth > 0 && movedColor === color;
   useEffect(() => {
-    if (!reachedByUser || !parentFen) { setParentEngine(null); return; }
+    if (!node || node.depth === 0 || !parentFen) { setParentEngine(null); return; }
     let cancelled = false;
     setParentEngine(null);
     evalPosition(parentFen).then((e) => { if (!cancelled) setParentEngine(e); });
     return () => { cancelled = true; };
-  }, [parentFen, reachedByUser]);
+  }, [node?.fen, parentFen]);
 
   if (!node) {
     return (
@@ -363,25 +363,16 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
   const yours = [...node.children].sort((a, b) => b.games - a.games);
   const yourMain = yours[0];
 
-  // Green = the right move: the engine's best (authoritative, works even where
-  // theory runs out), falling back to theory's main line. Red = the move you
-  // got wrong here (a blundered or off-book continuation) — only on your turn.
-  const greenUci = engine?.bestUci || theory?.moves[0]?.uci || '';
+  // Best move at the current position (for tagging the "played in practice" list).
   const greenSan = engine?.bestSan || theory?.moves[0]?.san;
-  const blunderChild = yours.filter((c) => c.blunders > 0).sort((a, b) => b.blunders - a.blunders)[0];
-  const offBook = !!yourMain && !!theory && !theory.moves.some((m) => m.san === yourMain.san);
-  const wrong = userTurn ? blunderChild ?? (offBook ? yourMain : undefined) : undefined;
-  // Did your move match the engine's best at the parent?
+  // Did the move that reached this node match the engine's best at the parent?
   const parentBestUci = parentEngine?.bestUci || '';
   const playedBest = !!parentBestUci && !!node.hl && parentBestUci.slice(0, 2) === node.hl[0] && parentBestUci.slice(2, 4) === node.hl[1];
+  // Consistent arrows on every node: green = the best move the player who moved
+  // here could have made (yours OR the opponent's), red = what they actually
+  // played, when it wasn't the best. Derived from the position *before* the move.
   const arrows: BoardArrow[] = [];
-  if (userTurn) {
-    // Your turn: green = the move to play from here; red = a wrong continuation.
-    if (greenUci) arrows.push({ from: greenUci.slice(0, 2), to: greenUci.slice(2, 4), kind: 'good' });
-    if (wrong?.hl && wrong.san !== greenSan) arrows.push({ from: wrong.hl[0], to: wrong.hl[1], kind: 'bad' });
-  } else if (reachedByUser) {
-    // You just moved to get here: green = the best move you could have played;
-    // red = what you actually played, when it wasn't the best.
+  if (node.depth > 0) {
     if (parentBestUci) arrows.push({ from: parentBestUci.slice(0, 2), to: parentBestUci.slice(2, 4), kind: 'good' });
     if (node.hl && !playedBest) arrows.push({ from: node.hl[0], to: node.hl[1], kind: 'bad' });
   }
@@ -422,8 +413,8 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
       </div>
 
       <div className="cd-sec">
-        <div className="cd-eyebrow">{userTurn ? 'Right continuation' : reachedByUser ? 'Best move for you here' : 'Best move here'}</div>
-        {reachedByUser ? (
+        <div className="cd-eyebrow">{node.depth > 0 ? 'Best move here' : 'Best first move'}</div>
+        {node.depth > 0 ? (
           parentEngine ? (
             <>
               <div className="cd-engine">
@@ -432,27 +423,18 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
               </div>
               <div className="cd-verdict">
                 {playedBest
-                  ? <>You played the top engine move — <b className="good">{node.san}</b>. ✓</>
-                  : <>You played <b className={node.deviation ? 'bad' : ''}>{node.san}</b>; the engine prefers <b className="good">{parentEngine.bestSan}</b> ({evalText(parentEngine)}).</>}
+                  ? <>{reachedByUser ? 'You' : 'The opponent'} played the top engine move — <b className="good">{node.san}</b>. ✓</>
+                  : <>{reachedByUser ? 'You' : 'The opponent'} played <b className={node.deviation ? 'bad' : ''}>{node.san}</b>; the engine prefers <b className="good">{parentEngine.bestSan}</b> ({evalText(parentEngine)}).</>}
               </div>
             </>
           ) : (
-            <div className="cd-note">Analyzing your move…</div>
+            <div className="cd-note">Analyzing the move…</div>
           )
         ) : engine ? (
-          <>
-            <div className="cd-engine">
-              <span className="ce-move">{engine.bestSan || '—'}</span>
-              <span className="ce-eval num">{evalText(engine)}</span>
-            </div>
-            {userTurn && yourMain && (
-              <div className="cd-verdict">
-                {yourMain.san === engine.bestSan
-                  ? <>You play the top engine move — <b className="good">{yourMain.san}</b>. ✓</>
-                  : <>You play <b className={wrong ? 'bad' : ''}>{yourMain.san}</b>; the engine prefers <b className="good">{engine.bestSan}</b> ({evalText(engine)}).</>}
-              </div>
-            )}
-          </>
+          <div className="cd-engine">
+            <span className="ce-move">{engine.bestSan || '—'}</span>
+            <span className="ce-eval num">{evalText(engine)}</span>
+          </div>
         ) : engineLoading ? (
           <div className="cd-note">Analyzing position…</div>
         ) : (
