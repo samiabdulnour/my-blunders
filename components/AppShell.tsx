@@ -17,9 +17,9 @@ interface AppShellProps {
   onToggleRandom: () => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
-  /** Puzzle ↔ Opening mode for the shared topbar switch. */
-  mode: 'puzzle' | 'opening';
-  onModeChange: (mode: 'puzzle' | 'opening') => void;
+  /** Puzzle · Opening · Play mode for the shared topbar switch. */
+  mode: 'puzzle' | 'opening' | 'play';
+  onModeChange: (mode: 'puzzle' | 'opening' | 'play') => void;
   /** Sidebar + main, supplied by the page. */
   children: React.ReactNode;
 }
@@ -129,6 +129,15 @@ export function AppShell({
             onClick={() => onModeChange('opening')}
           >
             Opening
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'play'}
+            className={mode === 'play' ? 'on' : ''}
+            onClick={() => onModeChange('play')}
+          >
+            Play
           </button>
         </div>
 

@@ -7,6 +7,7 @@ import { AppShell } from '@/components/AppShell';
 import { Board } from '@/components/Board';
 import { OpeningClinic } from '@/components/OpeningClinic';
 import { OpeningSidebar } from '@/components/OpeningSidebar';
+import { PlayMode } from '@/components/PlayMode';
 import { ClinicProvider } from '@/lib/clinic-context';
 import { Sidebar } from '@/components/Sidebar';
 import { ResultPanel } from '@/components/ResultPanel';
@@ -14,6 +15,7 @@ import { Onboarding } from '@/components/Onboarding';
 import { BrandMark } from '@/components/BrandMark';
 import { apiUrl } from '@/lib/api';
 import { ecoName } from '@/lib/eco-names';
+import { clearElo } from '@/lib/player-elo';
 import { FAMOUS_PUZZLES } from '@/lib/famous-puzzles';
 import type {
   EcoFilter,
@@ -51,8 +53,8 @@ const DEFAULT_STATS: SessionStats = { correct: 0, wrong: 0, streak: 0, bestStrea
 
 export default function Page() {
   const [all, setAll] = useState<Puzzle[]>([]);
-  // Puzzle solver vs. Opening Clinic — the two modes of the trainer.
-  const [mode, setMode] = useState<'puzzle' | 'opening'>('puzzle');
+  // Puzzle solver · Opening Clinic · Assisted Play — the modes of the trainer.
+  const [mode, setMode] = useState<'puzzle' | 'opening' | 'play'>('puzzle');
   // Bumped on "Clear all" to remount the clinic so it drops its in-memory games
   // (clearAll() has emptied the store; the provider re-reads it on remount).
   const [clinicEpoch, setClinicEpoch] = useState(0);
@@ -663,6 +665,7 @@ export default function Page() {
   /* ── Wipe imported puzzles + progress, reset to seed state ── */
   const handleClearAll = useCallback(() => {
     clearAll();
+    clearElo();
     // The famous library is guest-only. clearAll() deliberately keeps the saved
     // username, so an account-holder stays a non-guest and lands on an empty
     // queue (with the "import to begin" prompt) rather than the placeholders.
@@ -777,6 +780,10 @@ export default function Page() {
             <OpeningClinic />
           </div>
         </ClinicProvider>
+      ) : mode === 'play' ? (
+        <div className="main play-mode">
+          <PlayMode />
+        </div>
       ) : (
         <>
           <Sidebar

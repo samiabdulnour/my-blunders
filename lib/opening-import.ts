@@ -1,6 +1,7 @@
 import { apiUrl } from './api';
 import { parsePgn, oldestGameStartMs } from './pgn';
 import { summarizeGame, type OpeningGame } from './opening-tree';
+import { recordEloFromGames } from './player-elo';
 import {
   loadOpeningGames,
   saveOpeningGames,
@@ -108,6 +109,7 @@ async function buildOpeningCorpus(
       break;
     }
     fetchedSome = true;
+    recordEloFromGames(games, name); // also feeds the Assisted Play rating estimate
 
     const summaries: OpeningGame[] = [];
     for (const g of games) {
