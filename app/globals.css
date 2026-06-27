@@ -2072,10 +2072,18 @@ html[data-theme='dark'] .sq.cap-ring {
 .ps-verdict.q-mistake .ps-verdict-head { color: var(--coral); }
 .ps-verdict.q-blunder { background: var(--red-soft); }
 .ps-verdict.q-blunder .ps-verdict-head { color: var(--red); }
+/* Opening-book note (from the Lichess explorer) */
+.ps-book { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.5; }
+.ps-book b { color: var(--txt); font-weight: var(--fw-bold); }
+.ps-book.b-main { color: var(--green); }
+.ps-book.b-offbook { color: var(--yellow); }
+.ps-book-name { margin-top: 3px; font-size: var(--fs-micro); color: var(--txt-faint); text-transform: uppercase; letter-spacing: var(--track-caps); }
+
 .ps-controls { display: flex; flex-direction: column; gap: 10px; }
 .ps-btn { padding: 9px 12px; border: 1px solid var(--border2); border-radius: 4px; background: var(--bg); color: var(--txt); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
 .ps-btn:hover:not(:disabled) { border-color: var(--contour); }
 .ps-btn:disabled { opacity: 0.4; cursor: default; }
+.ps-btn.on { border-color: var(--coral); color: var(--coral); }
 .ps-new-label { display: block; font-size: var(--fs-micro); color: var(--txt-dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: var(--track-caps); }
 @media (max-width: 720px) {
   .play { flex-direction: column; align-items: center; gap: 18px; }

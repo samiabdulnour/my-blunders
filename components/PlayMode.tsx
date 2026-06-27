@@ -9,6 +9,7 @@ import {
   judgeMove,
   type MoveVerdict,
 } from '@/lib/play-engine';
+import { fetchTheory } from '@/lib/opening-explorer';
 import {
   effectiveElo,
   loadEstimatedElo,
@@ -22,6 +23,15 @@ import {
 type Color = 'w' | 'b';
 interface LastMove { from: string; to: string }
 
+/** Opening-book status of a move, from the Lichess explorer. */
+interface BookNote {
+  status: 'main' | 'book' | 'offbook';
+  /** Theory's most-played move from the position the move was made in. */
+  mainSan: string | null;
+  /** Opening name at the position, if the explorer knows it. */
+  name: string | null;
+}
+
 /** How much the strength buttons nudge the opponent Elo. */
 const ELO_STEP = 50;
 
@@ -33,18 +43,20 @@ const QUALITY_LABEL: Record<MoveVerdict['quality'], string> = {
 };
 
 /**
- * Assisted Play — play a full game against the engine sized to your rating, and
- * get told, move by move, where you went wrong and what the best move was.
+ * Assisted Play — play a full game against the engine sized to your rating, get
+ * told where you went wrong, and drill openings.
  *
- * The opponent samples from its top candidates with a temperature tied to the
- * target Elo (see lib/play-engine), so a lower setting genuinely plays weaker.
- * After every move you make, a full-strength check grades it and, when it's not
- * the best, surfaces the move you should have played — that's the "assisted"
- * part: you learn your mistakes in live play, not just in puzzles.
+ * Three things make it a coaching tool, not just a game:
+ *  · the opponent samples from its top moves with a temperature tied to a target
+ *    Elo, so it plays (and blunders) about as well as you;
+ *  · every move you make is judged at full strength, and — using the Lichess
+ *    opening explorer — flagged when it leaves book even if it isn't a mistake,
+ *    with the main-line move shown;
+ *  · "Move for both sides" lets you steer the opening into the exact line you
+ *    want to train (e.g. force 1.d4) before handing the opponent back to the
+ *    engine — no repeated take-backs.
  */
 export function PlayMode() {
-  // The authoritative game (kept in a ref so it carries full history for
-  // take-backs); `fen` mirrors it to drive renders.
   const gameRef = useRef(new Chess());
   const [fen, setFen] = useState(gameRef.current.fen());
   const [userColor, setUserColor] = useState<Color>('w');
@@ -52,17 +64,22 @@ export function PlayMode() {
   const [selected, setSelected] = useState<string | null>(null);
   const [lastMove, setLastMove] = useState<LastMove | null>(null);
   const [verdict, setVerdict] = useState<MoveVerdict | null>(null);
+  const [book, setBook] = useState<BookNote | null>(null);
   const [thinking, setThinking] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [manual, setManual] = useState(false);
 
   const [elo, setEloState] = useState(1500);
   const [estimated, setEstimated] = useState<number | null>(null);
   const [custom, setCustom] = useState(false);
-  // Read whenever the engine needs it, free of stale closures.
+
+  // Refs so async engine callbacks read live values, free of stale closures.
   const eloRef = useRef(elo);
   eloRef.current = elo;
   const userColorRef = useRef(userColor);
   userColorRef.current = userColor;
+  const manualRef = useRef(manual);
+  manualRef.current = manual;
 
   useEffect(() => {
     setEloState(effectiveElo());
@@ -71,23 +88,36 @@ export function PlayMode() {
   }, []);
 
   const boardChess = useMemo(() => new Chess(fen), [fen]);
-  const userTurn = boardChess.turn() === userColor && !result;
-  const inputLocked = thinking || !!result || !userTurn;
+  const sideToMove: Color = boardChess.turn();
+  // In manual mode either side is yours to move; otherwise only your colour.
+  const canMove = !thinking && !result && (manual || sideToMove === userColor);
 
   const legalFrom = useMemo(() => {
     const out: Record<string, Move[]> = {};
-    if (inputLocked) return out;
+    if (!canMove) return out;
     for (const m of boardChess.moves({ verbose: true })) (out[m.from] ??= []).push(m);
     return out;
-  }, [boardChess, inputLocked]);
+  }, [boardChess, canMove]);
 
-  /** Record the game result once the position is terminal. */
-  const finishIfOver = () => {
+  /** Opening-book status for a move played from `fen`. Null when out of known theory. */
+  const lookupBook = async (fenBefore: string, playedSan: string): Promise<BookNote | null> => {
+    const theory = await fetchTheory(fenBefore);
+    if (!theory || theory.moves.length === 0) return null;
+    const mainSan = theory.moves[0].san;
+    const inBook = theory.moves.some((m) => m.san === playedSan);
+    return {
+      status: playedSan === mainSan ? 'main' : inBook ? 'book' : 'offbook',
+      mainSan,
+      name: theory.opening?.name ?? null,
+    };
+  };
+
+  const finishIfOver = (): boolean => {
     const g = gameRef.current;
     if (!g.isGameOver()) return false;
     let text: string;
     if (g.isCheckmate()) {
-      const userLost = g.turn() === userColorRef.current; // side to move is mated
+      const userLost = g.turn() === userColorRef.current;
       text = userLost ? 'Checkmate — you lost.' : 'Checkmate — you won! ♚';
     } else if (g.isStalemate()) text = 'Stalemate — draw.';
     else if (g.isThreefoldRepetition()) text = 'Draw by repetition.';
@@ -97,7 +127,6 @@ export function PlayMode() {
     return true;
   };
 
-  /** Play one engine move from the current position (its turn). */
   const playEngineMove = async () => {
     const g = gameRef.current;
     const choice = await chooseEngineMove(g.fen(), eloRef.current);
@@ -109,20 +138,22 @@ export function PlayMode() {
     return choice;
   };
 
-  /** After the user moves: judge it at full strength, then let the engine reply. */
+  /** After your move (normal mode): judge it + look up book, then the engine replies. */
   const runEngineTurn = async (fenBefore: string, playedSan: string) => {
     setThinking(true);
+    const bookP = lookupBook(fenBefore, playedSan); // in parallel with the engine
     try {
       const g = gameRef.current;
-      if (finishIfOver()) return; // the user's move ended the game
-      // Best move in the position the user faced (for the verdict)…
+      if (finishIfOver()) {
+        setBook(await bookP);
+        return;
+      }
       const before = await bestLine(fenBefore);
-      // …and the engine's reply, whose top candidate doubles as the eval after
-      // the user's move.
       const choice = await chooseEngineMove(g.fen(), eloRef.current);
       setVerdict(
         judgeMove(before.cpWhite, before.san, before.uci, choice.bestCpWhite, userColorRef.current, playedSan),
       );
+      setBook(await bookP);
       if (choice.uci) {
         const em = applyUci(g, choice.uci);
         if (em) setLastMove({ from: em.from, to: em.to });
@@ -135,7 +166,7 @@ export function PlayMode() {
   };
 
   const applyUserMove = (m: { from: string; to: string; promotion?: string }) => {
-    if (inputLocked) return;
+    if (!canMove) return;
     const g = gameRef.current;
     const fenBefore = g.fen();
     let played: Move | null;
@@ -147,13 +178,21 @@ export function PlayMode() {
     if (!played) return;
     setSelected(null);
     setVerdict(null);
+    setBook(null);
     setLastMove({ from: played.from, to: played.to });
     setFen(g.fen());
-    void runEngineTurn(fenBefore, played.san);
+
+    if (manualRef.current) {
+      // Steering the opening — just annotate book, no engine reply.
+      finishIfOver();
+      void lookupBook(fenBefore, played.san).then(setBook);
+    } else {
+      void runEngineTurn(fenBefore, played.san);
+    }
   };
 
   const onSquareClick = (square: string) => {
-    if (inputLocked) return;
+    if (!canMove) return;
     if (selected) {
       const cands = (legalFrom[selected] ?? []).filter((mv) => mv.to === square);
       if (cands.length) {
@@ -162,7 +201,7 @@ export function PlayMode() {
       }
     }
     const piece = boardChess.get(square as Parameters<typeof boardChess.get>[0]);
-    setSelected(piece && piece.color === userColor ? square : null);
+    setSelected(piece && piece.color === sideToMove ? square : null);
   };
 
   const newGame = (color: Color) => {
@@ -175,9 +214,10 @@ export function PlayMode() {
     setSelected(null);
     setLastMove(null);
     setVerdict(null);
+    setBook(null);
     setResult(null);
-    if (color === 'b') {
-      // Engine has the first move.
+    // Engine opens only when you're Black and not steering moves yourself.
+    if (color === 'b' && !manualRef.current) {
       void (async () => {
         setThinking(true);
         try {
@@ -189,18 +229,40 @@ export function PlayMode() {
     }
   };
 
-  /** Undo back to the user's turn so they can try a better move. */
+  const toggleManual = () => {
+    const next = !manual;
+    setManual(next);
+    manualRef.current = next;
+    // Turning steering OFF while it's the opponent's move → let the engine play.
+    if (!next) {
+      const g = gameRef.current;
+      if (!g.isGameOver() && g.turn() !== userColorRef.current) {
+        void (async () => {
+          setThinking(true);
+          try {
+            await playEngineMove();
+            finishIfOver();
+          } finally {
+            setThinking(false);
+          }
+        })();
+      }
+    }
+  };
+
   const takeBack = () => {
     if (thinking) return;
     const g = gameRef.current;
     if (g.history().length === 0) return;
-    g.undo(); // the engine's reply (or the user's move if engine hasn't replied)
-    if (g.turn() !== userColorRef.current && g.history().length > 0) g.undo();
+    g.undo();
+    // In normal play, also undo your own move so it's your turn again.
+    if (!manualRef.current && g.turn() !== userColorRef.current && g.history().length > 0) g.undo();
     const hist = g.history({ verbose: true });
     const last = hist[hist.length - 1];
     setLastMove(last ? { from: last.from, to: last.to } : null);
     setSelected(null);
     setVerdict(null);
+    setBook(null);
     setResult(null);
     setFen(g.fen());
   };
@@ -213,10 +275,19 @@ export function PlayMode() {
   };
   const resetEloToEstimate = () => {
     saveEloOverride(null);
-    const est = loadEstimatedElo();
-    setEloState(est ?? 1500);
+    setEloState(loadEstimatedElo() ?? 1500);
     setCustom(false);
   };
+
+  const statusHead = result
+    ? 'Game over'
+    : thinking
+      ? 'Thinking…'
+      : manual
+        ? `Move for ${sideToMove === 'w' ? 'White' : 'Black'}`
+        : sideToMove === userColor
+          ? 'Your move'
+          : 'Engine to move';
 
   return (
     <div className="play">
@@ -232,7 +303,7 @@ export function PlayMode() {
           flashFail={null}
           bounceBack={null}
           introMove={null}
-          revealed={inputLocked}
+          revealed={!canMove}
           onSquareClick={onSquareClick}
           onDragMove={(mv) => applyUserMove(mv)}
         />
@@ -256,24 +327,44 @@ export function PlayMode() {
         </div>
 
         <div className="ps-block">
-          <div className="ps-h">{result ? 'Game over' : thinking ? 'Thinking…' : userTurn ? 'Your move' : 'Engine to move'}</div>
+          <div className="ps-h">{statusHead}</div>
           {result ? (
             <div className="ps-result">{result}</div>
-          ) : verdict ? (
-            <div className={'ps-verdict q-' + verdict.quality}>
-              <div className="ps-verdict-head">{verdict.isBest ? 'Best move ✓' : QUALITY_LABEL[verdict.quality]}</div>
-              {verdict.quality !== 'ok' && verdict.bestSan && (
-                <div className="ps-verdict-body">
-                  Best was <b>{verdict.bestSan}</b> <span className="num">({fmtEval(verdict.evalAfterPawns)} after yours)</span>
+          ) : (
+            <>
+              {verdict ? (
+                <div className={'ps-verdict q-' + verdict.quality}>
+                  <div className="ps-verdict-head">{verdict.isBest ? 'Best move ✓' : QUALITY_LABEL[verdict.quality]}</div>
+                  {verdict.quality !== 'ok' && verdict.bestSan && (
+                    <div className="ps-verdict-body">
+                      Best was <b>{verdict.bestSan}</b> <span className="num">({fmtEval(verdict.evalAfterPawns)} after yours)</span>
+                    </div>
+                  )}
+                </div>
+              ) : !manual && (
+                <div className="ps-hint">Make a move — I&apos;ll flag any mistakes and show the best reply.</div>
+              )}
+              {book && (
+                <div className={'ps-book b-' + book.status}>
+                  {book.status === 'offbook'
+                    ? <>Out of book — theory plays <b>{book.mainSan}</b></>
+                    : book.status === 'main'
+                      ? 'Main line ✓'
+                      : 'Book move'}
+                  {book.name && <div className="ps-book-name">{book.name}</div>}
                 </div>
               )}
-            </div>
-          ) : (
-            <div className="ps-hint">Make a move — I&apos;ll flag any mistakes and show the best reply.</div>
+              {manual && !book && (
+                <div className="ps-hint">Playing both sides — set up your line, then turn steering off to face the engine.</div>
+              )}
+            </>
           )}
         </div>
 
         <div className="ps-block ps-controls">
+          <button className={'ps-btn' + (manual ? ' on' : '')} onClick={toggleManual} aria-pressed={manual}>
+            {manual ? 'Steering opponent · on' : 'Move for both sides'}
+          </button>
           <button className="ps-btn" onClick={takeBack} disabled={thinking || gameRef.current.history().length === 0}>
             Take back
           </button>
