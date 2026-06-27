@@ -2153,6 +2153,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .ps-result { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
 .ps-verdict { border-radius: 4px; padding: 10px 12px; background: var(--bg3); }
 .ps-verdict-head { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); font-weight: var(--fw-bold); color: var(--txt-dim); }
+.ps-verdict-move { display: inline-block; margin-right: 7px; padding: 1px 6px; border-radius: 4px; background: var(--bg3); color: var(--txt); font-variant-numeric: tabular-nums; }
 .ps-verdict-body { margin-top: 6px; font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.5; }
 .ps-verdict-body b { color: var(--txt); }
 .ps-verdict.q-ok { background: var(--green-soft); }

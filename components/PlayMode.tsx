@@ -35,6 +35,11 @@ interface BookNote {
 
 /** How much the strength buttons nudge the opponent Elo. */
 const ELO_STEP = 50;
+/** Pause between showing your move's rating and the engine's reply, so the
+ *  rating reads as *yours* (the board still shows your move) rather than the
+ *  engine's. */
+const ENGINE_REPLY_DELAY = 450;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 const QUALITY_LABEL: Record<MoveVerdict['quality'], string> = {
   ok: 'Good move',
@@ -75,6 +80,9 @@ export function PlayMode() {
   const [viewPly, setViewPly] = useState<number | null>(null);
   /** Move-list panel open by default; collapsible so it isn't in the way. */
   const [movesOpen, setMovesOpen] = useState(true);
+  /** SAN of your move the current verdict refers to (so the rating clearly
+   *  names *your* move, never the engine's reply). */
+  const [ratedSan, setRatedSan] = useState<string | null>(null);
   /** Opening name/ECO for the current position (from the explorer), kept sticky
    *  so it still reads "Dutch Defense" once you're past named theory. */
   const [opening, setOpening] = useState<{ eco: string; name: string } | null>(null);
@@ -197,7 +205,10 @@ export function PlayMode() {
     return choice;
   };
 
-  /** After your move (normal mode): judge it + look up book, then the engine replies. */
+  /** After your move (normal mode): judge it + look up book, show that verdict
+   *  while the board still shows *your* move, then — after a beat — the engine
+   *  replies. Surfacing the rating before the reply (not at the same instant) is
+   *  what stops it reading as a rating of the engine's move. */
   const runEngineTurn = async (fenBefore: string, playedSan: string) => {
     setThinking(true);
     const bookP = lookupBook(fenBefore, playedSan); // in parallel with the engine
@@ -213,6 +224,7 @@ export function PlayMode() {
         judgeMove(before.cpWhite, before.san, before.uci, choice.bestCpWhite, userColorRef.current, playedSan),
       );
       setBook(await bookP);
+      await sleep(ENGINE_REPLY_DELAY);
       if (choice.uci) {
         const em = applyUci(g, choice.uci);
         if (em) setLastMove({ from: em.from, to: em.to });
@@ -247,8 +259,12 @@ export function PlayMode() {
     setSelected(null);
     setLastMove({ from: played.from, to: played.to });
     setFen(g.fen());
-    // Note: we deliberately keep the previous verdict/book visible until the new
-    // ones are ready — blanking them each move made the panel blink.
+    // Clear the previous rating now so a stale verdict never lingers onto the new
+    // position or the engine's reply; the fresh one appears (board still on your
+    // move) from runEngineTurn.
+    setRatedSan(played.san);
+    setVerdict(null);
+    setBook(null);
 
     if (manualRef.current) {
       // Steering the opening — just annotate book, no engine reply.
@@ -286,6 +302,7 @@ export function PlayMode() {
     setResult(null);
     setOpening(null);
     setViewPly(null);
+    setRatedSan(null);
     // Engine opens only when you're Black and not steering moves yourself.
     if (color === 'b' && !manualRef.current) {
       void (async () => {
@@ -335,6 +352,7 @@ export function PlayMode() {
     setBook(null);
     setResult(null);
     setViewPly(null);
+    setRatedSan(null);
     setFen(g.fen());
   };
 
@@ -415,6 +433,7 @@ export function PlayMode() {
               {verdict ? (
                 <div className={'ps-verdict q-' + (verdict.isBest ? 'best' : verdict.quality)}>
                   <div className="ps-verdict-head">
+                    {ratedSan && <span className="ps-verdict-move">{ratedSan}</span>}
                     {verdict.isBest
                       ? 'Best move !'
                       : verdict.quality === 'ok'
@@ -427,7 +446,7 @@ export function PlayMode() {
                     </div>
                   )}
                 </div>
-              ) : !manual && (
+              ) : !manual && !thinking && sideToMove === userColor && (
                 <div className="ps-hint">Make a move — I&apos;ll flag any mistakes and show the best reply.</div>
               )}
               {book && (

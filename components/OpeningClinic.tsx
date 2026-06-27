@@ -152,6 +152,15 @@ export function OpeningClinic() {
   }, [layout]);
   const selected = (selectedId && byId[selectedId]) || defaultSel;
 
+  // FEN of the position *before* the selected node's move — so the detail panel
+  // can show the best move for the player who made that move.
+  const parentFen = useMemo(() => {
+    if (!selected) return null;
+    const segs = selected.pathId.split('/');
+    if (segs.length <= 1) return tree.fen; // parent is the start position
+    return findByPath(tree, segs.slice(0, -1).join('/'))?.fen ?? null;
+  }, [selected, tree]);
+
   // Drill = re-root the tree at a node. Used by the breadcrumb, the sidebar, and
   // the continuation list — but NOT by clicking a board (that only selects).
   const drill = (pathId: string) => { setFocus(pathId); setSelectedId(pathId); };
@@ -257,6 +266,7 @@ export function OpeningClinic() {
       {detailOpen && (
         <DetailPanel
           node={selected}
+          parentFen={parentFen}
           color={color}
           onClose={() => setDetailOpen(false)}
           onPickMove={(san) => {
@@ -301,11 +311,14 @@ function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: La
   );
 }
 
-function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: LaidNode | null; color: 'w' | 'b'; onClose: () => void; onPickMove: (san: string) => void; onDrill: (items: DrillItem[]) => void }) {
+function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: { node: LaidNode | null; parentFen: string | null; color: 'w' | 'b'; onClose: () => void; onPickMove: (san: string) => void; onDrill: (items: DrillItem[]) => void }) {
   const [theory, setTheory] = useState<Theory | null>(null);
   const [theoryLoading, setTheoryLoading] = useState(false);
   const [engine, setEngine] = useState<EngineEval | null>(null);
   const [engineLoading, setEngineLoading] = useState(false);
+  // Engine eval of the position *before* this node's move — the best move the
+  // player who moved here should have chosen.
+  const [parentEngine, setParentEngine] = useState<EngineEval | null>(null);
 
   useEffect(() => {
     if (!node) { setTheory(null); return; }
@@ -322,6 +335,18 @@ function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: Laid
     evalPosition(node.fen).then((e) => { if (!cancelled) setEngine(e); }).finally(() => { if (!cancelled) setEngineLoading(false); });
     return () => { cancelled = true; };
   }, [node?.fen]);
+
+  // Only analyse the parent when *your* move reached this node (so we can show
+  // what you should have played); skip for the opponent's moves and the root.
+  const movedColor = node ? ((node.fen.split(' ')[1] ?? 'w') === 'w' ? 'b' : 'w') : null;
+  const reachedByUser = !!node && node.depth > 0 && movedColor === color;
+  useEffect(() => {
+    if (!reachedByUser || !parentFen) { setParentEngine(null); return; }
+    let cancelled = false;
+    setParentEngine(null);
+    evalPosition(parentFen).then((e) => { if (!cancelled) setParentEngine(e); });
+    return () => { cancelled = true; };
+  }, [parentFen, reachedByUser]);
 
   if (!node) {
     return (
@@ -346,9 +371,20 @@ function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: Laid
   const blunderChild = yours.filter((c) => c.blunders > 0).sort((a, b) => b.blunders - a.blunders)[0];
   const offBook = !!yourMain && !!theory && !theory.moves.some((m) => m.san === yourMain.san);
   const wrong = userTurn ? blunderChild ?? (offBook ? yourMain : undefined) : undefined;
+  // Did your move match the engine's best at the parent?
+  const parentBestUci = parentEngine?.bestUci || '';
+  const playedBest = !!parentBestUci && !!node.hl && parentBestUci.slice(0, 2) === node.hl[0] && parentBestUci.slice(2, 4) === node.hl[1];
   const arrows: BoardArrow[] = [];
-  if (greenUci) arrows.push({ from: greenUci.slice(0, 2), to: greenUci.slice(2, 4), kind: 'good' });
-  if (wrong?.hl && wrong.san !== greenSan) arrows.push({ from: wrong.hl[0], to: wrong.hl[1], kind: 'bad' });
+  if (userTurn) {
+    // Your turn: green = the move to play from here; red = a wrong continuation.
+    if (greenUci) arrows.push({ from: greenUci.slice(0, 2), to: greenUci.slice(2, 4), kind: 'good' });
+    if (wrong?.hl && wrong.san !== greenSan) arrows.push({ from: wrong.hl[0], to: wrong.hl[1], kind: 'bad' });
+  } else if (reachedByUser) {
+    // You just moved to get here: green = the best move you could have played;
+    // red = what you actually played, when it wasn't the best.
+    if (parentBestUci) arrows.push({ from: parentBestUci.slice(0, 2), to: parentBestUci.slice(2, 4), kind: 'good' });
+    if (node.hl && !playedBest) arrows.push({ from: node.hl[0], to: node.hl[1], kind: 'bad' });
+  }
 
   return (
     <aside className="clinic-detail">
@@ -386,8 +422,24 @@ function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: Laid
       </div>
 
       <div className="cd-sec">
-        <div className="cd-eyebrow">{userTurn ? 'Right continuation' : 'Best move here'}</div>
-        {engine ? (
+        <div className="cd-eyebrow">{userTurn ? 'Right continuation' : reachedByUser ? 'Best move for you here' : 'Best move here'}</div>
+        {reachedByUser ? (
+          parentEngine ? (
+            <>
+              <div className="cd-engine">
+                <span className="ce-move">{parentEngine.bestSan || '—'}</span>
+                <span className="ce-eval num">{evalText(parentEngine)}</span>
+              </div>
+              <div className="cd-verdict">
+                {playedBest
+                  ? <>You played the top engine move — <b className="good">{node.san}</b>. ✓</>
+                  : <>You played <b className={node.deviation ? 'bad' : ''}>{node.san}</b>; the engine prefers <b className="good">{parentEngine.bestSan}</b> ({evalText(parentEngine)}).</>}
+              </div>
+            </>
+          ) : (
+            <div className="cd-note">Analyzing your move…</div>
+          )
+        ) : engine ? (
           <>
             <div className="cd-engine">
               <span className="ce-move">{engine.bestSan || '—'}</span>
