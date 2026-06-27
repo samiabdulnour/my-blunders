@@ -69,6 +69,10 @@ export function PlayMode() {
   const [thinking, setThinking] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [manual, setManual] = useState(false);
+  /** Ply being reviewed via the move list (null = the live, latest position).
+   *  Scrubbing back is non-destructive; playing a move from a past ply branches
+   *  there (the moves after it are dropped). */
+  const [viewPly, setViewPly] = useState<number | null>(null);
   /** Opening name/ECO for the current position (from the explorer), kept sticky
    *  so it still reads "Dutch Defense" once you're past named theory. */
   const [opening, setOpening] = useState<{ eco: string; name: string } | null>(null);
@@ -109,9 +113,17 @@ export function PlayMode() {
     return () => { cancelled = true; };
   }, [fen]);
 
-  const boardChess = useMemo(() => new Chess(fen), [fen]);
+  // Full move history (re-read each render; `fen` changes drive re-renders).
+  const history = gameRef.current.history({ verbose: true });
+  const totalPlies = history.length;
+  // Which position the board shows: a reviewed past ply, or the live position.
+  const atPast = viewPly !== null && viewPly < totalPlies;
+  const viewFen = atPast ? fenAtPly(history, viewPly as number) : fen;
+
+  const boardChess = useMemo(() => new Chess(viewFen), [viewFen]);
   const sideToMove: Color = boardChess.turn();
   // In manual mode either side is yours to move; otherwise only your colour.
+  // Reviewing a past position is fine to move from — it branches there.
   const canMove = !thinking && !result && (manual || sideToMove === userColor);
 
   const legalFrom = useMemo(() => {
@@ -120,6 +132,29 @@ export function PlayMode() {
     for (const m of boardChess.moves({ verbose: true })) (out[m.from] ??= []).push(m);
     return out;
   }, [boardChess, canMove]);
+
+  // Highlight the move that reached the reviewed ply (else the live last move).
+  const viewLast = atPast ? history[(viewPly as number) - 1] : null;
+  const hlFrom = atPast ? viewLast?.from ?? null : lastMove?.from ?? null;
+  const hlTo = atPast ? viewLast?.to ?? null : lastMove?.to ?? null;
+
+  // Move list rows (white ply | black ply per move number). The "current" ply is
+  // the reviewed one, or the latest when live.
+  const curPly = atPast ? (viewPly as number) : totalPlies;
+  const moveRows: { n: number; w: Move; wPly: number; b: Move | null; bPly: number }[] = [];
+  for (let i = 0; i < history.length; i += 2) {
+    moveRows.push({ n: i / 2 + 1, w: history[i], wPly: i + 1, b: history[i + 1] ?? null, bPly: i + 2 });
+  }
+  const goPly = (n: number) => setViewPly(n >= totalPlies ? null : n);
+  const movesRef = useRef<HTMLOListElement | null>(null);
+
+  // Keep the active ply in view as the game grows or you scrub. Scroll the list
+  // element directly (not scrollIntoView, which could also scroll the page).
+  useEffect(() => {
+    const ol = movesRef.current;
+    const cur = ol?.querySelector<HTMLElement>('.ps-ply.cur');
+    if (ol && cur) ol.scrollTop = cur.offsetTop - ol.clientHeight / 2 + cur.offsetHeight / 2;
+  }, [curPly, totalPlies]);
 
   /** Opening-book status for a move played from `fen`. Null when out of known theory. */
   const lookupBook = async (fenBefore: string, playedSan: string): Promise<BookNote | null> => {
@@ -190,6 +225,15 @@ export function PlayMode() {
   const applyUserMove = (m: { from: string; to: string; promotion?: string }) => {
     if (!canMove) return;
     const g = gameRef.current;
+    // Branching from a reviewed position: drop the moves after it, then play on
+    // from there (so the move list doubles as a multi-ply take-back).
+    if (viewPly !== null && viewPly < g.history().length) {
+      while (g.history().length > viewPly) g.undo();
+      setVerdict(null);
+      setBook(null);
+      setResult(null);
+    }
+    setViewPly(null);
     const fenBefore = g.fen();
     let played: Move | null;
     try {
@@ -239,6 +283,7 @@ export function PlayMode() {
     setBook(null);
     setResult(null);
     setOpening(null);
+    setViewPly(null);
     // Engine opens only when you're Black and not steering moves yourself.
     if (color === 'b' && !manualRef.current) {
       void (async () => {
@@ -287,6 +332,7 @@ export function PlayMode() {
     setVerdict(null);
     setBook(null);
     setResult(null);
+    setViewPly(null);
     setFen(g.fen());
   };
 
@@ -320,8 +366,8 @@ export function PlayMode() {
           orientation={orientation === 'w' ? 'white' : 'black'}
           selected={selected}
           legalFrom={legalFrom}
-          lastFrom={lastMove?.from ?? null}
-          lastTo={lastMove?.to ?? null}
+          lastFrom={hlFrom}
+          lastTo={hlTo}
           flashOk={null}
           flashFail={null}
           bounceBack={null}
@@ -365,8 +411,14 @@ export function PlayMode() {
           ) : (
             <>
               {verdict ? (
-                <div className={'ps-verdict q-' + verdict.quality}>
-                  <div className="ps-verdict-head">{verdict.isBest ? 'Best move ✓' : QUALITY_LABEL[verdict.quality]}</div>
+                <div className={'ps-verdict q-' + (verdict.isBest ? 'best' : verdict.quality)}>
+                  <div className="ps-verdict-head">
+                    {verdict.isBest
+                      ? 'Best move !'
+                      : verdict.quality === 'ok'
+                        ? 'Good move ✓'
+                        : QUALITY_LABEL[verdict.quality]}
+                  </div>
                   {verdict.quality !== 'ok' && verdict.bestSan && (
                     <div className="ps-verdict-body">
                       Best was <b>{verdict.bestSan}</b> <span className="num">({fmtEval(verdict.evalAfterPawns)} after yours)</span>
@@ -393,6 +445,45 @@ export function PlayMode() {
           )}
         </div>
 
+        <div className="ps-block ps-moves-block">
+          <div className="ps-h">
+            Moves
+            {atPast && (
+              <button className="ps-live-link" onClick={() => setViewPly(null)}>● jump to latest</button>
+            )}
+          </div>
+          {moveRows.length === 0 ? (
+            <div className="ps-dim ps-moves-empty">No moves yet — your game will be listed here. Click any move to step back.</div>
+          ) : (
+            <ol className="ps-moves" ref={movesRef}>
+              {moveRows.map((r) => (
+                <li className="ps-move-row" key={r.n}>
+                  <span className="ps-move-no num">{r.n}.</span>
+                  <button
+                    className={'ps-ply' + (curPly === r.wPly ? ' cur' : '')}
+                    onClick={() => goPly(r.wPly)}
+                  >
+                    {r.w.san}
+                  </button>
+                  {r.b ? (
+                    <button
+                      className={'ps-ply' + (curPly === r.bPly ? ' cur' : '')}
+                      onClick={() => goPly(r.bPly)}
+                    >
+                      {r.b.san}
+                    </button>
+                  ) : (
+                    <span className="ps-ply ps-ply-empty" />
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+          {atPast && (
+            <div className="ps-review-note">Reviewing an earlier position — play a move to continue from here.</div>
+          )}
+        </div>
+
         <div className="ps-block ps-controls">
           <button className={'ps-btn' + (manual ? ' on' : '')} onClick={toggleManual} aria-pressed={manual}>
             {manual ? 'Steering opponent · on' : 'Move for both sides'}
@@ -416,6 +507,13 @@ export function PlayMode() {
       </aside>
     </div>
   );
+}
+
+/** FEN after replaying the first `n` plies of a verbose move history. */
+function fenAtPly(history: Move[], n: number): string {
+  const c = new Chess();
+  for (let i = 0; i < n && i < history.length; i++) c.move(history[i].san);
+  return c.fen();
 }
 
 /** Apply a UCI move to a game, returning the Move (or null). */

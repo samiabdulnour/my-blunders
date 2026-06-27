@@ -882,21 +882,18 @@ export default function Page() {
                 ) : (
                   <div className="pre-result">
                     <div className="verdict idle">
-                      <div className="verdict-ico">{lineStep > 0 ? '➜' : current.combination ? '⚔' : '?'}</div>
+                      <div className="verdict-ico">{lineStep > 0 ? '➜' : '?'}</div>
                       <div>
+                        {/* Don't reveal the motif (sacrifice / combination) up
+                            front — that gives the solution away. Just ask for the
+                            best move; the line plays out as you solve it. */}
                         <div className="verdict-title">
-                          {lineStep > 0
-                            ? 'Find the next move.'
-                            : current.combination
-                              ? 'Find the combination.'
-                              : 'Find the best move.'}
+                          {lineStep > 0 ? 'Find the next move.' : 'Find the best move.'}
                         </div>
                         <div className="verdict-sub">
                           {lineStep > 0
                             ? 'Play the continuation — keep the advantage.'
-                            : current.combination
-                              ? 'A sacrifice — find the follow-up too.'
-                              : `For ${current.abdulsColor === 'white' ? 'white' : 'black'}.`}
+                            : `For ${current.abdulsColor === 'white' ? 'white' : 'black'}.`}
                         </div>
                       </div>
                     </div>

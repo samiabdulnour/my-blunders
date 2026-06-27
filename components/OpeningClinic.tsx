@@ -203,6 +203,7 @@ export function OpeningClinic() {
             <span className="cleg"><i className="ln good" /> good</span>
             <span className="cleg"><i className="ln risk" /> risky</span>
             <span className="cleg"><i className="ln bad" /> blunder</span>
+            <span className="cleg"><i className="ln dev" /> off-book</span>
             {allHot > 0 && <span className="cleg"><i className="sw hot" /> {allHot} hotspot{allHot === 1 ? '' : 's'}</span>}
             {allGaps > 0 && <span className="cleg"><i className="sw gap" /> {allGaps} gap{allGaps === 1 ? '' : 's'}</span>}
             {fetching && <span className="clinic-loading">loading games…</span>}
@@ -239,7 +240,10 @@ export function OpeningClinic() {
                   const b = byId[e.to];
                   if (!a || !b) return null;
                   const stroke = edgeStroke(a.fen, evalOf(a) ?? null, evalOf(b) ?? null);
-                  return <path key={i} d={connectorPath(a, b)} fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" />;
+                  // Dash the move that leaves theory, so the solid spine reads as
+                  // the main line and deviations stand out (colour still = quality).
+                  const dash = b.deviation ? '6 5' : undefined;
+                  return <path key={i} d={connectorPath(a, b)} fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeDasharray={dash} />;
                 })}
               </svg>
               {layout.nodes.map((n) => (
@@ -274,6 +278,7 @@ function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: La
   const cls =
     'cnode-frame' +
     (node.gap ? ' gap' : '') +
+    (node.deviation ? ' dev' : '') +
     (node.hotspot ? ' hotspot' : '') +
     (selected ? ' sel' : '');
   const evalLabel = displayEval === undefined ? '…' : formatEval(displayEval) || '·';
@@ -283,6 +288,7 @@ function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: La
         <div className={cls}>
           {node.blunders > 0 && <span className="cnode-warn"><IconWarn size={10} /> {node.blunders}</span>}
           {node.more > 0 && <span className="cnode-more">+{node.more}</span>}
+          {node.deviation && <span className="cnode-off" title="Leaves opening theory">off-book</span>}
           <OpeningBoard fen={node.fen} hl={node.hl} sqSize={12} orient={color} />
         </div>
       </button>
@@ -352,6 +358,11 @@ function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: Laid
         <div className="cd-head">
           {node.name && <div className="cd-name">{node.name}</div>}
           <div className="cd-move">{node.label}</div>
+          {node.depth > 0 && (
+            <div className={'cd-theory ' + (node.onBook ? 'book' : 'off')}>
+              {node.onBook ? 'Main line' : 'Off-book'}
+            </div>
+          )}
           <div className="cd-record num" title="Your score from this position (wins + ½ draws)">
             <span className={'cd-score ' + node.perf}>{node.score}%</span>
             <span className="cd-wdl">{node.wins}W · {node.draws}D · {node.losses}L</span>

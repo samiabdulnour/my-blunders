@@ -64,6 +64,14 @@ export interface TreeNode {
   /** Opening name for this exact position (from the opening book), shown only
    *  where it changes from the parent's opening. */
   name: string;
+  /** The line through this node is still following established theory — this
+   *  position (or a continuation of it) is a recognised opening. Computed with
+   *  look-ahead so the sparse spots the reference book skips between named
+   *  positions don't read as leaving theory. */
+  onBook: boolean;
+  /** The move that reached this node left theory for good (the parent was on
+   *  book, this node and its continuations aren't): the deviation point. */
+  deviation: boolean;
   /** Pretty move label with number, e.g. "3.e5" / "3…Bf5". */
   label: string;
   /** Full FEN of the position after the move (OpeningBoard slices the board
@@ -241,12 +249,17 @@ function resolve(raw: RawNode, chess: Chess, parentName = ''): TreeNode {
   // transpositions fold onto the same name. Show the name only where it changes
   // from the parent's effective opening, so the spine is labelled where each
   // variation begins; deeper/unnamed positions inherit the parent's name.
-  const posName = lookupOpening(fen)?.name ?? '';
+  const found = lookupOpening(fen);
+  const posName = found?.name ?? '';
   const effName = posName || parentName;
   const name = posName && posName !== parentName ? posName : '';
 
+  // Whether *this exact position* is a named opening (the start counts as
+  // theory). onBook is refined with look-ahead once children are resolved.
+  const inBook = raw.ply === 0 ? true : !!found;
+
   const node: TreeNode = {
-    id: '', san: raw.san, name, label: raw.san ? moveLabel(raw.ply, raw.san) : 'Start',
+    id: '', san: raw.san, name, onBook: inBook, deviation: false, label: raw.san ? moveLabel(raw.ply, raw.san) : 'Start',
     fen, hl, depth: raw.ply,
     games: raw.games, wins: raw.wins, draws: raw.draws, losses: raw.losses,
     score: Math.round(score), perf: perfOf(score),
@@ -273,6 +286,15 @@ function resolve(raw: RawNode, chess: Chess, parentName = ''): TreeNode {
     }
     node.children.push(child);
   }
+
+  // Theory standard, with look-ahead: this node is "on book" if it's a named
+  // position itself OR any kept continuation rejoins the book — so the sparse
+  // gaps the reference book leaves between named positions (e.g. the move right
+  // after a recapture) don't read as leaving theory. A child is the *deviation*
+  // when this node is on book but that child (and all its continuations) isn't:
+  // the point where the line leaves theory for good.
+  node.onBook = inBook || node.children.some((c) => c.onBook);
+  for (const c of node.children) c.deviation = node.onBook && !c.onBook;
 
   if (raw.san) chess.undo();
   node.id = raw.san; // refined to full path below
