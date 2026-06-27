@@ -8,13 +8,12 @@ import { parsePgn, oldestGameStartMs, type ParsedGame } from './pgn';
 import { generatePuzzlesFromGame, annotateEvalsIfMissing } from './puzzle-generator';
 import { summarizeGame, type OpeningGame } from './opening-tree';
 import { getWasmEngine } from './engine/wasm-engine';
+import { useAutoImport } from './use-auto-import';
 import {
   loadUsername,
   saveUsername,
   loadSource,
   saveSource,
-  loadAutoImport,
-  saveAutoImport,
   loadOldestFetchedMs,
   saveOldestFetchedMs,
   loadFetchedGameCount,
@@ -137,13 +136,14 @@ export function useImporter({
    * Stops the auto-import loop so we don't spin forever on an empty tail.
    */
   const [exhausted, setExhausted] = useState(false);
-  /** User toggle: when on, auto-import keeps building toward PUZZLE_TARGET_GAMES
-   *  in the background; when off, batches are pulled manually via "Import more". */
-  const [autoImportEnabled, setAutoImportEnabledState] = useState(true);
+  /** User toggle (shared store, set from the top-bar button): on → auto-import
+   *  keeps building toward PUZZLE_TARGET_GAMES; off → manual "Import more". */
+  const autoImportEnabled = useAutoImport();
   /** Synchronous mirror of the toggle so a batch finishing mid-toggle (which
-   *  re-runs the chain effect before React commits the state) sees the new value
-   *  immediately — otherwise OFF lags by a batch or two. */
-  const autoImportEnabledRef = useRef(true);
+   *  re-runs the chain effect before React commits the render) sees the new
+   *  value immediately — otherwise OFF lags by a batch or two. */
+  const autoImportEnabledRef = useRef(autoImportEnabled);
+  autoImportEnabledRef.current = autoImportEnabled;
   /** Set true to abort an in-flight import between games (e.g. on "Clear all"),
    *  so a cancelled batch doesn't write puzzles/openings back after the wipe. */
   const cancelRef = useRef(false);
@@ -151,19 +151,9 @@ export function useImporter({
   useEffect(() => {
     setUsername(loadUsername());
     setSourceState(loadSource());
-    const auto = loadAutoImport();
-    autoImportEnabledRef.current = auto;
-    setAutoImportEnabledState(auto);
     setOldestMs(loadOldestFetchedMs());
     setFetchedCount(loadFetchedGameCount());
     setHydrated(true);
-  }, []);
-
-  /** Flip the auto-import preference (persisted). */
-  const setAutoImportEnabled = useCallback((on: boolean) => {
-    autoImportEnabledRef.current = on; // synchronous: stops the chain at once
-    setAutoImportEnabledState(on);
-    saveAutoImport(on);
   }, []);
 
   /** Switch import source. Resets the pagination cursor — a different site means
@@ -561,8 +551,6 @@ export function useImporter({
     oldestMs,
     fetchedCount,
     exhausted,
-    autoImportEnabled,
-    setAutoImportEnabled,
     target: PUZZLE_TARGET_GAMES,
     working: status.kind === 'working',
     runImport,

@@ -403,50 +403,6 @@ select {
 .imp-row { align-items: center; min-height: 32px; }
 .imp-link { padding: 8px 2px; }
 
-/* Auto-import switch */
-.auto-toggle {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  background: none;
-  border: 0;
-  padding: 6px 0;
-  cursor: pointer;
-  color: var(--txt-dim);
-  text-align: left;
-}
-.auto-track {
-  position: relative;
-  flex-shrink: 0;
-  width: 34px;
-  height: 20px;
-  border-radius: 10px;
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  transition: background 0.15s var(--ease-snap), border-color 0.15s var(--ease-snap);
-}
-.auto-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--txt-faint);
-  transition: transform 0.15s var(--ease-snap), background 0.15s var(--ease-snap);
-}
-.auto-toggle.on .auto-track { background: var(--green-soft); border-color: var(--green); }
-.auto-toggle.on .auto-thumb { transform: translateX(14px); background: var(--green); }
-.auto-label {
-  font-size: var(--fs-micro);
-  text-transform: uppercase;
-  letter-spacing: var(--track-caps);
-  font-weight: var(--fw-bold);
-  color: var(--txt);
-}
-.auto-sub { color: var(--txt-dim); font-weight: var(--fw-reg); }
-
 /* Inline "Clear everything?" confirm — replaces window.confirm, real touch targets */
 .imp-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .imp-confirm-q { font-size: var(--fs-micro); color: var(--txt); font-weight: var(--fw-bold); flex: 1 1 auto; }

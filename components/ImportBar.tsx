@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import type { Puzzle } from '@/lib/types';
 import { useImporter } from '@/lib/useImporter';
+import { useAutoImport } from '@/lib/use-auto-import';
 
 interface ImportBarProps {
   /** Called as puzzles arrive from an import. */
@@ -34,14 +35,16 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
     oldestMs,
     fetchedCount,
     exhausted,
-    autoImportEnabled,
-    setAutoImportEnabled,
     target,
     working,
     runImport,
     importFile,
     resetCursor,
   } = useImporter({ onImport, onGamesFetched, unseenCount });
+
+  // Preference lives in a shared store; the toggle itself is now a top-bar
+  // button. Read it here only to frame the progress caption.
+  const autoImportEnabled = useAutoImport();
 
   const fileRef = useRef<HTMLInputElement>(null);
   // Two-step clear: avoids window.confirm (unreliable in mobile / in-app
@@ -62,8 +65,13 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
   };
 
   const progress = working ? status.progress : undefined;
-  const pct =
-    progress && progress.total > 0
+  // With auto-import building the library, show progress toward the whole target
+  // (e.g. 143/500), not the current 20-game batch — "/20" while fetching 500 is
+  // confusing. Off, the per-batch count is what's meaningful.
+  const libraryDone = Math.min(target, fetchedCount + (progress?.current ?? 0));
+  const pct = autoImportEnabled
+    ? Math.round((libraryDone / target) * 100)
+    : progress && progress.total > 0
       ? Math.round((progress.current / progress.total) * 100)
       : 0;
 
@@ -71,7 +79,9 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
   // summary of how far the library has filled.
   let caption: React.ReactNode = null;
   if (working) {
-    caption = status.message;
+    caption = autoImportEnabled
+      ? `building library · ${libraryDone} / ${target} games`
+      : status.message;
   } else if (status.kind === 'error') {
     caption = status.message;
   } else if (fetchedCount > 0) {
@@ -131,25 +141,7 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
         </button>
       </div>
 
-      <button
-        type="button"
-        role="switch"
-        aria-checked={autoImportEnabled}
-        className={'auto-toggle' + (autoImportEnabled ? ' on' : '')}
-        onClick={() => setAutoImportEnabled(!autoImportEnabled)}
-        title={
-          autoImportEnabled
-            ? `Auto-import on — building toward ${target} games in the background`
-            : 'Auto-import off — pull each batch with “Import more”'
-        }
-      >
-        <span className="auto-track"><span className="auto-thumb" /></span>
-        <span className="auto-label">
-          Auto-import{autoImportEnabled ? <span className="auto-sub"> · to {target}</span> : null}
-        </span>
-      </button>
-
-      {progress && (
+      {working && (
         <div className="imp-progress">
           <div className="bar" style={{ width: pct + '%' }} />
         </div>
