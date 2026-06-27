@@ -164,7 +164,7 @@ function FindMode() {
         </div>
       </div>
       <div className="ct-prompt small">
-        <Prompt running={running} over={over} elapsed={elapsed} correct={correct} wrong={wrong} idle="Press Start, then click the named square">
+        <Prompt running={running} over={over} elapsed={elapsed} correct={correct} wrong={wrong} idle="">
           Find <span className="ct-coord">{target}</span>
         </Prompt>
       </div>
