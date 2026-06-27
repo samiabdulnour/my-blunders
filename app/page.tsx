@@ -767,15 +767,14 @@ export default function Page() {
       onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
       mode={mode}
       onModeChange={setMode}
+      onImport={handleImport}
+      onGamesFetched={handleGamesFetched}
+      onClearAll={handleClearAll}
+      unseenCount={unseenCount}
     >
       {mode === 'opening' ? (
         <ClinicProvider key={clinicEpoch}>
-          <OpeningSidebar
-            onImport={handleImport}
-            onGamesFetched={handleGamesFetched}
-            onClearAll={handleClearAll}
-            unseenCount={unseenCount}
-          />
+          <OpeningSidebar />
           <div className="main clinic-mode">
             <OpeningClinic />
           </div>
@@ -796,15 +795,11 @@ export default function Page() {
             current={current}
             solved={solved}
             counts={counts}
-            unseenCount={unseenCount}
             onFilterChange={setFilter}
             onEcoFilterChange={setEcoFilter}
             onSpeedFilterChange={setSpeedFilter}
             onPhaseFilterChange={setPhaseFilter}
             onSelect={loadPuzzle}
-            onImport={handleImport}
-            onGamesFetched={handleGamesFetched}
-            onClearAll={handleClearAll}
           />
 
           <div className="main">

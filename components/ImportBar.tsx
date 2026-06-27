@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import type { Puzzle } from '@/lib/types';
 import { useImporter } from '@/lib/useImporter';
-import { useAutoImport } from '@/lib/use-auto-import';
+import { useAutoImport, setAutoImport } from '@/lib/use-auto-import';
 
 interface ImportBarProps {
   /** Called as puzzles arrive from an import. */
@@ -42,8 +42,6 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
     resetCursor,
   } = useImporter({ onImport, onGamesFetched, unseenCount });
 
-  // Preference lives in a shared store; the toggle itself is now a top-bar
-  // button. Read it here only to frame the progress caption.
   const autoImportEnabled = useAutoImport();
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -140,6 +138,24 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
           {working ? 'Importing' : fetchedCount > 0 ? 'Import more' : 'Import'}
         </button>
       </div>
+
+      <button
+        type="button"
+        role="switch"
+        aria-checked={autoImportEnabled}
+        className={'auto-toggle' + (autoImportEnabled ? ' on' : '')}
+        onClick={() => setAutoImport(!autoImportEnabled)}
+        title={
+          autoImportEnabled
+            ? `Auto-import on — building toward ${target} games in the background`
+            : 'Auto-import off — pull each batch with “Import more”'
+        }
+      >
+        <span className="auto-track"><span className="auto-thumb" /></span>
+        <span className="auto-label">
+          Auto-import{autoImportEnabled ? <span className="auto-sub"> · to {target}</span> : null}
+        </span>
+      </button>
 
       {working && (
         <div className="imp-progress">
