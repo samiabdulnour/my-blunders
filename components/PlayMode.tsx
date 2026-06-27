@@ -73,6 +73,8 @@ export function PlayMode() {
    *  Scrubbing back is non-destructive; playing a move from a past ply branches
    *  there (the moves after it are dropped). */
   const [viewPly, setViewPly] = useState<number | null>(null);
+  /** Move-list panel open by default; collapsible so it isn't in the way. */
+  const [movesOpen, setMovesOpen] = useState(true);
   /** Opening name/ECO for the current position (from the explorer), kept sticky
    *  so it still reads "Dutch Defense" once you're past named theory. */
   const [opening, setOpening] = useState<{ eco: string; name: string } | null>(null);
@@ -445,45 +447,6 @@ export function PlayMode() {
           )}
         </div>
 
-        <div className="ps-block ps-moves-block">
-          <div className="ps-h">
-            Moves
-            {atPast && (
-              <button className="ps-live-link" onClick={() => setViewPly(null)}>● jump to latest</button>
-            )}
-          </div>
-          {moveRows.length === 0 ? (
-            <div className="ps-dim ps-moves-empty">No moves yet — your game will be listed here. Click any move to step back.</div>
-          ) : (
-            <ol className="ps-moves" ref={movesRef}>
-              {moveRows.map((r) => (
-                <li className="ps-move-row" key={r.n}>
-                  <span className="ps-move-no num">{r.n}.</span>
-                  <button
-                    className={'ps-ply' + (curPly === r.wPly ? ' cur' : '')}
-                    onClick={() => goPly(r.wPly)}
-                  >
-                    {r.w.san}
-                  </button>
-                  {r.b ? (
-                    <button
-                      className={'ps-ply' + (curPly === r.bPly ? ' cur' : '')}
-                      onClick={() => goPly(r.bPly)}
-                    >
-                      {r.b.san}
-                    </button>
-                  ) : (
-                    <span className="ps-ply ps-ply-empty" />
-                  )}
-                </li>
-              ))}
-            </ol>
-          )}
-          {atPast && (
-            <div className="ps-review-note">Reviewing an earlier position — play a move to continue from here.</div>
-          )}
-        </div>
-
         <div className="ps-block ps-controls">
           <button className={'ps-btn' + (manual ? ' on' : '')} onClick={toggleManual} aria-pressed={manual}>
             {manual ? 'Steering opponent · on' : 'Move for both sides'}
@@ -503,6 +466,52 @@ export function PlayMode() {
               <button className={'seg-tab' + (userColor === 'b' ? ' on' : '')} onClick={() => newGame('b')} disabled={thinking}>Black</button>
             </div>
           </div>
+        </div>
+
+        {/* Move list is the lowest block so it can grow/scroll without nudging
+            the blocks above it; collapsible to get it out of the way. */}
+        <div className={'ps-block ps-moves-block' + (movesOpen ? '' : ' min')}>
+          <div className="ps-h ps-moves-h">
+            <button className="ps-moves-toggle" onClick={() => setMovesOpen((o) => !o)} aria-expanded={movesOpen}>
+              <span className="ps-moves-chevron">{movesOpen ? '▾' : '▸'}</span>
+              Moves{totalPlies > 0 ? ` · ${Math.ceil(totalPlies / 2)}` : ''}
+            </button>
+            {movesOpen && atPast && (
+              <button className="ps-live-link" onClick={() => setViewPly(null)}>● jump to latest</button>
+            )}
+          </div>
+          {movesOpen && (
+            moveRows.length === 0 ? (
+              <div className="ps-dim ps-moves-empty">No moves yet — your game will be listed here. Click any move to step back.</div>
+            ) : (
+              <ol className="ps-moves" ref={movesRef}>
+                {moveRows.map((r) => (
+                  <li className="ps-move-row" key={r.n}>
+                    <span className="ps-move-no num">{r.n}.</span>
+                    <button
+                      className={'ps-ply' + (curPly === r.wPly ? ' cur' : '')}
+                      onClick={() => goPly(r.wPly)}
+                    >
+                      {r.w.san}
+                    </button>
+                    {r.b ? (
+                      <button
+                        className={'ps-ply' + (curPly === r.bPly ? ' cur' : '')}
+                        onClick={() => goPly(r.bPly)}
+                      >
+                        {r.b.san}
+                      </button>
+                    ) : (
+                      <span className="ps-ply ps-ply-empty" />
+                    )}
+                  </li>
+                ))}
+              </ol>
+            )
+          )}
+          {movesOpen && atPast && (
+            <div className="ps-review-note">Reviewing an earlier position — play a move to continue from here.</div>
+          )}
         </div>
       </aside>
     </div>

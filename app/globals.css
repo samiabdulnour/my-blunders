@@ -2012,6 +2012,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .od-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
 .od-tomove { display: inline-flex; align-items: center; gap: 7px; font-weight: var(--fw-bold); color: var(--txt); }
 .od-turndot { width: 11px; height: 11px; border-radius: 50%; background: var(--contour); border: 1.5px solid var(--contour); }
+.od-turndot.white { background: #fff; border-color: var(--contour); }
 .od-frame { --sq-size: 54px; padding: 6px; border-radius: 5px; border: 3px solid var(--border2); background: var(--bg2); transition: border-color 0.15s ease; }
 .od-frame.ok { border-color: var(--green); }
 .od-frame.bad { border-color: var(--red); }
@@ -2103,8 +2104,8 @@ html[data-theme='dark'] .sq.cap-ring {
 /* Two columns sized to read as one block: the side stretches to the board's
  * height and its controls pin to the bottom, so both columns share top & bottom
  * edges instead of the panel floating shorter/taller than the board. */
-.play { display: flex; gap: 24px; align-items: stretch; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 900px; }
-.play-board { flex-shrink: 0; align-self: flex-start; }
+.play { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 900px; }
+.play-board { flex-shrink: 0; }
 .ps-opening { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .ps-opening-name { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
 .ps-opening-eco { font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
@@ -2114,7 +2115,13 @@ html[data-theme='dark'] .sq.cap-ring {
  * scrolls inside itself, so a long game never stretches the panel without bound
  * and the controls always stay put. */
 .play-side { width: 320px; display: flex; flex-direction: column; gap: 11px; }
-.play-side .ps-moves-block { flex: 1 1 auto; min-height: 72px; display: flex; flex-direction: column; }
+/* The move list is the lowest block: it grows downward as the game goes and
+ * scrolls past a cap, so it never nudges the blocks above it. Collapsible. */
+.play-side .ps-moves-block { flex: 0 0 auto; display: flex; flex-direction: column; }
+.ps-moves-h { display: flex; align-items: center; justify-content: space-between; }
+.ps-moves-toggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; color: var(--txt-dim); font: inherit; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.ps-moves-toggle:hover { color: var(--txt); }
+.ps-moves-chevron { display: inline-block; width: 9px; font-size: 9px; }
 .play-side .ps-h { margin-bottom: 7px; }
 .play-side .ps-elo-note { margin-top: 6px; }
 .play-side .ps-controls { gap: 8px; }
@@ -2124,7 +2131,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .ps-moves-block .ps-h { display: flex; align-items: baseline; justify-content: space-between; }
 .ps-live-link { background: none; border: 0; padding: 0; color: var(--coral); cursor: pointer; font: inherit; font-size: var(--fs-micro); text-transform: none; letter-spacing: 0; }
 .ps-live-link:hover { color: var(--contour); }
-.ps-moves { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.ps-moves { min-height: 88px; max-height: 240px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
 .ps-moves-empty { line-height: 1.5; }
 .ps-move-row { display: grid; grid-template-columns: 30px 1fr 1fr; gap: 4px; align-items: center; }
 .ps-move-no { color: var(--txt-faint); font-size: var(--fs-micro); text-align: right; }
