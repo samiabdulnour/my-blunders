@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Puzzle } from '@/lib/types';
 import { useImporter } from '@/lib/useImporter';
@@ -25,22 +25,47 @@ type Phase = 'idle' | 'running' | 'done' | 'error';
  * into the app.
  */
 export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingProps) {
-  // autoImport off: the import here is driven explicitly by the CTA, not by
-  // the queue-drain loop (there's no queue on screen yet).
+  const [phase, setPhase] = useState<Phase>('idle');
+  const fileRef = useRef<HTMLInputElement>(null);
+  // Hand off to the app exactly once — whether that's triggered by the first
+  // puzzle, the batch finishing with none, or a skip link.
+  const enteredRef = useRef(false);
+  // Latest username, read inside the import callback (which is created before
+  // useImporter returns `username`).
+  const usernameRef = useRef('');
+
+  const enterApp = useCallback(
+    (name: string) => {
+      if (enteredRef.current) return;
+      enteredRef.current = true;
+      onComplete(name);
+    },
+    [onComplete]
+  );
+
+  // Don't strand the new user on this screen while the *whole* batch analyses —
+  // on a phone that's minutes of WASM Stockfish. The instant the first real
+  // puzzle is ready, hand off to the app; the rest of the batch keeps streaming
+  // in behind it via this same callback. (autoImport off: the import is driven
+  // by the CTA, not the queue-drain loop — there's no queue on screen yet.)
+  const handleImport = useCallback(
+    (puzzles: Puzzle[]) => {
+      onImport(puzzles);
+      if (puzzles.length > 0) enterApp(usernameRef.current.trim());
+    },
+    [onImport, enterApp]
+  );
+
   const { username, setUsername, source, setSource, status, runImport, importFile } = useImporter({
-    onImport,
+    onImport: handleImport,
     onGamesFetched,
     unseenCount: 0,
     autoImport: false,
   });
-  const [phase, setPhase] = useState<Phase>('idle');
-  const fileRef = useRef<HTMLInputElement>(null);
+  usernameRef.current = username;
 
-  // Advance the step machine off the shared import status. Kept separate
-  // from the completion timer below: if we scheduled onComplete here, the
-  // setPhase('done') re-render would change this effect's deps and run its
-  // cleanup — cancelling the timeout before it ever fired (the app would
-  // hang on the "All set" screen).
+  // Drive the step checklist off the import status. A finished batch (even one
+  // that yielded no puzzles) or an error still resolves here so nobody is stuck.
   useEffect(() => {
     if (phase !== 'running') return;
     if (status.kind === 'ok') setPhase('done');
@@ -48,12 +73,12 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status.kind, phase]);
 
-  // Once import has finished, briefly show the success state, then hand off
-  // to the main app. This effect owns the timer so it survives the phase
-  // transition that triggers it.
+  // Fallback hand-off: the batch finished without ever producing a puzzle (a
+  // rare run of clean games). Briefly show the success state, then enter. If a
+  // puzzle already took us in, enteredRef makes this a no-op.
   useEffect(() => {
     if (phase !== 'done') return;
-    const t = setTimeout(() => onComplete(username.trim()), 700);
+    const t = setTimeout(() => enterApp(username.trim()), 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
@@ -76,16 +101,6 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
     setPhase('running');
     await importFile(file);
   };
-
-  const progress = status.progress;
-  const pct =
-    phase === 'done'
-      ? 100
-      : progress && progress.total > 0
-        ? Math.round((progress.current / progress.total) * 100)
-        : phase === 'running'
-          ? 5
-          : 0;
 
   const stepClass = (n: number) => {
     if (n === 1) return 'onb-step ' + (phase === 'idle' ? 'active' : 'done');
@@ -173,7 +188,7 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
           <button
             type="button"
             className="onb-famous"
-            onClick={() => onComplete('')}
+            onClick={() => enterApp('')}
           >
             ♟ Play famous blunders
             <span className="sub">no account needed</span>
@@ -194,22 +209,23 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
 
       {(phase === 'running' || phase === 'error') && (
         <div className="onb-running">
-          <div className="progress-track">
-            <div className="progress-fill" style={{ width: pct + '%' }} />
-          </div>
-          <div className="progress-text">
-            <span>{status.message ?? 'Connecting to Lichess…'}</span>
-            <span>{pct}%</span>
+          {phase !== 'error' && (
+            <div className="progress-track">
+              <div className="progress-fill indeterminate" />
+            </div>
+          )}
+          <div className="progress-text solo">
+            <span>{phase === 'error' ? status.message ?? 'Import failed' : 'Finding your first blunder…'}</span>
           </div>
           {phase === 'error' ? (
             <div className="onb-alt">
-              <a onClick={() => onComplete(username.trim())}>continue anyway →</a>
+              <a onClick={() => enterApp(username.trim())}>continue anyway →</a>
             </div>
           ) : (
             <>
-              <div className="progress-note">analysis runs on the server — hang tight</div>
+              <div className="progress-note">analysing your recent games — opens as soon as your first puzzle is ready</div>
               <div className="onb-alt">
-                <a onClick={() => onComplete(username.trim())}>
+                <a onClick={() => enterApp(username.trim())}>
                   play famous blunders while this loads →
                 </a>
               </div>
