@@ -190,10 +190,10 @@ export function PlayMode() {
     }
     if (!played) return;
     setSelected(null);
-    setVerdict(null);
-    setBook(null);
     setLastMove({ from: played.from, to: played.to });
     setFen(g.fen());
+    // Note: we deliberately keep the previous verdict/book visible until the new
+    // ones are ready — blanking them each move made the panel blink.
 
     if (manualRef.current) {
       // Steering the opening — just annotate book, no engine reply.
@@ -293,26 +293,19 @@ export function PlayMode() {
     setCustom(false);
   };
 
+  // No abrupt "Thinking…" swap — the turn label ("Engine to move") covers it
+  // calmly while the engine works, so the panel doesn't blink on every move.
   const statusHead = result
     ? 'Game over'
-    : thinking
-      ? 'Thinking…'
-      : manual
-        ? `Move for ${sideToMove === 'w' ? 'White' : 'Black'}`
-        : sideToMove === userColor
-          ? 'Your move'
-          : 'Engine to move';
+    : manual
+      ? `Move for ${sideToMove === 'w' ? 'White' : 'Black'}`
+      : sideToMove === userColor
+        ? 'Your move'
+        : 'Engine to move';
 
   return (
     <div className="play">
       <div className="play-board">
-        <div className="play-opening">
-          {opening ? (
-            <><span className="po-name">{opening.name}</span> <span className="po-eco num">{opening.eco}</span></>
-          ) : (
-            <span className="po-name po-dim">Starting position</span>
-          )}
-        </div>
         <Board
           chess={boardChess}
           orientation={orientation === 'w' ? 'white' : 'black'}
@@ -331,6 +324,15 @@ export function PlayMode() {
       </div>
 
       <aside className="play-side">
+        <div className="ps-block">
+          <div className="ps-h">Opening</div>
+          <div className="ps-opening">
+            {opening
+              ? <><span className="ps-opening-name">{opening.name}</span> <span className="ps-opening-eco num">{opening.eco}</span></>
+              : <span className="ps-dim">Starting position</span>}
+          </div>
+        </div>
+
         <div className="ps-block">
           <div className="ps-h">Opponent strength</div>
           <div className="ps-elo">

@@ -2049,10 +2049,10 @@ html[data-theme='dark'] .sq.cap-ring {
 .main.play-mode { align-items: center; justify-content: flex-start; }
 .play { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 980px; }
 .play-board { flex-shrink: 0; }
-.play-opening { margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px; min-height: 18px; }
-.po-name { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
-.po-eco { font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
-.po-dim { color: var(--txt-faint); font-weight: var(--fw-reg); }
+.ps-opening { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ps-opening-name { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
+.ps-opening-eco { font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.ps-dim { font-size: var(--fs-base); color: var(--txt-faint); }
 .play-side { width: 300px; display: flex; flex-direction: column; gap: 16px; }
 .ps-block { border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; background: var(--bg2); }
 .ps-h { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); margin-bottom: 10px; }
