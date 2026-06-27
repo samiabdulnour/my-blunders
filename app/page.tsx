@@ -742,13 +742,15 @@ export default function Page() {
   }, [revealed, next]);
 
   const completeOnboarding = useCallback(
-    (_username: string) => {
-      // Show the famous-blunders library immediately so the board is never
-      // empty — whether the user skipped (guest) or kicked off an import that
-      // is still streaming in the background. Real games replace these via
-      // handleImport as they arrive. Skip it once the user's own games have
-      // been fetched: their import owns the board now, placeholders or not.
-      if (!ownGamesRef.current) {
+    (_username: string, opts?: { showFamous?: boolean }) => {
+      // Show the famous-blunders library so the board is never empty — whether
+      // the user skipped (guest) or dropped into the app while a real import is
+      // still streaming in the background. `showFamous` adds them even though
+      // the user's own games have been fetched (ownGamesRef set), so "play
+      // famous blunders while this loads" actually has something to play. The
+      // `some(!isFamous)` guard keeps these from clobbering real puzzles once
+      // they exist; handleImport swaps the placeholders out as puzzles arrive.
+      if (opts?.showFamous || !ownGamesRef.current) {
         setAll((prev) => (prev.some((p) => !isFamous(p)) ? prev : mergePuzzles(prev, FAMOUS_PUZZLES)));
         if (!currentRef.current) loadPuzzle(FAMOUS_PUZZLES[0]);
       }
