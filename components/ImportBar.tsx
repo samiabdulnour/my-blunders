@@ -141,9 +141,8 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
 
       <button
         type="button"
-        role="switch"
-        aria-checked={autoImportEnabled}
-        className={'auto-toggle' + (autoImportEnabled ? ' on' : '')}
+        aria-pressed={autoImportEnabled}
+        className={'auto-btn' + (autoImportEnabled ? ' on' : '')}
         onClick={() => setAutoImport(!autoImportEnabled)}
         title={
           autoImportEnabled
@@ -151,10 +150,7 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
             : 'Auto-import off — pull each batch with “Import more”'
         }
       >
-        <span className="auto-track"><span className="auto-thumb" /></span>
-        <span className="auto-label">
-          Auto-import{autoImportEnabled ? <span className="auto-sub"> · to {target}</span> : null}
-        </span>
+        Auto-import: {autoImportEnabled ? <>on<span className="auto-btn-sub"> · to {target}</span></> : 'off'}
       </button>
 
       {working && (

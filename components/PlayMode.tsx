@@ -10,6 +10,7 @@ import {
   type MoveVerdict,
 } from '@/lib/play-engine';
 import { fetchTheory } from '@/lib/opening-explorer';
+import { ensureOpeningBook, lookupOpening } from '@/lib/opening-book';
 import {
   effectiveElo,
   loadEstimatedElo,
@@ -88,11 +89,19 @@ export function PlayMode() {
     setEloState(effectiveElo());
     setEstimated(loadEstimatedElo());
     setCustom(loadEloOverride() != null);
+    // Warm the local opening-name book, then name the current position from it.
+    ensureOpeningBook().then(() => {
+      const o = lookupOpening(gameRef.current.fen());
+      if (o) setOpening(o);
+    });
   }, []);
 
-  // Name the current opening from the explorer; sticky (don't clear on the deep,
-  // unnamed positions the explorer returns null for).
+  // Name the current opening. The bundled book resolves instantly and offline;
+  // the explorer supplements it. Sticky — don't clear on the deep, unnamed
+  // positions where neither source has a name.
   useEffect(() => {
+    const local = lookupOpening(fen);
+    if (local) setOpening(local);
     let cancelled = false;
     fetchTheory(fen)
       .then((t) => { if (!cancelled && t?.opening) setOpening(t.opening); })
@@ -388,12 +397,14 @@ export function PlayMode() {
           <button className={'ps-btn' + (manual ? ' on' : '')} onClick={toggleManual} aria-pressed={manual}>
             {manual ? 'Steering opponent · on' : 'Move for both sides'}
           </button>
-          <button className="ps-btn" onClick={takeBack} disabled={thinking || gameRef.current.history().length === 0}>
-            Take back
-          </button>
-          <button className="ps-btn" onClick={() => setOrientation((o) => (o === 'w' ? 'b' : 'w'))}>
-            Flip board
-          </button>
+          <div className="ps-btn-row">
+            <button className="ps-btn" onClick={takeBack} disabled={thinking || gameRef.current.history().length === 0}>
+              Take back
+            </button>
+            <button className="ps-btn" onClick={() => setOrientation((o) => (o === 'w' ? 'b' : 'w'))}>
+              Flip board
+            </button>
+          </div>
           <div className="ps-new">
             <span className="ps-new-label">New game as</span>
             <div className="seg-tabs">
