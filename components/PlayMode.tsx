@@ -68,6 +68,9 @@ export function PlayMode() {
   const [thinking, setThinking] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [manual, setManual] = useState(false);
+  /** Opening name/ECO for the current position (from the explorer), kept sticky
+   *  so it still reads "Dutch Defense" once you're past named theory. */
+  const [opening, setOpening] = useState<{ eco: string; name: string } | null>(null);
 
   const [elo, setEloState] = useState(1500);
   const [estimated, setEstimated] = useState<number | null>(null);
@@ -86,6 +89,16 @@ export function PlayMode() {
     setEstimated(loadEstimatedElo());
     setCustom(loadEloOverride() != null);
   }, []);
+
+  // Name the current opening from the explorer; sticky (don't clear on the deep,
+  // unnamed positions the explorer returns null for).
+  useEffect(() => {
+    let cancelled = false;
+    fetchTheory(fen)
+      .then((t) => { if (!cancelled && t?.opening) setOpening(t.opening); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [fen]);
 
   const boardChess = useMemo(() => new Chess(fen), [fen]);
   const sideToMove: Color = boardChess.turn();
@@ -216,6 +229,7 @@ export function PlayMode() {
     setVerdict(null);
     setBook(null);
     setResult(null);
+    setOpening(null);
     // Engine opens only when you're Black and not steering moves yourself.
     if (color === 'b' && !manualRef.current) {
       void (async () => {
@@ -292,6 +306,13 @@ export function PlayMode() {
   return (
     <div className="play">
       <div className="play-board">
+        <div className="play-opening">
+          {opening ? (
+            <><span className="po-name">{opening.name}</span> <span className="po-eco num">{opening.eco}</span></>
+          ) : (
+            <span className="po-name po-dim">Starting position</span>
+          )}
+        </div>
         <Board
           chess={boardChess}
           orientation={orientation === 'w' ? 'white' : 'black'}
