@@ -164,20 +164,20 @@ export function AppShell({
           <button
             type="button"
             role="tab"
-            aria-selected={mode === 'play'}
-            className={mode === 'play' ? 'on' : ''}
-            onClick={() => onModeChange('play')}
-          >
-            Play
-          </button>
-          <button
-            type="button"
-            role="tab"
             aria-selected={mode === 'coords'}
             className={mode === 'coords' ? 'on' : ''}
             onClick={() => onModeChange('coords')}
           >
             Coordinates
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'play'}
+            className={mode === 'play' ? 'on' : ''}
+            onClick={() => onModeChange('play')}
+          >
+            Play
           </button>
         </div>
 
