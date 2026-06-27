@@ -7,16 +7,16 @@ import { FAMOUS_GAMES } from '@/lib/famous-games';
 
 /**
  * Coordinate / board-vision trainer (Lichess-style), three modes:
- *  · Find the square — a coordinate is named; click it on an unlabelled board.
+ *  · Find the square — a coordinate is named; click it on a piece-less board.
  *  · Square colour   — a coordinate is named; say if it's a light or dark square.
  *  · Play famous games — replay canonical games move-by-move for both sides.
- * The first two are 30-second sprints scored against a stored best.
+ * The drills are open-ended (start, then finish when you like) with a count-up
+ * clock — no countdown, so there's no time pressure.
  */
 
 type SubMode = 'find' | 'color' | 'replay';
 
 const FILES = 'abcdefgh';
-const ROUND_SECONDS = 30;
 
 /** a1 is dark; a square is light when file+rank index sum is odd. */
 function isLight(sq: string): boolean {
@@ -27,12 +27,8 @@ function isLight(sq: string): boolean {
 function randomSquare(): string {
   return FILES[Math.floor(Math.random() * 8)] + (Math.floor(Math.random() * 8) + 1);
 }
-function loadBest(key: string): number {
-  if (typeof window === 'undefined') return 0;
-  return Number(window.localStorage.getItem('bt.coords.' + key) || 0);
-}
-function saveBest(key: string, v: number) {
-  try { window.localStorage.setItem('bt.coords.' + key, String(v)); } catch { /* ignore */ }
+function mmss(s: number): string {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 export function CoordsTrainer() {
@@ -51,118 +47,153 @@ export function CoordsTrainer() {
   );
 }
 
-/** Shared 30-second sprint state for the two coordinate sprints. */
-function useSprint(key: string) {
+/** Open-ended drill session: a count-up clock and tallies, ended by Finish. */
+function useSession() {
   const [running, setRunning] = useState(false);
   const [over, setOver] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(ROUND_SECONDS);
-  const [score, setScore] = useState(0);
-  const [best, setBest] = useState(0);
-  const scoreRef = useRef(0);
-  scoreRef.current = score;
-
-  useEffect(() => { setBest(loadBest(key)); }, [key]);
+  const [elapsed, setElapsed] = useState(0);
+  const [correct, setCorrect] = useState(0);
+  const [wrong, setWrong] = useState(0);
 
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          clearInterval(id);
-          setRunning(false);
-          setOver(true);
-          setBest((b) => { const nb = Math.max(b, scoreRef.current); saveBest(key, nb); return nb; });
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
+    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(id);
-  }, [running, key]);
+  }, [running]);
 
-  const start = () => { setScore(0); setTimeLeft(ROUND_SECONDS); setOver(false); setRunning(true); };
-  return { running, over, timeLeft, score, best, setScore, start };
+  const start = () => { setElapsed(0); setCorrect(0); setWrong(0); setOver(false); setRunning(true); };
+  const finish = () => { setRunning(false); setOver(true); };
+  return { running, over, elapsed, correct, wrong, setCorrect, setWrong, start, finish };
+}
+
+function SessionBar({ running, elapsed, correct, onFinish, children }: { running: boolean; elapsed: number; correct: number; onFinish: () => void; children?: React.ReactNode }) {
+  return (
+    <div className="ct-bar">
+      <div className="ct-stat"><span className="ct-stat-n num">{mmss(elapsed)}</span><span className="ct-stat-l">time</span></div>
+      <div className="ct-stat"><span className="ct-stat-n num">{correct}</span><span className="ct-stat-l">done</span></div>
+      {running && <button className="ct-finish" onClick={onFinish}>Finish</button>}
+      {children}
+    </div>
+  );
+}
+
+function StartCard({ over, correct, wrong, elapsed, onStart, blurb }: { over: boolean; correct: number; wrong: number; elapsed: number; onStart: () => void; blurb: string }) {
+  return (
+    <div className="ct-start">
+      {over ? (
+        <>
+          <div className="ct-final"><b>{correct}</b> correct in {mmss(elapsed)}{wrong > 0 ? ` · ${wrong} missed` : ''}</div>
+          <button className="ct-go" onClick={onStart}>Go again</button>
+        </>
+      ) : (
+        <>
+          <p className="ct-blurb">{blurb}</p>
+          <button className="ct-go" onClick={onStart}>Start</button>
+        </>
+      )}
+    </div>
+  );
 }
 
 function ColorMode() {
-  const { running, over, timeLeft, score, best, setScore, start } = useSprint('color');
+  const { running, over, elapsed, correct, wrong, setCorrect, setWrong, start, finish } = useSession();
   const [target, setTarget] = useState('e4');
-  const [flash, setFlash] = useState<'ok' | 'fail' | null>(null);
+  const [fb, setFb] = useState<'ok' | 'fail' | null>(null);
 
-  const begin = () => { setTarget(randomSquare()); setFlash(null); start(); };
+  const begin = () => { setTarget(randomSquare()); setFb(null); start(); };
   const answer = (light: boolean) => {
-    if (!running) return;
-    const correct = isLight(target) === light;
-    if (correct) setScore((s) => s + 1);
-    setFlash(correct ? 'ok' : 'fail');
-    setTarget(randomSquare());
-    window.setTimeout(() => setFlash(null), 180);
+    if (!running || fb === 'fail') return;
+    if (isLight(target) === light) {
+      setCorrect((s) => s + 1);
+      setFb('ok');
+      window.setTimeout(() => { setFb(null); setTarget(randomSquare()); }, 350);
+    } else {
+      // Wrong: count it, show it, and stay on this square so guessing can't farm
+      // points — you have to actually get it right to move on.
+      setWrong((w) => w + 1);
+      setFb('fail');
+      window.setTimeout(() => setFb(null), 600);
+    }
   };
 
   return (
     <div className="ct-pane">
-      <SprintBar running={running} timeLeft={timeLeft} score={score} best={best} />
-      <div className={'ct-prompt' + (flash ? ' f-' + flash : '')}>
-        {running ? <span className="ct-coord">{target}</span> : <span className="ct-idle">Light or dark square?</span>}
-      </div>
+      <SessionBar running={running} elapsed={elapsed} correct={correct} onFinish={finish} />
       {running ? (
-        <div className="ct-color-btns">
-          <button className="ct-color-btn light" onClick={() => answer(true)}>Light</button>
-          <button className="ct-color-btn dark" onClick={() => answer(false)}>Dark</button>
-        </div>
+        <>
+          <div className={'ct-prompt' + (fb ? ' f-' + fb : '')}>
+            <span className="ct-coord">{target}</span>
+            {fb === 'ok' && <span className="ct-check ok">✓</span>}
+            {fb === 'fail' && <span className="ct-check fail">✗ it&apos;s {isLight(target) ? 'light' : 'dark'}</span>}
+          </div>
+          <div className="ct-color-btns">
+            <button className="ct-color-btn light" onClick={() => answer(true)}>Light</button>
+            <button className="ct-color-btn dark" onClick={() => answer(false)}>Dark</button>
+          </div>
+        </>
       ) : (
-        <StartCard over={over} score={score} best={best} onStart={begin}
-          blurb="A coordinate is shown — tap whether it's a light or dark square. As many as you can in 30 seconds." />
+        <StartCard over={over} correct={correct} wrong={wrong} elapsed={elapsed} onStart={begin}
+          blurb="A coordinate is shown — say whether it's a light or dark square. Take your time; press Finish when you're done." />
       )}
     </div>
   );
 }
 
 function FindMode() {
-  const { running, over, timeLeft, score, best, setScore, start } = useSprint('find');
+  const { running, over, elapsed, correct, wrong, setCorrect, setWrong, start, finish } = useSession();
   const [target, setTarget] = useState('e4');
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
+  const [showCoords, setShowCoords] = useState(false);
   const [flash, setFlash] = useState<{ sq: string; ok: boolean } | null>(null);
 
   const begin = () => { setTarget(randomSquare()); setFlash(null); start(); };
   const pick = (sq: string) => {
-    if (!running) return;
-    const ok = sq === target;
-    if (ok) setScore((s) => s + 1);
-    setFlash({ sq, ok });
-    if (ok) setTarget(randomSquare());
-    window.setTimeout(() => setFlash(null), 220);
+    if (!running || flash) return;
+    if (sq === target) {
+      setCorrect((s) => s + 1);
+      setFlash({ sq, ok: true });
+      window.setTimeout(() => { setFlash(null); setTarget(randomSquare()); }, 320);
+    } else {
+      setWrong((w) => w + 1);
+      setFlash({ sq, ok: false });
+      window.setTimeout(() => setFlash(null), 420);
+    }
   };
 
   return (
     <div className="ct-pane ct-find">
-      <SprintBar running={running} timeLeft={timeLeft} score={score} best={best}>
+      <SessionBar running={running} elapsed={elapsed} correct={correct} onFinish={finish}>
+        <label className="ct-toggle"><input type="checkbox" checked={showCoords} onChange={(e) => setShowCoords(e.target.checked)} /> Coords</label>
         <button className="ct-flip" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip</button>
-      </SprintBar>
-      <div className="ct-prompt small">
-        {running ? <>Find <span className="ct-coord">{target}</span></> : <span className="ct-idle">Click the named square</span>}
-      </div>
-      <div className="ct-find-row">
-        <CoordBoard orientation={orientation} onPick={pick} flash={flash} interactive={running} />
-        {!running && (
-          <StartCard over={over} score={score} best={best} onStart={begin}
-            blurb="A coordinate is named — click that square on the board (no labels!). As many as you can in 30 seconds." />
-        )}
-      </div>
+      </SessionBar>
+      <div className="ct-persp">Board from <b>{orientation === 'white' ? 'White' : 'Black'}</b>’s side</div>
+      {running ? (
+        <>
+          <div className="ct-prompt small">Find <span className="ct-coord">{target}</span></div>
+          <CoordBoard orientation={orientation} onPick={pick} flash={flash} interactive showCoords={showCoords} />
+        </>
+      ) : (
+        <div className="ct-find-row">
+          <CoordBoard orientation={orientation} onPick={() => {}} flash={null} interactive={false} showCoords={showCoords} />
+          <StartCard over={over} correct={correct} wrong={wrong} elapsed={elapsed} onStart={begin}
+            blurb="A coordinate is named — click that square on the board. Flip the board or show the edge coordinates from the bar above." />
+        </div>
+      )}
     </div>
   );
 }
 
-/** Unlabelled 8×8 board used by Find mode. */
-function CoordBoard({ orientation, onPick, flash, interactive }: {
+/** Piece-less 8×8 board used by Find mode, with optional edge coordinates. */
+function CoordBoard({ orientation, onPick, flash, interactive, showCoords }: {
   orientation: 'white' | 'black';
   onPick: (sq: string) => void;
   flash: { sq: string; ok: boolean } | null;
   interactive: boolean;
+  showCoords: boolean;
 }) {
   const ranks = orientation === 'white' ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8];
   const files = orientation === 'white' ? FILES.split('') : FILES.split('').reverse();
-  return (
+  const grid = (
     <div className={'ct-board' + (interactive ? '' : ' idle')}>
       {ranks.map((r) => files.map((f) => {
         const sq = f + r;
@@ -182,33 +213,12 @@ function CoordBoard({ orientation, onPick, flash, interactive }: {
       }))}
     </div>
   );
-}
-
-function SprintBar({ running, timeLeft, score, best, children }: { running: boolean; timeLeft: number; score: number; best: number; children?: React.ReactNode }) {
+  if (!showCoords) return grid;
   return (
-    <div className="ct-bar">
-      <div className="ct-stat"><span className="ct-stat-n num">{running ? timeLeft : '30'}</span><span className="ct-stat-l">seconds</span></div>
-      <div className="ct-stat"><span className="ct-stat-n num">{score}</span><span className="ct-stat-l">score</span></div>
-      <div className="ct-stat"><span className="ct-stat-n num">{best}</span><span className="ct-stat-l">best</span></div>
-      {children}
-    </div>
-  );
-}
-
-function StartCard({ over, score, best, onStart, blurb }: { over: boolean; score: number; best: number; onStart: () => void; blurb: string }) {
-  return (
-    <div className="ct-start">
-      {over ? (
-        <>
-          <div className="ct-final">You scored <b>{score}</b>{score >= best && score > 0 ? ' — new best!' : ''}</div>
-          <button className="ct-go" onClick={onStart}>Play again</button>
-        </>
-      ) : (
-        <>
-          <p className="ct-blurb">{blurb}</p>
-          <button className="ct-go" onClick={onStart}>Start</button>
-        </>
-      )}
+    <div className="ct-board-area">
+      <div className="ct-ranks">{ranks.map((r) => <span key={r}>{r}</span>)}</div>
+      {grid}
+      <div className="ct-files">{files.map((f) => <span key={f}>{f}</span>)}</div>
     </div>
   );
 }
@@ -261,7 +271,7 @@ function ReplayMode() {
     if (mv.san === expected) {
       advance(mv);
     } else {
-      g.undo(); // not the game's move — reject
+      g.undo();
       setWrong({ from: m.from, to: m.to });
       setSelected(null);
       window.setTimeout(() => setWrong(null), 500);
@@ -289,7 +299,6 @@ function ReplayMode() {
     setPly(0); setSelected(null); setLastMove(null); setWrong(null);
   };
 
-  // Numbered move rows; the next move to find is highlighted.
   const rows: { n: number; w?: string; wPly: number; b?: string; bPly: number }[] = [];
   for (let i = 0; i < moves.length; i += 2) rows.push({ n: i / 2 + 1, w: moves[i], wPly: i, b: moves[i + 1], bPly: i + 1 });
 
@@ -318,10 +327,11 @@ function ReplayMode() {
           <div className="ps-h">Game</div>
           <select className="ct-game-select" value={gameIdx} onChange={(e) => setGameIdx(Number(e.target.value))}>
             {FAMOUS_GAMES.map((g, i) => (
-              <option key={g.id} value={i}>{g.white} – {g.black}{g.year ? ` (${g.year})` : ''}</option>
+              <option key={g.id} value={i}>{g.title}{g.year ? ` · ${g.year}` : ''}</option>
             ))}
           </select>
-          <div className="ct-game-meta">{game.event}</div>
+          <div className="ct-game-players">{game.white} – {game.black}</div>
+          <p className="ct-game-context">{game.context}</p>
         </div>
 
         <div className="ps-block">

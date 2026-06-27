@@ -2244,3 +2244,26 @@ html[data-theme='dark'] .sq.cap-ring {
   .ct-replay-side { width: 100%; max-width: 480px; }
   .coords-modes { font-size: 11px; }
 }
+
+/* ── Coordinates trainer — session controls, feedback, rim coords ──────── */
+.ct-prompt { gap: 14px; }
+.ct-finish { padding: 7px 14px; border: 1px solid var(--coral); border-radius: 4px; background: var(--coral); color: #fff; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
+.ct-finish:hover { filter: brightness(1.05); }
+.ct-toggle { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); cursor: pointer; }
+.ct-toggle input { cursor: pointer; accent-color: var(--coral); }
+.ct-persp { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-faint); }
+.ct-persp b { color: var(--txt-dim); }
+.ct-check { font-size: var(--fs-title); font-weight: var(--fw-bold); }
+.ct-prompt.small .ct-check { font-size: var(--fs-base); }
+.ct-check.ok { color: var(--green); }
+.ct-check.fail { color: var(--red); font-size: var(--fs-base); text-transform: none; letter-spacing: 0; }
+
+/* Edge coordinates around the find-mode board */
+.ct-board-area { display: grid; grid-template-columns: 16px auto; grid-template-rows: auto 16px; }
+.ct-board-area .ct-board { grid-column: 2; grid-row: 1; }
+.ct-ranks { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; justify-content: space-around; align-items: center; font-size: 11px; font-weight: var(--fw-bold); color: var(--txt-dim); font-variant-numeric: tabular-nums; }
+.ct-files { grid-column: 2; grid-row: 2; display: flex; justify-content: space-around; align-items: center; font-size: 11px; font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; }
+
+/* Replay game info */
+.ct-game-players { margin-top: 7px; font-size: var(--fs-base); color: var(--txt-dim); font-weight: var(--fw-bold); }
+.ct-game-context { margin: 8px 0 0; font-size: var(--fs-micro); color: var(--txt-faint); line-height: 1.55; }
