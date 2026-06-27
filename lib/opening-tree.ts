@@ -1,5 +1,5 @@
 import type { ParsedGame } from './pgn';
-import { ecoName } from './eco-names';
+import { lookupOpening } from './opening-book';
 
 /**
  * Opening repertoire model for the Opening Clinic.
@@ -61,8 +61,17 @@ export interface TreeNode {
   id: string;
   /** SAN of the move that reached this node (''for the root). */
   san: string;
-  /** Opening name from ECO, shown only where it changes from the parent. */
+  /** Opening name for this exact position (from the opening book), shown only
+   *  where it changes from the parent's opening. */
   name: string;
+  /** The line through this node is still following established theory — this
+   *  position (or a continuation of it) is a recognised opening. Computed with
+   *  look-ahead so the sparse spots the reference book skips between named
+   *  positions don't read as leaving theory. */
+  onBook: boolean;
+  /** The move that reached this node left theory for good (the parent was on
+   *  book, this node and its continuations aren't): the deviation point. */
+  deviation: boolean;
   /** Pretty move label with number, e.g. "3.e5" / "3…Bf5". */
   label: string;
   /** Full FEN of the position after the move (OpeningBoard slices the board
@@ -177,26 +186,12 @@ interface RawNode {
   /** Sum + count of white-relative evals at this position (for the average). */
   evalSum: number;
   evalCount: number;
-  /** ECO code → count, for the modal opening name at this node. */
-  ecos: Map<string, number>;
   children: Map<string, RawNode>;
 }
 
 const emptyRaw = (san: string, ply: number): RawNode => ({
-  san, ply, games: 0, wins: 0, draws: 0, losses: 0, blunders: 0, evalSum: 0, evalCount: 0, ecos: new Map(), children: new Map(),
+  san, ply, games: 0, wins: 0, draws: 0, losses: 0, blunders: 0, evalSum: 0, evalCount: 0, children: new Map(),
 });
-
-function bumpEco(n: RawNode, eco: string) {
-  if (eco) n.ecos.set(eco, (n.ecos.get(eco) ?? 0) + 1);
-}
-
-/** Most common ECO code at a node, or '' if none recorded. */
-function modalEco(n: RawNode): string {
-  let best = '';
-  let max = 0;
-  for (const [eco, c] of n.ecos) if (c > max) { max = c; best = eco; }
-  return best;
-}
 
 /**
  * Build the opening tree for one colour from the game summaries: a trie of
@@ -211,7 +206,6 @@ export function buildOpeningTree(games: OpeningGame[], color: 'w' | 'b'): TreeNo
     let node = root;
     node.games++;
     bump(node, g.result);
-    bumpEco(node, g.eco);
     for (let i = 0; i < g.moves.length; i++) {
       if (blunders.has(i)) node.blunders++; // blundered the move out of this node
       const san = g.moves[i];
@@ -219,7 +213,6 @@ export function buildOpeningTree(games: OpeningGame[], color: 'w' | 'b'): TreeNo
       if (!child) { child = emptyRaw(san, i + 1); node.children.set(san, child); }
       child.games++;
       bump(child, g.result);
-      bumpEco(child, g.eco);
       const ev = g.evals?.[i];
       if (ev != null) { child.evalSum += ev; child.evalCount++; } // position eval after this move
       node = child;
@@ -235,7 +228,7 @@ function bump(n: RawNode, r: 'win' | 'loss' | 'draw') {
   else n.draws++;
 }
 
-function resolve(raw: RawNode, chess: Chess, parentEco = ''): TreeNode {
+function resolve(raw: RawNode, chess: Chess, parentName = ''): TreeNode {
   const score = raw.games ? ((raw.wins + raw.draws / 2) / raw.games) * 100 : 0;
   let hl: [string, string] | null = null;
   if (raw.san) {
@@ -251,13 +244,22 @@ function resolve(raw: RawNode, chess: Chess, parentEco = ''): TreeNode {
   // the board field itself.
   const fen = chess.fen();
 
-  // Show the opening name only where it changes from the parent, so the spine
-  // is named once at the top rather than repeating down every node.
-  const eco = modalEco(raw);
-  const name = eco && eco !== parentEco ? (ecoName(eco) ?? '') : '';
+  // Name the node by its *exact position* (the opening book keys on EPD), not by
+  // the game's single ECO header — so every position is named correctly and
+  // transpositions fold onto the same name. Show the name only where it changes
+  // from the parent's effective opening, so the spine is labelled where each
+  // variation begins; deeper/unnamed positions inherit the parent's name.
+  const found = lookupOpening(fen);
+  const posName = found?.name ?? '';
+  const effName = posName || parentName;
+  const name = posName && posName !== parentName ? posName : '';
+
+  // Whether *this exact position* is a named opening (the start counts as
+  // theory). onBook is refined with look-ahead once children are resolved.
+  const inBook = raw.ply === 0 ? true : !!found;
 
   const node: TreeNode = {
-    id: '', san: raw.san, name, label: raw.san ? moveLabel(raw.ply, raw.san) : 'Start',
+    id: '', san: raw.san, name, onBook: inBook, deviation: false, label: raw.san ? moveLabel(raw.ply, raw.san) : 'Start',
     fen, hl, depth: raw.ply,
     games: raw.games, wins: raw.wins, draws: raw.draws, losses: raw.losses,
     score: Math.round(score), perf: perfOf(score),
@@ -273,8 +275,9 @@ function resolve(raw: RawNode, chess: Chess, parentEco = ''): TreeNode {
   node.collapsed = kids.length - kept.length;
   const mainGames = kept.length ? kept[0].games : 0; // kept is sorted desc
   for (const k of kept) {
-    // Root's children always get a clean baseline so the spine is named.
-    const child = resolve(k, new Chess(chess.fen()), raw.ply === 0 ? '' : eco);
+    // Children inherit this node's effective opening, so a name only re-appears
+    // when the line enters a genuinely different variation.
+    const child = resolve(k, new Chess(chess.fen()), effName);
     // Gap = a side branch played far less than the main line from this
     // position (a repertoire hole): leaky if it also scores poorly, else
     // just unmapped. The main line itself is never a gap.
@@ -283,6 +286,15 @@ function resolve(raw: RawNode, chess: Chess, parentEco = ''): TreeNode {
     }
     node.children.push(child);
   }
+
+  // Theory standard, with look-ahead: this node is "on book" if it's a named
+  // position itself OR any kept continuation rejoins the book — so the sparse
+  // gaps the reference book leaves between named positions (e.g. the move right
+  // after a recapture) don't read as leaving theory. A child is the *deviation*
+  // when this node is on book but that child (and all its continuations) isn't:
+  // the point where the line leaves theory for good.
+  node.onBook = inBook || node.children.some((c) => c.onBook);
+  for (const c of node.children) c.deviation = node.onBook && !c.onBook;
 
   if (raw.san) chess.undo();
   node.id = raw.san; // refined to full path below

@@ -10,7 +10,6 @@ import type {
   SpeedFilter,
 } from '@/lib/types';
 import { ecoName } from '@/lib/eco-names';
-import { ImportBar } from './ImportBar';
 import { FilterChip } from './FilterChip';
 
 interface SidebarProps {
@@ -24,17 +23,11 @@ interface SidebarProps {
   solved: Record<string, SolveStatus>;
   /** Tab counts across the whole library (not narrowed by chips). */
   counts: { new: number; retry: number; all: number };
-  /** Unsolved puzzle count — drives the import bar's auto-import loop. */
-  unseenCount: number;
   onFilterChange: (f: Filter) => void;
   onEcoFilterChange: (e: EcoFilter) => void;
   onSpeedFilterChange: (s: SpeedFilter) => void;
   onPhaseFilterChange: (p: PhaseFilter) => void;
   onSelect: (p: Puzzle) => void;
-  onImport: (newPuzzles: Puzzle[]) => void;
-  /** Fired when the user's own games are fetched, so placeholders can be dropped. */
-  onGamesFetched?: () => void;
-  onClearAll: () => void;
 }
 
 const PHASE_OPTIONS = [
@@ -64,15 +57,11 @@ export function Sidebar({
   current,
   solved,
   counts,
-  unseenCount,
   onFilterChange,
   onEcoFilterChange,
   onSpeedFilterChange,
   onPhaseFilterChange,
   onSelect,
-  onImport,
-  onGamesFetched,
-  onClearAll,
 }: SidebarProps) {
   // Distinct ECO codes present, sorted, with full opening names attached.
   const ecoOptions = useMemo(() => {
@@ -99,13 +88,6 @@ export function Sidebar({
 
   return (
     <div className="side">
-      <ImportBar
-        onImport={onImport}
-        onGamesFetched={onGamesFetched}
-        onClearAll={onClearAll}
-        unseenCount={unseenCount}
-      />
-
       <div className="side-block">
         <div className="side-h">Queue</div>
         <div className="seg-tabs">

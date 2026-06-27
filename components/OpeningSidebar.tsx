@@ -1,33 +1,18 @@
 'use client';
 
-import type { Puzzle } from '@/lib/types';
-import { ImportBar } from './ImportBar';
 import { useClinic } from '@/lib/clinic-context';
 
-interface OpeningSidebarProps {
-  onImport: (newPuzzles: Puzzle[]) => void;
-  onGamesFetched?: () => void;
-  onClearAll: () => void;
-  unseenCount: number;
-}
-
 /**
- * Left panel for Opening mode: the same import bar as the trainer, plus a
- * colour switch and a filterable list of your openings. Picking one focuses the
- * tree on that opening's subtree (the clinic and this list share state via
- * ClinicProvider). Replaces the puzzle queue, which is irrelevant here.
+ * Left panel for Opening mode: a colour switch and a filterable list of your
+ * openings. Picking one focuses the tree on that opening's subtree (the clinic
+ * and this list share state via ClinicProvider). Import lives in the top-bar
+ * import panel now, shared across modes.
  */
-export function OpeningSidebar({ onImport, onGamesFetched, onClearAll, unseenCount }: OpeningSidebarProps) {
+export function OpeningSidebar() {
   const { color, setColor, openings, focus, setFocus, setSelectedId } = useClinic();
 
   return (
     <div className="side">
-      <ImportBar
-        onImport={onImport}
-        onGamesFetched={onGamesFetched}
-        onClearAll={onClearAll}
-        unseenCount={unseenCount}
-      />
 
       <div className="side-block">
         <div className="side-h">Repertoire</div>

@@ -5,28 +5,13 @@ import type { Puzzle } from '@/lib/types';
 interface ResultPanelProps {
   puzzle: Puzzle;
   yourMove: string;
-  /** SANs of every wrong move tried before solving (or giving up). */
-  attempts: string[];
   isOk: boolean;
+  /** Jump the board to the position after the i-th move of the engine line. */
+  onSeek?: (ply: number) => void;
+  /** Index of the engine-line move currently shown on the board (for highlight). */
+  seekPly?: number | null;
   onRetry: () => void;
   onNext: () => void;
-}
-
-/**
- * Render the engine line in move-numbered SAN starting from the critical
- * position, e.g. "22… Qf7 23. f4 Qh5". `startPly` is how many plies preceded
- * the position (so move numbers and the side to move line up).
- */
-function formatEngineLine(line: string[], startPly: number): string {
-  let out = '';
-  for (let i = 0; i < line.length; i++) {
-    const ply = startPly + i;
-    const moveNo = Math.floor(ply / 2) + 1;
-    const whiteToMove = ply % 2 === 0;
-    if (whiteToMove) out += `${moveNo}. ${line[i]} `;
-    else out += i === 0 ? `${moveNo}… ${line[i]} ` : `${line[i]} `;
-  }
-  return out.trim();
 }
 
 const clamp = (v: number, mn: number, mx: number) => Math.max(mn, Math.min(mx, v));
@@ -44,8 +29,9 @@ const fmtEval = (v: number) => {
 export function ResultPanel({
   puzzle,
   yourMove,
-  attempts,
   isOk,
+  onSeek,
+  seekPly,
   onRetry,
   onNext,
 }: ResultPanelProps) {
@@ -119,7 +105,24 @@ export function ResultPanel({
         <div className="engine-line">
           <div className="engine-line-h">{puzzle.combination ? 'Winning line' : 'Engine line'}</div>
           <div className="engine-line-moves">
-            {formatEngineLine(engineLine, puzzle.setupMoves.length)}
+            {engineLine.map((san, i) => {
+              const ply = puzzle.setupMoves.length + i;
+              const whiteToMove = ply % 2 === 0;
+              const showNo = whiteToMove || i === 0;
+              return (
+                <span key={i} className="el-tok">
+                  {showNo && <span className="el-no num">{Math.floor(ply / 2) + 1}{whiteToMove ? '.' : '…'}</span>}
+                  <button
+                    type="button"
+                    className={'el-move' + (seekPly === i ? ' cur' : '')}
+                    onClick={() => onSeek?.(i)}
+                    title="Show this position"
+                  >
+                    {san}
+                  </button>
+                </span>
+              );
+            })}
           </div>
         </div>
       )}
@@ -127,12 +130,6 @@ export function ResultPanel({
       <div className="blunder-line">
         Blunder in real game:<span className="v">{puzzle.mistakeMove}</span>
       </div>
-
-      {attempts.length > 0 && (
-        <div className="tries-line">
-          Wrong tries: <span className="v">{attempts.join(', ')}</span>
-        </div>
-      )}
 
       <div className="actions">
         <button className="btn prim" onClick={onNext}>

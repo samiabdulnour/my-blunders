@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { Puzzle } from '@/lib/types';
 import { useImporter } from '@/lib/useImporter';
-import { useAutoImport } from '@/lib/use-auto-import';
+import { useAutoImport, setAutoImport } from '@/lib/use-auto-import';
+import { loadOpeningGames } from '@/lib/storage';
 
 interface ImportBarProps {
   /** Called as puzzles arrive from an import. */
@@ -42,8 +43,6 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
     resetCursor,
   } = useImporter({ onImport, onGamesFetched, unseenCount });
 
-  // Preference lives in a shared store; the toggle itself is now a top-bar
-  // button. Read it here only to frame the progress caption.
   const autoImportEnabled = useAutoImport();
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,11 +63,25 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
     setConfirmClear(false);
   };
 
+  // The real library size is the persisted game corpus (`bt.openingGames`),
+  // which BOTH the puzzle pipeline and the clinic's background fetch feed — so
+  // it climbs much faster than the puzzle-only `fetchedCount` and is the honest
+  // "games fetched" number to show. Poll it while building.
+  const [libraryCount, setLibraryCount] = useState(0);
+  useEffect(() => {
+    const update = () => setLibraryCount(loadOpeningGames().length);
+    update();
+    if (!working && !autoImportEnabled) return;
+    const id = window.setInterval(update, 2000);
+    return () => window.clearInterval(id);
+  }, [working, autoImportEnabled]);
+
   const progress = working ? status.progress : undefined;
+  const displayCount = Math.max(libraryCount, fetchedCount);
   // With auto-import building the library, show progress toward the whole target
-  // (e.g. 143/500), not the current 20-game batch — "/20" while fetching 500 is
-  // confusing. Off, the per-batch count is what's meaningful.
-  const libraryDone = Math.min(target, fetchedCount + (progress?.current ?? 0));
+  // (e.g. 143/500), not the current 20-game batch. Off, the per-batch count is
+  // what's meaningful.
+  const libraryDone = Math.min(target, displayCount);
   const pct = autoImportEnabled
     ? Math.round((libraryDone / target) * 100)
     : progress && progress.total > 0
@@ -84,10 +97,10 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
       : status.message;
   } else if (status.kind === 'error') {
     caption = status.message;
-  } else if (fetchedCount > 0) {
-    if (exhausted) caption = `${fetchedCount} games · all your history imported`;
-    else if (autoImportEnabled) caption = `${fetchedCount} / ${target} games imported`;
-    else caption = `${fetchedCount} games imported`;
+  } else if (displayCount > 0) {
+    if (exhausted) caption = `${displayCount} games · all your history imported`;
+    else if (autoImportEnabled) caption = `${displayCount} / ${target} games imported`;
+    else caption = `${displayCount} games imported`;
   } else if (status.kind === 'ok' && status.message) {
     caption = status.message;
   }
@@ -140,6 +153,20 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
           {working ? 'Importing' : fetchedCount > 0 ? 'Import more' : 'Import'}
         </button>
       </div>
+
+      <button
+        type="button"
+        aria-pressed={autoImportEnabled}
+        className={'auto-btn' + (autoImportEnabled ? ' on' : '')}
+        onClick={() => setAutoImport(!autoImportEnabled)}
+        title={
+          autoImportEnabled
+            ? `Auto-import on — building toward ${target} games in the background`
+            : 'Auto-import off — pull each batch with “Import more”'
+        }
+      >
+        Auto-import: {autoImportEnabled ? <>on<span className="auto-btn-sub"> · to {target}</span></> : 'off'}
+      </button>
 
       {working && (
         <div className="imp-progress">

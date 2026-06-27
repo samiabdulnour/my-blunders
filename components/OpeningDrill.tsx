@@ -252,7 +252,7 @@ export function OpeningDrill({ items, onExit }: { items: DrillItem[]; onExit: ()
         <div className="od-stage">
           <div className="od-board-col">
             <div className="od-row">
-              <span className="od-tomove"><span className="od-turndot" /> {turnColor} to move</span>
+              <span className="od-tomove"><span className={'od-turndot' + (chess.turn() === 'w' ? ' white' : '')} /> {turnColor} to move</span>
               {item.name && <span>{item.name}</span>}
             </div>
             <div className={'od-frame' + (phase === 'wrong' ? ' bad' : '') + (lineDone || phase === 'opponent' ? ' ok' : '')}>

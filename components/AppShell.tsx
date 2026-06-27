@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import type { HistoryEntry, SessionStats } from '@/lib/types';
+import type { HistoryEntry, Puzzle, SessionStats } from '@/lib/types';
 import type { ThemeMode } from '@/lib/storage';
 import { BrandMark } from './BrandMark';
 import { StatsSheet } from './StatsSheet';
-import { useAutoImport, setAutoImport } from '@/lib/use-auto-import';
+import { ImportBar } from './ImportBar';
 
 interface AppShellProps {
   stats: SessionStats;
@@ -17,9 +17,14 @@ interface AppShellProps {
   onToggleRandom: () => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
-  /** Puzzle ↔ Opening mode for the shared topbar switch. */
-  mode: 'puzzle' | 'opening';
-  onModeChange: (mode: 'puzzle' | 'opening') => void;
+  /** Puzzle · Opening · Play · Coordinates mode for the shared topbar switch. */
+  mode: 'puzzle' | 'opening' | 'play' | 'coords';
+  onModeChange: (mode: 'puzzle' | 'opening' | 'play' | 'coords') => void;
+  /** Import controls live in a top-bar dropdown (one hub for every mode). */
+  onImport: (newPuzzles: Puzzle[]) => void;
+  onGamesFetched?: () => void;
+  onClearAll: () => void;
+  unseenCount: number;
   /** Sidebar + main, supplied by the page. */
   children: React.ReactNode;
 }
@@ -44,13 +49,19 @@ export function AppShell({
   onToggleTheme,
   mode,
   onModeChange,
+  onImport,
+  onGamesFetched,
+  onClearAll,
+  unseenCount,
   children,
 }: AppShellProps) {
   const [sideOpen, setSideOpen] = useState(true);
   const [statsOpen, setStatsOpen] = useState(false);
-  const autoImport = useAutoImport();
+  const [importOpen, setImportOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const statsBtnRef = useRef<HTMLButtonElement | null>(null);
+  const importSheetRef = useRef<HTMLDivElement | null>(null);
+  const importBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // After mount, collapse the sidebar on narrow viewports (mobile).
   useEffect(() => {
@@ -77,6 +88,26 @@ export function AppShell({
       document.removeEventListener('keydown', onKey);
     };
   }, [statsOpen]);
+
+  // Click-away + Escape for the import sheet.
+  useEffect(() => {
+    if (!importOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (importSheetRef.current?.contains(target)) return;
+      if (importBtnRef.current?.contains(target)) return;
+      setImportOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setImportOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [importOpen]);
 
   const closeOnMobile = () => {
     if (typeof window === 'undefined') return;
@@ -130,6 +161,24 @@ export function AppShell({
           >
             Opening
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'coords'}
+            className={mode === 'coords' ? 'on' : ''}
+            onClick={() => onModeChange('coords')}
+          >
+            Coordinates
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'play'}
+            className={mode === 'play' ? 'on' : ''}
+            onClick={() => onModeChange('play')}
+          >
+            Play
+          </button>
         </div>
 
         <div className="topbar-spacer" />
@@ -137,15 +186,12 @@ export function AppShell({
         <div className="topbar-prefs">
           <button
             type="button"
-            className={'icon-btn' + (autoImport ? ' on' : '')}
-            onClick={() => setAutoImport(!autoImport)}
-            title={
-              autoImport
-                ? 'Auto-import on — building your library in the background'
-                : 'Auto-import off — import each batch manually'
-            }
-            aria-label="Auto-import"
-            aria-pressed={autoImport}
+            ref={importBtnRef}
+            className={'icon-btn' + (importOpen ? ' on' : '')}
+            onClick={() => setImportOpen((o) => !o)}
+            title="Import games"
+            aria-label="Import games"
+            aria-expanded={importOpen}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -232,6 +278,17 @@ export function AppShell({
           onClose={() => setStatsOpen(false)}
           sheetRef={sheetRef}
         />
+      )}
+
+      {importOpen && (
+        <div className="import-sheet" ref={importSheetRef}>
+          <ImportBar
+            onImport={onImport}
+            onGamesFetched={onGamesFetched}
+            onClearAll={onClearAll}
+            unseenCount={unseenCount}
+          />
+        </div>
       )}
 
       <div className={'body-row' + (sideOpen ? '' : ' side-closed')}>

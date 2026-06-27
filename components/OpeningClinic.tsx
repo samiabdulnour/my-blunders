@@ -152,6 +152,15 @@ export function OpeningClinic() {
   }, [layout]);
   const selected = (selectedId && byId[selectedId]) || defaultSel;
 
+  // FEN of the position *before* the selected node's move — so the detail panel
+  // can show the best move for the player who made that move.
+  const parentFen = useMemo(() => {
+    if (!selected) return null;
+    const segs = selected.pathId.split('/');
+    if (segs.length <= 1) return tree.fen; // parent is the start position
+    return findByPath(tree, segs.slice(0, -1).join('/'))?.fen ?? null;
+  }, [selected, tree]);
+
   // Drill = re-root the tree at a node. Used by the breadcrumb, the sidebar, and
   // the continuation list — but NOT by clicking a board (that only selects).
   const drill = (pathId: string) => { setFocus(pathId); setSelectedId(pathId); };
@@ -203,6 +212,7 @@ export function OpeningClinic() {
             <span className="cleg"><i className="ln good" /> good</span>
             <span className="cleg"><i className="ln risk" /> risky</span>
             <span className="cleg"><i className="ln bad" /> blunder</span>
+            <span className="cleg"><i className="ln dev" /> off-book</span>
             {allHot > 0 && <span className="cleg"><i className="sw hot" /> {allHot} hotspot{allHot === 1 ? '' : 's'}</span>}
             {allGaps > 0 && <span className="cleg"><i className="sw gap" /> {allGaps} gap{allGaps === 1 ? '' : 's'}</span>}
             {fetching && <span className="clinic-loading">loading games…</span>}
@@ -239,7 +249,10 @@ export function OpeningClinic() {
                   const b = byId[e.to];
                   if (!a || !b) return null;
                   const stroke = edgeStroke(a.fen, evalOf(a) ?? null, evalOf(b) ?? null);
-                  return <path key={i} d={connectorPath(a, b)} fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" />;
+                  // Dash the move that leaves theory, so the solid spine reads as
+                  // the main line and deviations stand out (colour still = quality).
+                  const dash = b.deviation ? '6 5' : undefined;
+                  return <path key={i} d={connectorPath(a, b)} fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeDasharray={dash} />;
                 })}
               </svg>
               {layout.nodes.map((n) => (
@@ -253,6 +266,7 @@ export function OpeningClinic() {
       {detailOpen && (
         <DetailPanel
           node={selected}
+          parentFen={parentFen}
           color={color}
           onClose={() => setDetailOpen(false)}
           onPickMove={(san) => {
@@ -274,6 +288,7 @@ function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: La
   const cls =
     'cnode-frame' +
     (node.gap ? ' gap' : '') +
+    (node.deviation ? ' dev' : '') +
     (node.hotspot ? ' hotspot' : '') +
     (selected ? ' sel' : '');
   const evalLabel = displayEval === undefined ? '…' : formatEval(displayEval) || '·';
@@ -283,6 +298,7 @@ function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: La
         <div className={cls}>
           {node.blunders > 0 && <span className="cnode-warn"><IconWarn size={10} /> {node.blunders}</span>}
           {node.more > 0 && <span className="cnode-more">+{node.more}</span>}
+          {node.deviation && <span className="cnode-off" title="Leaves opening theory">off-book</span>}
           <OpeningBoard fen={node.fen} hl={node.hl} sqSize={12} orient={color} />
         </div>
       </button>
@@ -295,11 +311,14 @@ function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: La
   );
 }
 
-function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: LaidNode | null; color: 'w' | 'b'; onClose: () => void; onPickMove: (san: string) => void; onDrill: (items: DrillItem[]) => void }) {
+function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: { node: LaidNode | null; parentFen: string | null; color: 'w' | 'b'; onClose: () => void; onPickMove: (san: string) => void; onDrill: (items: DrillItem[]) => void }) {
   const [theory, setTheory] = useState<Theory | null>(null);
   const [theoryLoading, setTheoryLoading] = useState(false);
   const [engine, setEngine] = useState<EngineEval | null>(null);
   const [engineLoading, setEngineLoading] = useState(false);
+  // Engine eval of the position *before* this node's move — the best move the
+  // player who moved here should have chosen.
+  const [parentEngine, setParentEngine] = useState<EngineEval | null>(null);
 
   useEffect(() => {
     if (!node) { setTheory(null); return; }
@@ -317,6 +336,18 @@ function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: Laid
     return () => { cancelled = true; };
   }, [node?.fen]);
 
+  // Analyse the parent for *every* move (your moves and the opponent's), so the
+  // best-vs-played arrows are consistent on every node; skip only the root.
+  const movedColor = node ? ((node.fen.split(' ')[1] ?? 'w') === 'w' ? 'b' : 'w') : null;
+  const reachedByUser = !!node && node.depth > 0 && movedColor === color;
+  useEffect(() => {
+    if (!node || node.depth === 0 || !parentFen) { setParentEngine(null); return; }
+    let cancelled = false;
+    setParentEngine(null);
+    evalPosition(parentFen).then((e) => { if (!cancelled) setParentEngine(e); });
+    return () => { cancelled = true; };
+  }, [node?.fen, parentFen]);
+
   if (!node) {
     return (
       <aside className="clinic-detail">
@@ -332,17 +363,19 @@ function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: Laid
   const yours = [...node.children].sort((a, b) => b.games - a.games);
   const yourMain = yours[0];
 
-  // Green = the right move: the engine's best (authoritative, works even where
-  // theory runs out), falling back to theory's main line. Red = the move you
-  // got wrong here (a blundered or off-book continuation) — only on your turn.
-  const greenUci = engine?.bestUci || theory?.moves[0]?.uci || '';
+  // Best move at the current position (for tagging the "played in practice" list).
   const greenSan = engine?.bestSan || theory?.moves[0]?.san;
-  const blunderChild = yours.filter((c) => c.blunders > 0).sort((a, b) => b.blunders - a.blunders)[0];
-  const offBook = !!yourMain && !!theory && !theory.moves.some((m) => m.san === yourMain.san);
-  const wrong = userTurn ? blunderChild ?? (offBook ? yourMain : undefined) : undefined;
+  // Did the move that reached this node match the engine's best at the parent?
+  const parentBestUci = parentEngine?.bestUci || '';
+  const playedBest = !!parentBestUci && !!node.hl && parentBestUci.slice(0, 2) === node.hl[0] && parentBestUci.slice(2, 4) === node.hl[1];
+  // Consistent arrows on every node: green = the best move the player who moved
+  // here could have made (yours OR the opponent's), red = what they actually
+  // played, when it wasn't the best. Derived from the position *before* the move.
   const arrows: BoardArrow[] = [];
-  if (greenUci) arrows.push({ from: greenUci.slice(0, 2), to: greenUci.slice(2, 4), kind: 'good' });
-  if (wrong?.hl && wrong.san !== greenSan) arrows.push({ from: wrong.hl[0], to: wrong.hl[1], kind: 'bad' });
+  if (node.depth > 0) {
+    if (parentBestUci) arrows.push({ from: parentBestUci.slice(0, 2), to: parentBestUci.slice(2, 4), kind: 'good' });
+    if (node.hl && !playedBest) arrows.push({ from: node.hl[0], to: node.hl[1], kind: 'bad' });
+  }
 
   return (
     <aside className="clinic-detail">
@@ -352,6 +385,11 @@ function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: Laid
         <div className="cd-head">
           {node.name && <div className="cd-name">{node.name}</div>}
           <div className="cd-move">{node.label}</div>
+          {node.depth > 0 && (
+            <div className={'cd-theory ' + (node.onBook ? 'book' : 'off')}>
+              {node.onBook ? 'Main line' : 'Off-book'}
+            </div>
+          )}
           <div className="cd-record num" title="Your score from this position (wins + ½ draws)">
             <span className={'cd-score ' + node.perf}>{node.score}%</span>
             <span className="cd-wdl">{node.wins}W · {node.draws}D · {node.losses}L</span>
@@ -375,21 +413,28 @@ function DetailPanel({ node, color, onClose, onPickMove, onDrill }: { node: Laid
       </div>
 
       <div className="cd-sec">
-        <div className="cd-eyebrow">{userTurn ? 'Right continuation' : 'Best move here'}</div>
-        {engine ? (
-          <>
-            <div className="cd-engine">
-              <span className="ce-move">{engine.bestSan || '—'}</span>
-              <span className="ce-eval num">{evalText(engine)}</span>
-            </div>
-            {userTurn && yourMain && (
-              <div className="cd-verdict">
-                {yourMain.san === engine.bestSan
-                  ? <>You play the top engine move — <b className="good">{yourMain.san}</b>. ✓</>
-                  : <>You play <b className={wrong ? 'bad' : ''}>{yourMain.san}</b>; the engine prefers <b className="good">{engine.bestSan}</b> ({evalText(engine)}).</>}
+        <div className="cd-eyebrow">{node.depth > 0 ? 'Best move here' : 'Best first move'}</div>
+        {node.depth > 0 ? (
+          parentEngine ? (
+            <>
+              <div className="cd-engine">
+                <span className="ce-move">{parentEngine.bestSan || '—'}</span>
+                <span className="ce-eval num">{evalText(parentEngine)}</span>
               </div>
-            )}
-          </>
+              <div className="cd-verdict">
+                {playedBest
+                  ? <>{reachedByUser ? 'You' : 'The opponent'} played the top engine move — <b className="good">{node.san}</b>. ✓</>
+                  : <>{reachedByUser ? 'You' : 'The opponent'} played <b className={node.deviation ? 'bad' : ''}>{node.san}</b>; the engine prefers <b className="good">{parentEngine.bestSan}</b> ({evalText(parentEngine)}).</>}
+              </div>
+            </>
+          ) : (
+            <div className="cd-note">Analyzing the move…</div>
+          )
+        ) : engine ? (
+          <div className="cd-engine">
+            <span className="ce-move">{engine.bestSan || '—'}</span>
+            <span className="ce-eval num">{evalText(engine)}</span>
+          </div>
         ) : engineLoading ? (
           <div className="cd-note">Analyzing position…</div>
         ) : (

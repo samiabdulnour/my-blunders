@@ -4,11 +4,15 @@
  * by default, or rated Lichess games), with how popular each is and how it
  * scores. The top move is opening theory's main line.
  *
- * The API (https://explorer.lichess.ovh) is CORS-enabled, so this runs straight
- * from the browser. NOTE: it is *not* reachable from the dev sandbox's egress
- * (only lichess.org is allowlisted), so it's exercised live in the browser /
- * production and mocked in local tests.
+ * Calls go through our own `/api/explorer` proxy rather than hitting
+ * explorer.lichess.ovh directly: a same-origin request survives privacy
+ * browsers / shields that block cross-site requests (which silently killed
+ * theory for some users). NOTE: the upstream is *not* reachable from the dev
+ * sandbox's egress, so this is exercised live in the browser / production and
+ * mocked in local tests.
  */
+import { apiUrl } from './api';
+
 export type TheoryDb = 'masters' | 'lichess';
 
 export interface TheoryMove {
@@ -29,8 +33,6 @@ export interface Theory {
   moves: TheoryMove[];
   opening: { eco: string; name: string } | null;
 }
-
-const BASE = 'https://explorer.lichess.ovh';
 
 interface RawMove {
   san: string;
@@ -58,7 +60,8 @@ function shape(json: { white?: number; draws?: number; black?: number; moves?: R
 }
 
 async function query(db: TheoryDb, fen: string): Promise<Theory | null> {
-  const url = new URL(`${BASE}/${db}`);
+  const url = new URL(apiUrl('/api/explorer'), window.location.origin);
+  url.searchParams.set('db', db);
   url.searchParams.set('fen', fen);
   url.searchParams.set('moves', '6');
   url.searchParams.set('topGames', '0');

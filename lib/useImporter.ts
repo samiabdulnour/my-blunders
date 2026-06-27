@@ -9,6 +9,7 @@ import { generatePuzzlesFromGame, annotateEvalsIfMissing } from './puzzle-genera
 import { summarizeGame, type OpeningGame } from './opening-tree';
 import { getWasmEngine } from './engine/wasm-engine';
 import { useAutoImport } from './use-auto-import';
+import { recordEloFromGames } from './player-elo';
 import {
   loadUsername,
   saveUsername,
@@ -378,6 +379,9 @@ export function useImporter({
 
       // Feed the Opening Clinic from the (now eval-annotated) games.
       persistOpeningGames(games, name);
+      recordEloFromGames(games, name); // size Assisted Play to your rating
+
+
 
       processEvent(
         {
@@ -507,6 +511,7 @@ export function useImporter({
         }
         if (cancelRef.current) return; // aborted — skip write-back
         persistOpeningGames(games, name); // feed the Opening Clinic (now annotated)
+        recordEloFromGames(games, name); // size Assisted Play to your rating
         setStatus({ kind: 'ok', message: `imported ${games.length} games → ${total} puzzles` });
       } catch (err) {
         setStatus({ kind: 'error', message: (err as Error).message });

@@ -7,6 +7,8 @@ import { AppShell } from '@/components/AppShell';
 import { Board } from '@/components/Board';
 import { OpeningClinic } from '@/components/OpeningClinic';
 import { OpeningSidebar } from '@/components/OpeningSidebar';
+import { PlayMode } from '@/components/PlayMode';
+import { CoordsTrainer } from '@/components/CoordsTrainer';
 import { ClinicProvider } from '@/lib/clinic-context';
 import { Sidebar } from '@/components/Sidebar';
 import { ResultPanel } from '@/components/ResultPanel';
@@ -14,6 +16,7 @@ import { Onboarding } from '@/components/Onboarding';
 import { BrandMark } from '@/components/BrandMark';
 import { apiUrl } from '@/lib/api';
 import { ecoName } from '@/lib/eco-names';
+import { clearElo } from '@/lib/player-elo';
 import { FAMOUS_PUZZLES } from '@/lib/famous-puzzles';
 import type {
   EcoFilter,
@@ -51,8 +54,8 @@ const DEFAULT_STATS: SessionStats = { correct: 0, wrong: 0, streak: 0, bestStrea
 
 export default function Page() {
   const [all, setAll] = useState<Puzzle[]>([]);
-  // Puzzle solver vs. Opening Clinic — the two modes of the trainer.
-  const [mode, setMode] = useState<'puzzle' | 'opening'>('puzzle');
+  // Puzzle solver · Opening Clinic · Assisted Play — the modes of the trainer.
+  const [mode, setMode] = useState<'puzzle' | 'opening' | 'play' | 'coords'>('puzzle');
   // Bumped on "Clear all" to remount the clinic so it drops its in-memory games
   // (clearAll() has emptied the store; the provider re-reads it on remount).
   const [clinicEpoch, setClinicEpoch] = useState(0);
@@ -79,6 +82,9 @@ export default function Page() {
   const [analysis, setAnalysis] = useState(false);
   const [yourMove, setYourMove] = useState<string | null>(null);
   const [isOk, setIsOk] = useState(false);
+  /** Engine-line move index currently shown via the result panel's clickable
+   *  notation (null = not navigating the line). */
+  const [seekPly, setSeekPly] = useState<number | null>(null);
   /** True while a wrong move is flashing red and being undone. */
   const [awaitingRetry, setAwaitingRetry] = useState(false);
   /** Piece at `.from` slides back from `.to` — the wrong-move bounce. */
@@ -283,6 +289,7 @@ export default function Page() {
     setAwaitingRetry(false);
     setBounceBack(null);
     setAttempts([]);
+    setSeekPly(null);
     setLegalFrom(groupLegal(c));
 
     if (lastMoveFrom && lastMoveTo) {
@@ -365,6 +372,31 @@ export default function Page() {
     setTimeout(playNext, 600); // let the solving move's own animation land first
   };
 
+  /* ── Jump the board to a position in the engine line (clickable notation in
+     the result panel). Replays the setup moves + the line up to `ply`, then
+     leaves the board in free-analysis so you can explore from there. */
+  const seekToLine = useCallback((ply: number) => {
+    if (!current) return;
+    const line = current.line && current.line.length > 0 ? current.line : [current.bestMove];
+    const c = new Chess();
+    for (const m of current.setupMoves) { try { c.move(m); } catch { /* odd SAN — skip */ } }
+    let last: Move | null = null;
+    for (let i = 0; i <= ply && i < line.length; i++) {
+      try { last = c.move(line[i]); } catch { break; }
+    }
+    setChess(new Chess(c.fen()));
+    setSelected(null);
+    setLastFrom(last?.from ?? null);
+    setLastTo(last?.to ?? null);
+    setFlashOk(null);
+    setFlashFail(null);
+    setBounceBack(null);
+    setIntroMove(null);
+    setAnalysis(true);
+    setLegalFrom(groupLegal(c));
+    setSeekPly(ply);
+  }, [current]);
+
   /* ── Apply a move ──
      Three modes: free analysis (after solve — any legal move), multi-move
      solving (combination puzzles play out the engine line), and the
@@ -413,6 +445,7 @@ export default function Page() {
     if (analysis) {
       setChess(next);
       setSelected(null);
+      setSeekPly(null); // a free move leaves the engine line
       setLastFrom(mv.from);
       setLastTo(mv.to);
       setLegalFrom(groupLegal(next));
@@ -663,6 +696,7 @@ export default function Page() {
   /* ── Wipe imported puzzles + progress, reset to seed state ── */
   const handleClearAll = useCallback(() => {
     clearAll();
+    clearElo();
     // The famous library is guest-only. clearAll() deliberately keeps the saved
     // username, so an account-holder stays a non-guest and lands on an empty
     // queue (with the "import to begin" prompt) rather than the placeholders.
@@ -764,19 +798,26 @@ export default function Page() {
       onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
       mode={mode}
       onModeChange={setMode}
+      onImport={handleImport}
+      onGamesFetched={handleGamesFetched}
+      onClearAll={handleClearAll}
+      unseenCount={unseenCount}
     >
       {mode === 'opening' ? (
         <ClinicProvider key={clinicEpoch}>
-          <OpeningSidebar
-            onImport={handleImport}
-            onGamesFetched={handleGamesFetched}
-            onClearAll={handleClearAll}
-            unseenCount={unseenCount}
-          />
+          <OpeningSidebar />
           <div className="main clinic-mode">
             <OpeningClinic />
           </div>
         </ClinicProvider>
+      ) : mode === 'play' ? (
+        <div className="main play-mode">
+          <PlayMode />
+        </div>
+      ) : mode === 'coords' ? (
+        <div className="main coords-mode">
+          <CoordsTrainer />
+        </div>
       ) : (
         <>
           <Sidebar
@@ -789,15 +830,11 @@ export default function Page() {
             current={current}
             solved={solved}
             counts={counts}
-            unseenCount={unseenCount}
             onFilterChange={setFilter}
             onEcoFilterChange={setEcoFilter}
             onSpeedFilterChange={setSpeedFilter}
             onPhaseFilterChange={setPhaseFilter}
             onSelect={loadPuzzle}
-            onImport={handleImport}
-            onGamesFetched={handleGamesFetched}
-            onClearAll={handleClearAll}
           />
 
           <div className="main">
@@ -872,29 +909,27 @@ export default function Page() {
                   <ResultPanel
                     puzzle={current}
                     yourMove={yourMove}
-                    attempts={attempts}
                     isOk={isOk}
+                    onSeek={seekToLine}
+                    seekPly={seekPly}
                     onRetry={retry}
                     onNext={next}
                   />
                 ) : (
                   <div className="pre-result">
                     <div className="verdict idle">
-                      <div className="verdict-ico">{lineStep > 0 ? '➜' : current.combination ? '⚔' : '?'}</div>
+                      <div className="verdict-ico">{lineStep > 0 ? '➜' : '?'}</div>
                       <div>
+                        {/* Don't reveal the motif (sacrifice / combination) up
+                            front — that gives the solution away. Just ask for the
+                            best move; the line plays out as you solve it. */}
                         <div className="verdict-title">
-                          {lineStep > 0
-                            ? 'Find the next move.'
-                            : current.combination
-                              ? 'Find the combination.'
-                              : 'Find the best move.'}
+                          {lineStep > 0 ? 'Find the next move.' : 'Find the best move.'}
                         </div>
                         <div className="verdict-sub">
                           {lineStep > 0
                             ? 'Play the continuation — keep the advantage.'
-                            : current.combination
-                              ? 'A sacrifice — find the follow-up too.'
-                              : `For ${current.abdulsColor === 'white' ? 'white' : 'black'}.`}
+                            : `For ${current.abdulsColor === 'white' ? 'white' : 'black'}.`}
                         </div>
                       </div>
                     </div>

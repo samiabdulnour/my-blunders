@@ -39,6 +39,9 @@
   --red-soft: rgba(244, 78, 72, 0.12);
   --blue: #16140f;
   --cyan: #5b6e63;
+  /* Azure accent — marks the single best move (vs merely good). */
+  --azure: #2f6f9f;
+  --azure-soft: rgba(47, 111, 159, 0.14);
   --sq-l: #f8f7f5;
   --sq-d: #8fae86;
   --lm-l: #e8e08a;
@@ -77,6 +80,8 @@ html[data-theme='dark'] {
   --red-soft: rgba(248, 106, 99, 0.14);
   --blue: #f4eef0;
   --cyan: #9fd8b5;
+  --azure: #6fb3df;
+  --azure-soft: rgba(111, 179, 223, 0.16);
   --sq-l: #6e7c62;
   --sq-d: #4a5544;
   --lm-l: #8c7e48;
@@ -402,6 +407,25 @@ select {
 /* Tap targets big enough for touch — Upload PGN / Clear all sit close together. */
 .imp-row { align-items: center; min-height: 32px; }
 .imp-link { padding: 8px 2px; }
+
+/* Auto-import toggle button (inside the import panel) */
+.auto-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  background: var(--bg2);
+  color: var(--txt-dim);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.auto-btn:hover { border-color: var(--contour); }
+.auto-btn.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+.auto-btn-sub { font-weight: var(--fw-reg); opacity: 0.8; }
 
 /* Inline "Clear everything?" confirm — replaces window.confirm, real touch targets */
 .imp-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -1092,22 +1116,8 @@ html[data-theme='dark'] .sq.cap-ring {
   text-transform: none;
 }
 
-.tries-line {
-  font-size: var(--fs-micro);
-  color: var(--txt-dim);
-  text-transform: uppercase;
-  letter-spacing: var(--track-caps);
-}
-.tries-line .v {
-  color: var(--red);
-  font-size: var(--fs-base);
-  font-weight: var(--fw-bold);
-  margin-left: 6px;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-/* Engine continuation / winning line shown after solving. */
+/* Engine continuation / winning line shown after solving — clickable notation
+ * that seeks the board to each position. */
 .engine-line {
   padding: 6px 0;
   border-top: 1px solid var(--border);
@@ -1117,14 +1127,24 @@ html[data-theme='dark'] .sq.cap-ring {
   color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
-  margin-bottom: 3px;
+  margin-bottom: 4px;
 }
 .engine-line-moves {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 1px 3px;
   font-size: var(--fs-base);
-  color: var(--txt);
-  line-height: 1.5;
   font-variant-numeric: tabular-nums;
 }
+.el-tok { display: inline-flex; align-items: baseline; gap: 3px; }
+.el-no { color: var(--txt-faint); }
+.el-move {
+  background: none; border: 0; padding: 1px 5px; border-radius: 3px;
+  font: inherit; font-weight: var(--fw-bold); color: var(--txt); cursor: pointer;
+}
+.el-move:hover { background: var(--bg3); }
+.el-move.cur { background: var(--contour); color: var(--bg); }
 
 .actions {
   display: flex;
@@ -1440,6 +1460,24 @@ html[data-theme='dark'] .sq.cap-ring {
 }
 
 /* ─── Stats sheet (slide-in) ─── */
+/* Import games — top-bar dropdown (one hub for every mode) */
+.import-sheet {
+  position: absolute;
+  top: 48px;
+  right: 16px;
+  z-index: 60;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
+  padding: 16px;
+  animation: sheet-in 160ms var(--ease-snap);
+}
+/* The bar reuses .side-block; drop its sidebar chrome inside the sheet. */
+.import-sheet .import-bar { padding: 0; border-bottom: 0; }
+
 .stats-sheet {
   position: absolute;
   top: 48px;
@@ -1697,6 +1735,33 @@ html[data-theme='dark'] .sq.cap-ring {
   line-height: 1.5;
   margin: 3px 0 0;
 }
+.about-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.about-note {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.about-note .tick {
+  color: var(--coral);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-base);
+  line-height: 1.5;
+}
+.about-note p {
+  font-size: var(--fs-base);
+  color: var(--txt-dim);
+  line-height: 1.5;
+  margin: 0;
+}
+.about-note strong {
+  color: var(--txt);
+  font-weight: var(--fw-bold);
+}
 .about-author {
   border: 1px solid var(--contour);
   border-radius: 2px;
@@ -1794,6 +1859,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .cnode-frame.perf-amber { border-color: var(--yellow); }
 .cnode-frame.perf-red { border-color: var(--red); }
 .cnode-frame.gap { border-style: dashed; border-color: var(--txt-faint); }
+.cnode-frame.dev { border-color: var(--coral); } /* off-book: left theory here */
 .cnode-frame.hotspot { box-shadow: 0 0 0 1px var(--red), 0 4px 14px -5px var(--red); }
 .cnode-frame.sel { outline: 2px solid var(--contour); outline-offset: 2px; }
 .cnode-warn {
@@ -1805,6 +1871,12 @@ html[data-theme='dark'] .sq.cap-ring {
   position: absolute; top: -8px; right: -8px; z-index: 3; min-width: 18px; height: 16px; padding: 0 5px; border-radius: 8px;
   display: inline-flex; align-items: center; justify-content: center; background: var(--bg2); color: var(--txt-dim);
   border: 1.5px solid var(--border2); font-size: 9px; font-weight: var(--fw-bold);
+}
+.cnode-off {
+  position: absolute; bottom: -8px; left: -7px; z-index: 3; height: 16px; padding: 0 6px; border-radius: 8px;
+  display: inline-flex; align-items: center; background: var(--bg2); color: var(--coral);
+  border: 1.5px solid var(--coral); font-size: 9px; font-weight: var(--fw-bold);
+  text-transform: uppercase; letter-spacing: 0.03em;
 }
 .cnode-label { text-align: center; padding-top: 6px; }
 .cnode-name { display: block; font-size: 10px; color: var(--txt-dim); font-weight: var(--fw-bold); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1825,6 +1897,9 @@ html[data-theme='dark'] .sq.cap-ring {
 .cd-head { width: 100%; text-align: center; }
 .cd-name { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); }
 .cd-move { font-size: var(--fs-title); font-weight: var(--fw-bold); letter-spacing: -0.01em; line-height: 1.1; }
+.cd-theory { display: inline-block; margin-top: 5px; padding: 2px 9px; border-radius: 10px; border: 1px solid currentColor; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); font-weight: var(--fw-bold); }
+.cd-theory.book { color: var(--green); }
+.cd-theory.off { color: var(--coral); }
 .cd-sub { font-size: var(--fs-micro); color: var(--txt-dim); margin-top: 3px; }
 .cd-blund { color: var(--red); }
 /* Your win rate (score %) + W/D/L from the selected position */
@@ -1859,9 +1934,9 @@ html[data-theme='dark'] .sq.cap-ring {
 .c-warn { display: inline-flex; align-items: center; gap: 2px; color: var(--red); font-weight: var(--fw-bold); }
 
 /* Puzzle ↔ Opening — tabs in the shared topbar (active = coral underline) */
-.mode-seg { display: inline-flex; gap: 4px; flex-shrink: 0; align-self: stretch; }
+.mode-seg { display: inline-flex; gap: 10px; flex-shrink: 0; align-self: stretch; }
 .mode-seg button {
-  height: 100%; display: inline-flex; align-items: center; padding: 0 12px;
+  height: 100%; display: inline-flex; align-items: center; padding: 0 16px;
   font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase;
   letter-spacing: var(--track-caps); color: var(--txt-dim); background: transparent; border: 0;
   border-bottom: 2px solid transparent; cursor: pointer; transition: color 0.12s ease, border-color 0.12s ease;
@@ -1922,6 +1997,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .cleg .ln.good { background: var(--green); }
 .cleg .ln.risk { background: var(--yellow); }
 .cleg .ln.bad { background: var(--red); }
+.cleg .ln.dev { background: repeating-linear-gradient(90deg, var(--coral) 0 4px, transparent 4px 7px); }
 .cleg .sw { width: 10px; height: 10px; display: inline-block; border-radius: 2px; }
 .cleg .sw.hot { border: 1.5px solid var(--red); }
 .cleg .sw.gap { border: 1px dashed var(--txt-faint); }
@@ -1959,6 +2035,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .od-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
 .od-tomove { display: inline-flex; align-items: center; gap: 7px; font-weight: var(--fw-bold); color: var(--txt); }
 .od-turndot { width: 11px; height: 11px; border-radius: 50%; background: var(--contour); border: 1.5px solid var(--contour); }
+.od-turndot.white { background: #fff; border-color: var(--contour); }
 .od-frame { --sq-size: 54px; padding: 6px; border-radius: 5px; border: 3px solid var(--border2); background: var(--bg2); transition: border-color 0.15s ease; }
 .od-frame.ok { border-color: var(--green); }
 .od-frame.bad { border-color: var(--red); }
@@ -2044,3 +2121,190 @@ html[data-theme='dark'] .sq.cap-ring {
   .topbar-prefs { padding-left: 6px; margin-left: 6px; gap: 2px; }
   .icon-btn { padding: 4px 5px; }
 }
+
+/* ── Assisted Play ─────────────────────────────────────────────────── */
+.main.play-mode { align-items: center; justify-content: flex-start; }
+/* Two columns sized to read as one block: the side stretches to the board's
+ * height and its controls pin to the bottom, so both columns share top & bottom
+ * edges instead of the panel floating shorter/taller than the board. */
+.play { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 900px; }
+.play-board { flex-shrink: 0; }
+.ps-opening { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ps-opening-name { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
+.ps-opening-eco { font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.ps-dim { font-size: var(--fs-base); color: var(--txt-faint); }
+/* The move list block grows to fill the column down toward the board's lower
+ * edge (so the columns line up when it fits) but keeps a usable minimum and
+ * scrolls inside itself, so a long game never stretches the panel without bound
+ * and the controls always stay put. */
+.play-side { width: 320px; display: flex; flex-direction: column; gap: 11px; }
+/* The move list is the lowest block: it grows downward as the game goes and
+ * scrolls past a cap, so it never nudges the blocks above it. Collapsible. */
+.play-side .ps-moves-block { flex: 0 0 auto; display: flex; flex-direction: column; }
+.ps-moves-h { display: flex; align-items: center; justify-content: space-between; }
+.ps-moves-toggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; color: var(--txt-dim); font: inherit; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.ps-moves-toggle:hover { color: var(--txt); }
+.ps-moves-chevron { display: inline-block; width: 9px; font-size: 9px; }
+.play-side .ps-h { margin-bottom: 7px; }
+.play-side .ps-elo-note { margin-top: 6px; }
+.play-side .ps-controls { gap: 8px; }
+.play-side .ps-new-label { margin-bottom: 4px; }
+.ps-block { border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; background: var(--bg2); }
+.play-side .ps-block { padding: 11px 14px; }
+.ps-moves-block .ps-h { display: flex; align-items: baseline; justify-content: space-between; }
+.ps-live-link { background: none; border: 0; padding: 0; color: var(--coral); cursor: pointer; font: inherit; font-size: var(--fs-micro); text-transform: none; letter-spacing: 0; }
+.ps-live-link:hover { color: var(--contour); }
+.ps-moves { min-height: 88px; max-height: 240px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.ps-moves-empty { line-height: 1.5; }
+.ps-move-row { display: grid; grid-template-columns: 30px 1fr 1fr; gap: 4px; align-items: center; }
+.ps-move-no { color: var(--txt-faint); font-size: var(--fs-micro); text-align: right; }
+.ps-ply { text-align: left; background: none; border: 0; padding: 3px 7px; border-radius: 3px; color: var(--txt); font: inherit; font-size: var(--fs-base); font-weight: var(--fw-bold); cursor: pointer; font-variant-numeric: tabular-nums; }
+.ps-ply:hover { background: var(--bg3); }
+.ps-ply.cur { background: var(--contour); color: var(--bg); }
+.ps-ply-empty, .ps-ply-empty:hover { cursor: default; background: none; }
+.ps-review-note { margin-top: 8px; font-size: var(--fs-micro); color: var(--coral); line-height: 1.4; }
+.ps-h { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); margin-bottom: 10px; }
+.ps-elo { display: flex; align-items: center; gap: 12px; }
+.ps-elo-val { font-size: var(--fs-title); font-weight: var(--fw-bold); min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
+.ps-step { width: 34px; height: 34px; border: 1px solid var(--border2); border-radius: 4px; background: var(--bg); color: var(--txt); font-size: 18px; line-height: 1; cursor: pointer; }
+.ps-step:hover:not(:disabled) { border-color: var(--contour); }
+.ps-step:disabled { opacity: 0.4; cursor: default; }
+.ps-elo-note { margin-top: 9px; font-size: var(--fs-micro); color: var(--txt-faint); }
+.ps-link { background: none; border: 0; padding: 0; color: var(--coral); cursor: pointer; text-decoration: underline; font: inherit; }
+.ps-link:hover { color: var(--contour); }
+.ps-hint { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.5; }
+.ps-result { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
+.ps-verdict { border-radius: 4px; padding: 10px 12px; background: var(--bg3); }
+.ps-verdict-head { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); font-weight: var(--fw-bold); color: var(--txt-dim); }
+.ps-verdict-move { display: inline-block; margin-right: 7px; padding: 1px 6px; border-radius: 4px; background: var(--bg3); color: var(--txt); font-variant-numeric: tabular-nums; }
+.ps-verdict-body { margin-top: 6px; font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.5; }
+.ps-verdict-body b { color: var(--txt); }
+.ps-verdict.q-ok { background: var(--green-soft); }
+.ps-verdict.q-ok .ps-verdict-head { color: var(--green); }
+.ps-verdict.q-best { background: var(--azure-soft); }
+.ps-verdict.q-best .ps-verdict-head { color: var(--azure); }
+.ps-verdict.q-inaccuracy .ps-verdict-head { color: var(--yellow); }
+.ps-verdict.q-mistake .ps-verdict-head { color: var(--coral); }
+.ps-verdict.q-blunder { background: var(--red-soft); }
+.ps-verdict.q-blunder .ps-verdict-head { color: var(--red); }
+/* Opening-book note (from the Lichess explorer) */
+.ps-book { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.5; }
+.ps-book b { color: var(--txt); font-weight: var(--fw-bold); }
+.ps-book.b-main { color: var(--green); }
+.ps-book.b-offbook { color: var(--yellow); }
+.ps-book-name { margin-top: 3px; font-size: var(--fs-micro); color: var(--txt-faint); text-transform: uppercase; letter-spacing: var(--track-caps); }
+
+.ps-controls { display: flex; flex-direction: column; gap: 10px; }
+.ps-btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ps-btn { padding: 9px 12px; border: 1px solid var(--border2); border-radius: 4px; background: var(--bg); color: var(--txt); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
+.ps-btn:hover:not(:disabled) { border-color: var(--contour); }
+.ps-btn:disabled { opacity: 0.4; cursor: default; }
+.ps-btn.on { border-color: var(--coral); color: var(--coral); }
+.ps-new-label { display: block; font-size: var(--fs-micro); color: var(--txt-dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: var(--track-caps); }
+@media (max-width: 720px) {
+  .play { flex-direction: column; align-items: center; gap: 18px; }
+  .play-side { width: 100%; max-width: 480px; }
+  /* Stacked: the list isn't competing with the board height — give it more room. */
+  .play-side .ps-moves { max-height: 320px; }
+}
+
+/* ── Coordinates trainer ───────────────────────────────────────────── */
+.main.coords-mode { align-items: center; justify-content: flex-start; }
+.coords { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; max-width: 1160px; }
+.coords-head { width: 100%; display: flex; justify-content: center; }
+.coords-modes { width: 100%; max-width: 520px; }
+
+.ct-pane { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; }
+/* Session control: action button + time/done readout, grouped together. */
+/* One centred control line — action · clock · (board options). Wraps as a unit
+   on narrow screens instead of leaving a row stranded under it. */
+.ct-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 16px; padding: 4px; max-width: min(760px, 94vw); }
+.ct-bar-sep { width: 1px; height: 24px; background: var(--border); }
+.ct-opts { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; }
+.ct-action { padding: 10px 22px; border: 0; border-radius: 5px; background: var(--coral); color: #fff; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
+.ct-action:hover { filter: brightness(1.05); }
+.ct-stats { display: inline-flex; align-items: baseline; gap: 18px; }
+.ct-stat { display: inline-flex; align-items: baseline; gap: 5px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); }
+.ct-stat b { font-size: var(--fs-title); font-weight: var(--fw-bold); color: var(--txt); text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+/* Board options, aligned to the board's width on their own row. */
+.ct-flip { padding: 6px 12px; border: 1px solid var(--border2); border-radius: 4px; background: var(--bg); color: var(--txt); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
+.ct-flip:hover { border-color: var(--contour); }
+
+.ct-prompt { min-height: 64px; display: flex; align-items: center; justify-content: center; transition: color 0.12s ease; }
+.ct-prompt.small { min-height: 32px; font-size: var(--fs-base); color: var(--txt-dim); }
+.ct-prompt.f-ok { color: var(--green); }
+.ct-prompt.f-fail { color: var(--red); }
+.ct-coord { font-size: 52px; font-weight: var(--fw-bold); letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--txt); }
+.ct-prompt.small .ct-coord { font-size: var(--fs-title); margin: 0 6px; }
+.ct-idle { color: var(--txt-faint); font-size: var(--fs-base); }
+
+.ct-color-btns { display: flex; gap: 16px; }
+.ct-color-btn { width: 150px; padding: 22px 0; border-radius: 6px; border: 2px solid var(--contour); font-size: var(--fs-base); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; transition: transform 0.08s var(--ease-snap); }
+.ct-color-btn:active { transform: translateY(1px); }
+.ct-color-btn.light { background: var(--sq-l); color: #16140f; }
+.ct-color-btn.dark { background: var(--sq-d); color: #fff; }
+
+.ct-find-row { display: flex; gap: 24px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.ct-board { display: grid; grid-template-columns: repeat(8, 1fr); width: min(460px, 92vw); aspect-ratio: 1; border: 1px solid var(--contour); border-radius: 3px; overflow: hidden; }
+.ct-board.idle { opacity: 0.5; }
+.ct-sq { aspect-ratio: 1; border: 0; padding: 0; cursor: pointer; position: relative; }
+.ct-board.idle .ct-sq { cursor: default; }
+.ct-sq.l { background: var(--sq-l); }
+.ct-sq.d { background: var(--sq-d); }
+.ct-sq:not(.idle):hover { filter: brightness(1.06); }
+.ct-sq.ok { box-shadow: inset 0 0 0 5px var(--green); }
+.ct-sq.fail { box-shadow: inset 0 0 0 5px var(--red); }
+
+.ct-start { max-width: 320px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.ct-blurb { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.55; margin: 0; }
+.ct-final { font-size: var(--fs-base); color: var(--txt); }
+.ct-final b { font-size: var(--fs-title); }
+.ct-go { padding: 11px 28px; border: 0; border-radius: 5px; background: var(--coral); color: #fff; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
+.ct-go:hover { filter: brightness(1.05); }
+
+/* Replay famous games — moves on the left, board centred, info on the right,
+ * so the board sits under the mode tabs and the move list has its own scroll. */
+.ct-replay { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; justify-content: center; width: 100%; }
+.ct-replay-board { flex-shrink: 0; order: 0; }
+.ct-replay-moves { width: 250px; display: flex; flex-direction: column; order: -1; align-self: stretch; }
+.ct-replay-moves .ps-h { flex: 0 0 auto; }
+.ct-moves { flex: 1 1 auto; min-height: 0; max-height: 478px; overflow-y: auto; }
+.ct-replay-side { width: 250px; display: flex; flex-direction: column; gap: 12px; order: 1; }
+.ct-game-select { width: 100%; padding: 8px 10px; border: 1px solid var(--border2); border-radius: 4px; background: var(--bg); color: var(--txt); font: inherit; font-size: var(--fs-base); cursor: pointer; }
+.ct-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.ct-ply { padding: 2px 6px; border-radius: 3px; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; color: var(--txt); }
+.ct-ply.done { color: var(--txt-dim); font-weight: var(--fw-reg); }
+.ct-ply.next { background: var(--coral); color: #fff; }
+
+@media (max-width: 980px) {
+  /* Stack: board first, then the two panels; the list scrolls in a shorter box. */
+  .ct-replay-board { order: -1; }
+  .ct-replay-moves, .ct-replay-side { order: 0; width: 100%; max-width: 480px; }
+  .ct-moves { max-height: 220px; }
+  .coords-modes { font-size: 11px; }
+}
+
+/* ── Coordinates trainer — session controls, feedback, rim coords ──────── */
+.ct-prompt { gap: 14px; }
+.ct-finish, .ct-go-sm { padding: 7px 14px; border: 0; border-radius: 4px; background: var(--coral); color: #fff; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
+.ct-finish:hover, .ct-go-sm:hover { filter: brightness(1.05); }
+.ct-color-btn:disabled { opacity: 0.4; cursor: default; }
+.ct-color-btn:disabled:active { transform: none; }
+.ct-toggle { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); cursor: pointer; }
+.ct-toggle input { cursor: pointer; accent-color: var(--coral); }
+.ct-persp { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-faint); }
+.ct-persp b { color: var(--txt-dim); }
+.ct-check { font-size: var(--fs-title); font-weight: var(--fw-bold); }
+.ct-prompt.small .ct-check { font-size: var(--fs-base); }
+.ct-check.ok { color: var(--green); }
+.ct-check.fail { color: var(--red); font-size: var(--fs-base); text-transform: none; letter-spacing: 0; }
+
+/* Edge coordinates around the find-mode board */
+.ct-board-area { display: grid; grid-template-columns: 16px auto; grid-template-rows: auto 16px; }
+.ct-board-area .ct-board { grid-column: 2; grid-row: 1; }
+.ct-ranks { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; justify-content: space-around; align-items: center; font-size: 11px; font-weight: var(--fw-bold); color: var(--txt-dim); font-variant-numeric: tabular-nums; }
+.ct-files { grid-column: 2; grid-row: 2; display: flex; justify-content: space-around; align-items: center; font-size: 11px; font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; }
+
+/* Replay game info */
+.ct-game-players { margin-top: 7px; font-size: var(--fs-base); color: var(--txt-dim); font-weight: var(--fw-bold); }
+.ct-game-context { margin: 8px 0 0; font-size: var(--fs-micro); color: var(--txt-faint); line-height: 1.55; }

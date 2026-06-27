@@ -9,6 +9,7 @@ import {
   openingFetchKey,
 } from './storage';
 import { importOpeningGames, OPENING_TARGET_GAMES } from './opening-import';
+import { ensureOpeningBook } from './opening-book';
 import {
   buildOpeningTree,
   namedOpenings,
@@ -54,6 +55,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [bookReady, setBookReady] = useState(false);
   const fetchStarted = useRef(false);
 
   useEffect(() => {
@@ -63,6 +65,14 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     const whites = g.filter((x) => x.color === 'w').length;
     setColorState(g.length - whites > whites ? 'b' : 'w');
     setReady(true);
+  }, []);
+
+  // Load the position-keyed opening-name book (its own lazy chunk), then rebuild
+  // the tree so every node picks up its accurate name.
+  useEffect(() => {
+    let cancelled = false;
+    ensureOpeningBook().then(() => { if (!cancelled) setBookReady(true); });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -82,7 +92,8 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setFetching(false));
   }, [username]);
 
-  const tree = useMemo(() => buildOpeningTree(games, color), [games, color]);
+  // bookReady is a dep so names fill in once the book chunk loads.
+  const tree = useMemo(() => buildOpeningTree(games, color), [games, color, bookReady]);
   const openings = useMemo(() => namedOpenings(tree), [tree]);
 
   const setColor = (c: 'w' | 'b') => {
