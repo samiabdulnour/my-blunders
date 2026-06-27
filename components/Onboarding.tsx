@@ -11,8 +11,10 @@ interface OnboardingProps {
   /** Fired when the user's own games have been fetched (before analysis), so
    *  the app can drop the famous-blunder placeholders right away. */
   onGamesFetched?: () => void;
-  /** Called once onboarding is finished (with the username, or '' if skipped). */
-  onComplete: (username: string) => void;
+  /** Called once onboarding is finished (with the username, or '' if skipped).
+   *  `showFamous` asks the app to show the famous-blunder library to play while
+   *  a real import is still streaming in (or as the guest fallback). */
+  onComplete: (username: string, opts?: { showFamous?: boolean }) => void;
 }
 
 type Phase = 'idle' | 'running' | 'done' | 'error';
@@ -34,20 +36,31 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
   // useImporter returns `username`).
   const usernameRef = useRef('');
 
+  // Always enter with the famous library available: real puzzles replace it as
+  // they stream in, and the app's own guard keeps famous from clobbering real
+  // puzzles once they exist. So nobody ever lands on an empty board.
   const enterApp = useCallback(
     (name: string) => {
       if (enteredRef.current) return;
       enteredRef.current = true;
-      onComplete(name);
+      onComplete(name, { showFamous: true });
     },
     [onComplete]
   );
 
-  // Don't strand the new user on this screen while the *whole* batch analyses —
-  // on a phone that's minutes of WASM Stockfish. The instant the first real
-  // puzzle is ready, hand off to the app; the rest of the batch keeps streaming
-  // in behind it via this same callback. (autoImport off: the import is driven
-  // by the CTA, not the queue-drain loop — there's no queue on screen yet.)
+  // Don't strand the new user on a progress bar at all. The moment their games
+  // are *fetched* (before the slow per-move analysis), drop them into the app to
+  // play the famous-blunder library while their own games analyse in the
+  // background; real puzzles stream in and replace the placeholders as they're
+  // found. (autoImport off: the import is driven by the CTA, not the queue-drain
+  // loop — there's no queue on screen yet.)
+  const handleGamesFetched = useCallback(() => {
+    onGamesFetched?.();
+    enterApp(usernameRef.current.trim());
+  }, [onGamesFetched, enterApp]);
+
+  // Safety net: if a puzzle somehow arrives before the games-fetched signal,
+  // still hand off (a no-op once we've already entered).
   const handleImport = useCallback(
     (puzzles: Puzzle[]) => {
       onImport(puzzles);
@@ -58,7 +71,7 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
 
   const { username, setUsername, source, setSource, status, runImport, importFile } = useImporter({
     onImport: handleImport,
-    onGamesFetched,
+    onGamesFetched: handleGamesFetched,
     unseenCount: 0,
     autoImport: false,
   });
@@ -215,7 +228,7 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
             </div>
           )}
           <div className="progress-text solo">
-            <span>{phase === 'error' ? status.message ?? 'Import failed' : 'Finding your first blunder…'}</span>
+            <span>{phase === 'error' ? status.message ?? 'Import failed' : 'Loading your games…'}</span>
           </div>
           {phase === 'error' ? (
             <div className="onb-alt">
@@ -223,10 +236,10 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
             </div>
           ) : (
             <>
-              <div className="progress-note">analysing your recent games — opens as soon as your first puzzle is ready</div>
+              <div className="progress-note">opening now — play famous blunders while your own puzzles analyse in the background</div>
               <div className="onb-alt">
                 <a onClick={() => enterApp(username.trim())}>
-                  play famous blunders while this loads →
+                  play famous blunders now →
                 </a>
               </div>
             </>
