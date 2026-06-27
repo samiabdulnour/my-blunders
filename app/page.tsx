@@ -8,6 +8,7 @@ import { Board } from '@/components/Board';
 import { OpeningClinic } from '@/components/OpeningClinic';
 import { OpeningSidebar } from '@/components/OpeningSidebar';
 import { PlayMode } from '@/components/PlayMode';
+import { CoordsTrainer } from '@/components/CoordsTrainer';
 import { ClinicProvider } from '@/lib/clinic-context';
 import { Sidebar } from '@/components/Sidebar';
 import { ResultPanel } from '@/components/ResultPanel';
@@ -54,7 +55,7 @@ const DEFAULT_STATS: SessionStats = { correct: 0, wrong: 0, streak: 0, bestStrea
 export default function Page() {
   const [all, setAll] = useState<Puzzle[]>([]);
   // Puzzle solver · Opening Clinic · Assisted Play — the modes of the trainer.
-  const [mode, setMode] = useState<'puzzle' | 'opening' | 'play'>('puzzle');
+  const [mode, setMode] = useState<'puzzle' | 'opening' | 'play' | 'coords'>('puzzle');
   // Bumped on "Clear all" to remount the clinic so it drops its in-memory games
   // (clearAll() has emptied the store; the provider re-reads it on remount).
   const [clinicEpoch, setClinicEpoch] = useState(0);
@@ -782,6 +783,10 @@ export default function Page() {
       ) : mode === 'play' ? (
         <div className="main play-mode">
           <PlayMode />
+        </div>
+      ) : mode === 'coords' ? (
+        <div className="main coords-mode">
+          <CoordsTrainer />
         </div>
       ) : (
         <>

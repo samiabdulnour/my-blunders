@@ -17,9 +17,9 @@ interface AppShellProps {
   onToggleRandom: () => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
-  /** Puzzle · Opening · Play mode for the shared topbar switch. */
-  mode: 'puzzle' | 'opening' | 'play';
-  onModeChange: (mode: 'puzzle' | 'opening' | 'play') => void;
+  /** Puzzle · Opening · Play · Coordinates mode for the shared topbar switch. */
+  mode: 'puzzle' | 'opening' | 'play' | 'coords';
+  onModeChange: (mode: 'puzzle' | 'opening' | 'play' | 'coords') => void;
   /** Import controls live in a top-bar dropdown (one hub for every mode). */
   onImport: (newPuzzles: Puzzle[]) => void;
   onGamesFetched?: () => void;
@@ -169,6 +169,15 @@ export function AppShell({
             onClick={() => onModeChange('play')}
           >
             Play
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'coords'}
+            className={mode === 'coords' ? 'on' : ''}
+            onClick={() => onModeChange('coords')}
+          >
+            Coordinates
           </button>
         </div>
 
