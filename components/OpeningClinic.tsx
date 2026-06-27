@@ -75,6 +75,9 @@ export function OpeningClinic() {
   const treeRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
+  // What view we last auto-centred (colour|focus). Re-centre only when the view
+  // changes — not on every incremental fetch, which would yank the canvas back.
+  const centeredKeyRef = useRef<string | null>(null);
 
   // Focus re-roots the tree at one node (an opening, or any clicked node) so you
   // can drill in; otherwise the whole tree. Path ids are absolute, so a focus
@@ -117,12 +120,18 @@ export function OpeningClinic() {
 
   // Open the canvas *on the opening*, not on blank space: a wide repertoire's
   // root sits centred over its subtree, so scroll-0 shows empty canvas. Centre
-  // the first row (the opening's first moves) whenever the tree/focus changes.
+  // the first row (the opening's first moves) — but only when the *view* changes
+  // (colour or focused opening), or on first population. Re-centring on every
+  // games update would fight the user's scroll while the background fetch fills
+  // the tree in.
   useEffect(() => {
     const el = treeRef.current;
     if (!el) return;
     const top = layout.nodes.filter((n) => n.y === 0);
     if (top.length === 0) return;
+    const key = `${color}|${focus ?? ''}`;
+    if (centeredKeyRef.current === key) return; // already centred this view
+    centeredKeyRef.current = key;
     // Centre on the *main* (most-played) first move. Centring on the span
     // midpoint would land in the blank gap between two wide openings (e.g. e4
     // and d4), so pick the busiest root and show that opening's tree.
@@ -133,7 +142,7 @@ export function OpeningClinic() {
       el.scrollTop = 0;
     });
     return () => cancelAnimationFrame(id);
-  }, [layout]);
+  }, [layout, color, focus]);
 
   // Default selection: the worst hotspot, else the top-left (shallowest) node.
   const defaultSel = useMemo(() => {

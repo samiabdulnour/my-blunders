@@ -20,6 +20,7 @@ import type { OpeningGame } from './opening-tree';
 const KEY_PUZZLES = 'bt.puzzles';
 const KEY_USERNAME = 'bt.username';
 const KEY_SOURCE = 'bt.source';
+const KEY_AUTO_IMPORT = 'bt.autoImport';
 const KEY_SOLVED = 'bt.solved';
 const KEY_OLDEST = 'bt.oldestFetchedMs';
 const KEY_FETCHED = 'bt.fetchedGames';
@@ -69,6 +70,19 @@ export function loadSource(): GameSource {
 export function saveSource(source: GameSource): void {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(KEY_SOURCE, source);
+}
+
+/** Whether auto-import is on: keep pulling + analysing games in the background
+ *  toward a target. Off = the user fetches each batch with "Import more".
+ *  Defaults on (the pre-prepared-library model). */
+export function loadAutoImport(): boolean {
+  if (typeof window === 'undefined') return true;
+  return window.localStorage.getItem(KEY_AUTO_IMPORT) !== '0';
+}
+
+export function saveAutoImport(on: boolean): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(KEY_AUTO_IMPORT, on ? '1' : '0');
 }
 
 export function loadSolved(): Record<string, 'ok' | 'fail'> {

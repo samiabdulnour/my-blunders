@@ -13,6 +13,8 @@ import {
   saveUsername,
   loadSource,
   saveSource,
+  loadAutoImport,
+  saveAutoImport,
   loadOldestFetchedMs,
   saveOldestFetchedMs,
   loadFetchedGameCount,
@@ -47,10 +49,10 @@ export interface ImportStatus {
  *  that the user usually gets several puzzles per click. */
 export const BATCH_SIZE = 20;
 
-/** When the store's unseen-puzzle count drops to or below this, the
- *  auto-import effect will quietly pull the next batch — provided a
- *  username exists and we haven't paginated past the user's history. */
-const AUTO_IMPORT_THRESHOLD = 5;
+/** With auto-import on, keep pulling + analysing batches in the background until
+ *  this many games have been imported (or the user's history runs out) — the
+ *  "pre-prepared library" target, matching the clinic's corpus. Tunable. */
+export const PUZZLE_TARGET_GAMES = 500;
 
 /**
  * One import event. Both the native NDJSON stream and the web WASM pipeline
@@ -68,8 +70,9 @@ interface ImportCtx {
 interface UseImporterOptions {
   /** Called as puzzles arrive. May be called many times during a streamed import. */
   onImport: (newPuzzles: Puzzle[]) => void;
-  /** How many unsolved puzzles are currently in the store. Drives auto-import. */
-  unseenCount: number;
+  /** How many unsolved puzzles are in the store. Kept for callers; auto-import
+   *  now builds toward a fixed target rather than gating on this. */
+  unseenCount?: number;
   /** When false, the auto-import effect is suppressed (e.g. during onboarding,
    *  where the import is driven explicitly by the CTA). Defaults to true. */
   autoImport?: boolean;
@@ -98,7 +101,6 @@ interface UseImporterOptions {
  */
 export function useImporter({
   onImport,
-  unseenCount,
   autoImport = true,
   onGamesFetched,
 }: UseImporterOptions) {
@@ -135,13 +137,33 @@ export function useImporter({
    * Stops the auto-import loop so we don't spin forever on an empty tail.
    */
   const [exhausted, setExhausted] = useState(false);
+  /** User toggle: when on, auto-import keeps building toward PUZZLE_TARGET_GAMES
+   *  in the background; when off, batches are pulled manually via "Import more". */
+  const [autoImportEnabled, setAutoImportEnabledState] = useState(true);
+  /** Synchronous mirror of the toggle so a batch finishing mid-toggle (which
+   *  re-runs the chain effect before React commits the state) sees the new value
+   *  immediately — otherwise OFF lags by a batch or two. */
+  const autoImportEnabledRef = useRef(true);
+  /** Set true to abort an in-flight import between games (e.g. on "Clear all"),
+   *  so a cancelled batch doesn't write puzzles/openings back after the wipe. */
+  const cancelRef = useRef(false);
 
   useEffect(() => {
     setUsername(loadUsername());
     setSourceState(loadSource());
+    const auto = loadAutoImport();
+    autoImportEnabledRef.current = auto;
+    setAutoImportEnabledState(auto);
     setOldestMs(loadOldestFetchedMs());
     setFetchedCount(loadFetchedGameCount());
     setHydrated(true);
+  }, []);
+
+  /** Flip the auto-import preference (persisted). */
+  const setAutoImportEnabled = useCallback((on: boolean) => {
+    autoImportEnabledRef.current = on; // synchronous: stops the chain at once
+    setAutoImportEnabledState(on);
+    saveAutoImport(on);
   }, []);
 
   /** Switch import source. Resets the pagination cursor — a different site means
@@ -328,6 +350,7 @@ export function useImporter({
 
       const engine = getWasmEngine();
       for (let i = 0; i < games.length; i++) {
+        if (cancelRef.current) return; // aborted (e.g. cleared) — don't write back
         const game = games[i];
         processEvent(
           {
@@ -361,6 +384,8 @@ export function useImporter({
         }
       }
 
+      if (cancelRef.current) return; // aborted after the last game — skip write-back
+
       // Feed the Opening Clinic from the (now eval-annotated) games.
       persistOpeningGames(games, name);
 
@@ -389,6 +414,7 @@ export function useImporter({
       saveUsername(name);
       saveSource(source);
 
+      cancelRef.current = false;
       workingRef.current = true;
       const label = untilCursor ? 'older ' : '';
       setStatus({ kind: 'working', message: `importing up to ${BATCH_SIZE} ${label}games...` });
@@ -422,6 +448,7 @@ export function useImporter({
       }
       saveUsername(name);
 
+      cancelRef.current = false;
       workingRef.current = true;
       setStatus({ kind: 'working', message: `reading ${file.name}...` });
       try {
@@ -460,6 +487,7 @@ export function useImporter({
         const engine = getWasmEngine();
         let total = 0;
         for (let i = 0; i < games.length; i++) {
+          if (cancelRef.current) return; // aborted (e.g. cleared)
           setStatus({
             kind: 'working',
             message: `analyzing game ${i + 1}/${games.length}...`,
@@ -484,6 +512,7 @@ export function useImporter({
             console.warn(`game ${games[i].gameId ?? '?'} failed:`, (err as Error).message);
           }
         }
+        if (cancelRef.current) return; // aborted — skip write-back
         persistOpeningGames(games, name); // feed the Opening Clinic (now annotated)
         setStatus({ kind: 'ok', message: `imported ${games.length} games → ${total} puzzles` });
       } catch (err) {
@@ -496,23 +525,27 @@ export function useImporter({
   );
 
   /* ── Auto-import loop ──
-     When the user has worked their way through most of what's loaded
-     (unseenCount ≤ AUTO_IMPORT_THRESHOLD), quietly pull the next batch.
-     Only fires after a first manual import has established a cursor, and
-     stops when the user runs out of Lichess history. */
+     When auto-import is on, keep pulling + analysing batches in the background
+     until the library reaches PUZZLE_TARGET_GAMES (or the user runs out of
+     history). Each finished batch advances oldestMs / fetchedCount, which
+     re-triggers this effect for the next batch. Only fires once a first import
+     has established a cursor (kicked off manually or by onboarding). */
   useEffect(() => {
-    if (!autoImport) return;
+    if (!autoImport) return; // context gate (suppressed during onboarding)
+    if (!autoImportEnabled || !autoImportEnabledRef.current) return; // user toggle
     if (!hydrated) return;
     if (workingRef.current) return;
     if (exhausted) return;
-    if (oldestMs == null) return;
-    if (unseenCount > AUTO_IMPORT_THRESHOLD) return;
+    if (oldestMs == null) return; // need a first import to set the cursor
+    if (fetchedCount >= PUZZLE_TARGET_GAMES) return; // library target reached
     if (!username.trim()) return;
     runImport(oldestMs);
-  }, [autoImport, hydrated, oldestMs, unseenCount, username, exhausted, runImport]);
+  }, [autoImport, autoImportEnabled, hydrated, oldestMs, fetchedCount, username, exhausted, runImport]);
 
-  /** Reset the pagination cursor + counters after a cache clear. */
+  /** Reset the pagination cursor + counters after a cache clear, and abort any
+   *  in-flight import so it doesn't write puzzles/openings back post-clear. */
   const resetCursor = useCallback(() => {
+    cancelRef.current = true;
     setOldestMs(null);
     setFetchedCount(0);
     setExhausted(false);
@@ -528,6 +561,9 @@ export function useImporter({
     oldestMs,
     fetchedCount,
     exhausted,
+    autoImportEnabled,
+    setAutoImportEnabled,
+    target: PUZZLE_TARGET_GAMES,
     working: status.kind === 'working',
     runImport,
     importFile,
