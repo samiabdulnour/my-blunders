@@ -399,6 +399,28 @@ select {
   color: var(--border2);
   font-size: var(--fs-micro);
 }
+/* Tap targets big enough for touch — Upload PGN / Clear all sit close together. */
+.imp-row { align-items: center; min-height: 32px; }
+.imp-link { padding: 8px 2px; }
+
+/* Inline "Clear everything?" confirm — replaces window.confirm, real touch targets */
+.imp-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.imp-confirm-q { font-size: var(--fs-micro); color: var(--txt); font-weight: var(--fw-bold); flex: 1 1 auto; }
+.imp-confirm-btn {
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 3px;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  cursor: pointer;
+  border: 1px solid var(--border2);
+  background: var(--bg2);
+  color: var(--txt-dim);
+}
+.imp-confirm-btn.yes { background: var(--red); border-color: var(--red); color: #fff; }
+.imp-confirm-btn.no:hover { color: var(--txt); border-color: var(--contour); }
 
 /* Queue segmented tabs */
 .seg-tabs {

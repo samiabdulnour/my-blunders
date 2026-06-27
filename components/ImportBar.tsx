@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef } from 'react';
+import { useState, useRef } from 'react';
 import type { Puzzle } from '@/lib/types';
 import { useImporter } from '@/lib/useImporter';
+import { useAutoImport } from '@/lib/use-auto-import';
 
 interface ImportBarProps {
   /** Called as puzzles arrive from an import. */
@@ -12,16 +13,16 @@ interface ImportBarProps {
   onGamesFetched?: () => void;
   /** Wipe all imported puzzles and solved progress from cache. */
   onClearAll: () => void;
-  /** Unsolved puzzle count — drives the quiet auto-import loop. */
+  /** Unsolved puzzle count (passed through for API compatibility). */
   unseenCount: number;
 }
 
 /**
- * Compact sidebar import bar: a username field + coral IMPORT button, with a
- * thin progress bar during a streamed import and a status caption beneath.
- * PGN upload and cache-clear live as quiet text links so the common path
- * (type username → Import) stays front and centre. All the actual import
- * machinery lives in the shared `useImporter` hook.
+ * Compact sidebar import bar: a username field + coral IMPORT button, an
+ * auto-import switch, and quiet links for PGN upload / cache-clear. With
+ * auto-import on, the app keeps pulling + analysing games in the background
+ * toward a target library; off, the user pulls each batch with "Import more".
+ * All the import machinery lives in the shared `useImporter` hook.
  */
 export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }: ImportBarProps) {
   const {
@@ -34,13 +35,21 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
     oldestMs,
     fetchedCount,
     exhausted,
+    target,
     working,
     runImport,
     importFile,
     resetCursor,
   } = useImporter({ onImport, onGamesFetched, unseenCount });
 
+  // Preference lives in a shared store; the toggle itself is now a top-bar
+  // button. Read it here only to frame the progress caption.
+  const autoImportEnabled = useAutoImport();
+
   const fileRef = useRef<HTMLInputElement>(null);
+  // Two-step clear: avoids window.confirm (unreliable in mobile / in-app
+  // webviews) and gives a real, mis-tap-proof touch target for a destructive act.
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -48,21 +57,37 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
     if (file) await importFile(file);
   };
 
+  const doClear = () => {
+    onClearAll();
+    resetCursor();
+    setStatus({ kind: 'ok', message: 'cache cleared' });
+    setConfirmClear(false);
+  };
+
   const progress = working ? status.progress : undefined;
-  const pct =
-    progress && progress.total > 0
+  // With auto-import building the library, show progress toward the whole target
+  // (e.g. 143/500), not the current 20-game batch — "/20" while fetching 500 is
+  // confusing. Off, the per-batch count is what's meaningful.
+  const libraryDone = Math.min(target, fetchedCount + (progress?.current ?? 0));
+  const pct = autoImportEnabled
+    ? Math.round((libraryDone / target) * 100)
+    : progress && progress.total > 0
       ? Math.round((progress.current / progress.total) * 100)
       : 0;
 
-  // Status caption: live message while working / on error, otherwise the
-  // quiet "N games · auto-import on" line once at least one import has run.
+  // Status caption: live message while working / on error, otherwise a quiet
+  // summary of how far the library has filled.
   let caption: React.ReactNode = null;
   if (working) {
-    caption = status.message;
+    caption = autoImportEnabled
+      ? `building library · ${libraryDone} / ${target} games`
+      : status.message;
   } else if (status.kind === 'error') {
     caption = status.message;
   } else if (fetchedCount > 0) {
-    caption = `${fetchedCount} games · auto-import ${exhausted ? 'off' : 'on'}`;
+    if (exhausted) caption = `${fetchedCount} games · all your history imported`;
+    else if (autoImportEnabled) caption = `${fetchedCount} / ${target} games imported`;
+    else caption = `${fetchedCount} games imported`;
   } else if (status.kind === 'ok' && status.message) {
     caption = status.message;
   }
@@ -116,7 +141,7 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
         </button>
       </div>
 
-      {progress && (
+      {working && (
         <div className="imp-progress">
           <div className="bar" style={{ width: pct + '%' }} />
         </div>
@@ -126,42 +151,43 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
         <div className={'imp-status' + (status.kind === 'error' ? ' err' : '')}>{caption}</div>
       )}
 
-      <div className="imp-row">
-        <button
-          type="button"
-          className="imp-link"
-          disabled={working}
-          onClick={() => fileRef.current?.click()}
-        >
-          Upload PGN
-        </button>
-        <span className="imp-sep">·</span>
-        <button
-          type="button"
-          className="imp-link danger"
-          disabled={working}
-          onClick={() => {
-            if (
-              window.confirm(
-                'Clear all imported puzzles and solved progress? Seed puzzles will remain.'
-              )
-            ) {
-              onClearAll();
-              resetCursor();
-              setStatus({ kind: 'ok', message: 'cache cleared' });
-            }
-          }}
-        >
-          Clear all
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".pgn,text/plain"
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-        />
-      </div>
+      {confirmClear ? (
+        <div className="imp-confirm">
+          <span className="imp-confirm-q">Clear everything?</span>
+          <button type="button" className="imp-confirm-btn yes" onClick={doClear}>
+            Clear
+          </button>
+          <button type="button" className="imp-confirm-btn no" onClick={() => setConfirmClear(false)}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="imp-row">
+          <button
+            type="button"
+            className="imp-link"
+            disabled={working}
+            onClick={() => fileRef.current?.click()}
+          >
+            Upload PGN
+          </button>
+          <span className="imp-sep">·</span>
+          <button
+            type="button"
+            className="imp-link danger"
+            onClick={() => setConfirmClear(true)}
+          >
+            Clear all
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pgn,text/plain"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+        </div>
+      )}
     </div>
   );
 }
