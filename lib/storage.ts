@@ -31,12 +31,30 @@ const KEY_STATS = 'bt.stats';
 const KEY_HISTORY = 'bt.history';
 const KEY_OPENING_GAMES = 'bt.openingGames';
 
+/** A stored puzzle is only usable if it has the fields the app dereferences
+ *  unconditionally (id, and a setupMoves array it iterates on load/render).
+ *  A corrupted or pre-schema entry that lacks them would otherwise throw during
+ *  the mount effect and — with no error boundary — white-screen the whole app. */
+function isValidPuzzle(p: unknown): p is Puzzle {
+  return (
+    !!p &&
+    typeof p === 'object' &&
+    typeof (p as Puzzle).id === 'string' &&
+    Array.isArray((p as Puzzle).setupMoves)
+  );
+}
+
 export function loadPuzzles(): Puzzle[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(KEY_PUZZLES);
     if (!raw) return [];
-    return JSON.parse(raw) as Puzzle[];
+    const parsed = JSON.parse(raw);
+    // Valid JSON can still be the wrong shape (a partial write, an old schema,
+    // or tampering). Guard the array type AND each element, rather than trusting
+    // the cast — a non-array `.filter` or a missing `setupMoves.length` bricks
+    // the app on every load otherwise.
+    return Array.isArray(parsed) ? parsed.filter(isValidPuzzle) : [];
   } catch {
     return [];
   }
@@ -90,7 +108,10 @@ export function loadSolved(): Record<string, 'ok' | 'fail'> {
   try {
     const raw = window.localStorage.getItem(KEY_SOLVED);
     if (!raw) return {};
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    // Must be a plain object — a primitive or array here corrupts progress
+    // bookkeeping (spreads, `solved[id]` indexing) downstream.
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};
   }

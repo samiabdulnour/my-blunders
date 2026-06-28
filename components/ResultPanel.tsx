@@ -66,6 +66,18 @@ export function ResultPanel({
     : puzzle.site.includes('lichess.org')
       ? 'Analyse'
       : 'View game';
+  // Defence-in-depth: only ever open an http(s) URL. A malicious [Site] (e.g.
+  // "javascript:…" / "data:…") from an imported PGN would otherwise run script
+  // via window.open — including puzzles stored before the parser was hardened.
+  // No safe URL → no button.
+  const safeGameUrl = (() => {
+    try {
+      const u = new URL(gameUrl);
+      return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null;
+    } catch {
+      return null;
+    }
+  })();
 
   return (
     <div className="result">
@@ -139,12 +151,14 @@ export function ResultPanel({
           <button className="btn" onClick={onRetry}>
             Retry
           </button>
-          <button
-            className="btn"
-            onClick={() => window.open(gameUrl, '_blank', 'noopener,noreferrer')}
-          >
-            {linkLabel}
-          </button>
+          {safeGameUrl && (
+            <button
+              className="btn"
+              onClick={() => window.open(safeGameUrl, '_blank', 'noopener,noreferrer')}
+            >
+              {linkLabel}
+            </button>
+          )}
         </div>
       </div>
     </div>
