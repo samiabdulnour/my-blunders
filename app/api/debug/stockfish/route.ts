@@ -35,13 +35,17 @@ function runCommand(cmd: string, args: string[], timeoutMs = 5000): Promise<{ st
 }
 
 export async function GET() {
+  // Dev-only sanity check. In production this is an unauthenticated endpoint
+  // that would otherwise disclose host internals (Node version, binary paths)
+  // and run an engine search on every hit — so 404 it outside development.
+  if (process.env.NODE_ENV === 'production') {
+    return new Response('Not found', { status: 404 });
+  }
+
   const result: Record<string, unknown> = {
     platform: process.platform,
     arch: process.arch,
     nodeVersion: process.version,
-    env: {
-      PATH: process.env.PATH ?? '(unset)',
-    },
   };
 
   // 1) Is the binary on PATH?

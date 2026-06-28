@@ -39,7 +39,15 @@ export type { AnalyzeOpts, AnalysisLine, AnalysisResult } from './engine/uci';
  * after the engine emits `bestmove`.
  */
 function runUci(opts: AnalyzeOpts): Promise<AnalysisResult> {
-  const { fen, depth = 18, multiPv = 1 } = opts;
+  const { fen } = opts;
+  // Defence-in-depth: a control char in the FEN would be written straight to the
+  // engine's stdin and split into extra UCI commands. Routes validate, but this
+  // write is the real sink — reject here too, and bound the search parameters.
+  if (typeof fen !== 'string' || /[\r\n\0]/.test(fen)) {
+    return Promise.reject(new Error('invalid FEN'));
+  }
+  const depth = Math.min(30, Math.max(1, Math.floor(opts.depth ?? 18) || 18));
+  const multiPv = Math.min(8, Math.max(1, Math.floor(opts.multiPv ?? 1) || 1));
 
   return new Promise((resolve, reject) => {
     let proc: ChildProcessWithoutNullStreams;

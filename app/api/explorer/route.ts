@@ -9,6 +9,8 @@
  * through our origin makes it a first-party request that survives those blocks,
  * and lets us cache it. Counterpart to /api/lichess/pgn and /api/chesscom/pgn.
  */
+import { validateFen } from 'chess.js';
+
 export const runtime = 'nodejs';
 
 const UPSTREAM = 'https://explorer.lichess.ovh';
@@ -20,6 +22,9 @@ export async function GET(req: Request) {
   const db = searchParams.get('db') === 'masters' ? 'masters' : 'lichess';
   const fen = searchParams.get('fen');
   if (!fen) return jsonError('fen is required', 400);
+  // Only relay real positions — keeps this same-origin proxy from being used as
+  // a cache-fronted relay for arbitrary attacker-supplied explorer queries.
+  if (/[\r\n]/.test(fen) || !validateFen(fen).ok) return jsonError('invalid fen', 400);
 
   const url = new URL(`${UPSTREAM}/${db}`);
   for (const k of PASS) {
