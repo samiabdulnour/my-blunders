@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import type { Puzzle } from '@/lib/types';
-import { useImporter } from '@/lib/useImporter';
+import { useImporter, BATCH_SIZE } from '@/lib/useImporter';
 import { useAutoImport, setAutoImport } from '@/lib/use-auto-import';
-import { loadOpeningGames } from '@/lib/storage';
 
 interface ImportBarProps {
   /** Called as puzzles arrive from an import. */
@@ -37,6 +36,7 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
     fetchedCount,
     exhausted,
     target,
+    capped,
     working,
     runImport,
     importFile,
@@ -63,44 +63,25 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
     setConfirmClear(false);
   };
 
-  // The real library size is the persisted game corpus (`bt.openingGames`),
-  // which BOTH the puzzle pipeline and the clinic's background fetch feed — so
-  // it climbs much faster than the puzzle-only `fetchedCount` and is the honest
-  // "games fetched" number to show. Poll it while building.
-  const [libraryCount, setLibraryCount] = useState(0);
-  useEffect(() => {
-    const update = () => setLibraryCount(loadOpeningGames().length);
-    update();
-    if (!working && !autoImportEnabled) return;
-    const id = window.setInterval(update, 2000);
-    return () => window.clearInterval(id);
-  }, [working, autoImportEnabled]);
+  // Progress reflects the *analysis* — how many games we've turned into puzzles,
+  // toward the auto target (which is smaller on phones to save battery). The
+  // opening-study corpus fills separately and cheaply, so it isn't counted here.
+  const analysed = Math.min(target, fetchedCount);
+  const pct = target > 0 ? Math.round((analysed / target) * 100) : 0;
 
-  const progress = working ? status.progress : undefined;
-  const displayCount = Math.max(libraryCount, fetchedCount);
-  // With auto-import building the library, show progress toward the whole target
-  // (e.g. 143/500), not the current 20-game batch. Off, the per-batch count is
-  // what's meaningful.
-  const libraryDone = Math.min(target, displayCount);
-  const pct = autoImportEnabled
-    ? Math.round((libraryDone / target) * 100)
-    : progress && progress.total > 0
-      ? Math.round((progress.current / progress.total) * 100)
-      : 0;
-
-  // Status caption: live message while working / on error, otherwise a quiet
-  // summary of how far the library has filled.
+  // Status caption: the live action + count while working, then a clear resting
+  // summary that points to "Import more" once the auto target is reached.
   let caption: React.ReactNode = null;
   if (working) {
-    caption = autoImportEnabled
-      ? `building library · ${libraryDone} / ${target} games`
-      : status.message;
+    caption = `${status.message ?? 'analysing your games…'} · ${analysed}/${target}`;
   } else if (status.kind === 'error') {
     caption = status.message;
-  } else if (displayCount > 0) {
-    if (exhausted) caption = `${displayCount} games · all your history imported`;
-    else if (autoImportEnabled) caption = `${displayCount} / ${target} games imported`;
-    else caption = `${displayCount} games imported`;
+  } else if (capped) {
+    caption = `${fetchedCount} games analysed — “Import more” for the next ${BATCH_SIZE}`;
+  } else if (exhausted) {
+    caption = `${fetchedCount} games · all your history imported`;
+  } else if (fetchedCount > 0) {
+    caption = `${fetchedCount} games analysed`;
   } else if (status.kind === 'ok' && status.message) {
     caption = status.message;
   }

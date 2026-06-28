@@ -57,6 +57,12 @@ export const BATCH_SIZE = 20;
  *  "pre-prepared library" target, matching the clinic's corpus. Tunable. */
 export const PUZZLE_TARGET_GAMES = 500;
 
+/** Phones grind the battery analysing many games — and opening-study data comes
+ *  from a separate engine-free fetch — so auto-analysis stops at this smaller
+ *  count on mobile; the user pulls more on demand with "Import more". Desktop
+ *  keeps the full target. */
+export const MOBILE_PUZZLE_TARGET = 40;
+
 /**
  * One import event. Both the native NDJSON stream and the web WASM pipeline
  * emit these so they can share a single handler (`processEvent`) and drive the
@@ -122,6 +128,16 @@ export function useImporter({
    * user can see how far the auto-import has gotten. No hard cap.
    */
   const [fetchedCount, setFetchedCount] = useState(0);
+  /**
+   * Auto-analysis target. Smaller on phones (battery); the full corpus on
+   * desktop. Detected after mount to avoid an SSR/CSR mismatch.
+   */
+  const [autoTarget, setAutoTarget] = useState(PUZZLE_TARGET_GAMES);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches) {
+      setAutoTarget(MOBILE_PUZZLE_TARGET);
+    }
+  }, []);
   /**
    * True once we've hydrated `oldestMs`, `fetchedCount`, and `username`
    * from localStorage. Gating the auto-import effect on this prevents
@@ -549,10 +565,10 @@ export function useImporter({
     if (workingRef.current) return;
     if (exhausted) return;
     if (oldestMs == null) return; // need a first import to set the cursor
-    if (fetchedCount >= PUZZLE_TARGET_GAMES) return; // library target reached
+    if (fetchedCount >= autoTarget) return; // auto target reached (more on demand)
     if (!username.trim()) return;
     runImport(oldestMs);
-  }, [autoImport, autoImportEnabled, hydrated, oldestMs, fetchedCount, username, exhausted, runImport]);
+  }, [autoImport, autoImportEnabled, hydrated, oldestMs, fetchedCount, autoTarget, username, exhausted, runImport]);
 
   /** Reset the pagination cursor + counters after a cache clear, and abort any
    *  in-flight import so it doesn't write puzzles/openings back post-clear. */
@@ -573,7 +589,9 @@ export function useImporter({
     oldestMs,
     fetchedCount,
     exhausted,
-    target: PUZZLE_TARGET_GAMES,
+    target: autoTarget,
+    /** Auto-analysis hit the target; more is available via "Import more". */
+    capped: fetchedCount >= autoTarget && !exhausted,
     working: status.kind === 'working',
     runImport,
     importFile,
