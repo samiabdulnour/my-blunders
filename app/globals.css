@@ -588,6 +588,8 @@ select {
   font-style: normal;
   font-weight: var(--fw-bold);
 }
+.q-loading { color: var(--txt-faint); animation: q-pulse 1.2s ease-in-out infinite; }
+@keyframes q-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 
 /* Queue list */
 .queue {

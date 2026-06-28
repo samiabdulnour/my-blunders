@@ -22,6 +22,9 @@ import {
 interface ClinicValue {
   ready: boolean;
   fetching: boolean;
+  /** True while the store and the opening-name book are still loading — the
+   *  brief window where the tree would otherwise read "0 openings". */
+  loading: boolean;
   color: 'w' | 'b';
   setColor: (c: 'w' | 'b') => void;
   /** Path id of the opening to focus the tree on, or null for the whole tree. */
@@ -103,7 +106,8 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   };
 
   const value: ClinicValue = {
-    ready, fetching, color, setColor, focus, setFocus, selectedId, setSelectedId, tree, openings,
+    ready, fetching, loading: !ready || !bookReady, color, setColor,
+    focus, setFocus, selectedId, setSelectedId, tree, openings,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
