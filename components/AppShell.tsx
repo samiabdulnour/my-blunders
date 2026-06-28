@@ -183,7 +183,10 @@ export function AppShell({
 
         <div className="topbar-spacer" />
 
-        <div className="topbar-prefs">
+        {/* On phones these don't fit the bar, so CSS hides them here and shows
+            them as a strip at the top of the hamburger drawer (the `open`
+            class). On desktop they stay inline and `open` is a no-op. */}
+        <div className={'topbar-prefs' + (sideOpen ? ' open' : '')}>
           <button
             type="button"
             ref={importBtnRef}
