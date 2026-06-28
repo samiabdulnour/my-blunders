@@ -140,7 +140,14 @@ function parseSingleGame(pgnBlock: string): ParsedGame | null {
   for (let i = 0; i < history.length; i++) {
     const h = history[i];
     const fenBefore = replay.fen();
-    replay.move(h.san);
+    // This loop sits outside the loadPgn try/catch and replays chess.js's own
+    // history, so it should always be legal — but guard it so a chess.js edge
+    // case can't throw uncaught out of the parser (parsePgn doesn't wrap this).
+    try {
+      replay.move(h.san);
+    } catch {
+      break;
+    }
     const fenAfter = replay.fen();
     const comment = commentsByFen[fenAfter] ?? '';
     const { evalCp, mate, judgment } = parseComment(comment);
@@ -174,6 +181,11 @@ function parseSingleGame(pgnBlock: string): ParsedGame | null {
     gameId = `cc_${ccMatch[1]}`;
     site = linkHeader || siteHeader || null;
   }
+  // A PGN can carry an arbitrary [Site]; only keep it if it's an http(s) URL.
+  // Otherwise a `javascript:`/`data:` value would become XSS when rendered as a
+  // link (the lichess/chess.com branches above are already safe — this guards
+  // the raw fall-through). Downstream defaults a null site to a safe URL.
+  if (site && !/^https?:\/\//i.test(site)) site = null;
 
   return {
     headers: lcHeaders,
