@@ -1322,7 +1322,8 @@ html[data-theme='dark'] .sq.cap-ring {
   flex-direction: column;
   gap: 10px;
   width: 100%;
-  max-width: 380px;
+  /* Match the step cards above so the form/buttons line up with them. */
+  max-width: 420px;
 }
 .onb-input {
   width: 100%;
@@ -1423,7 +1424,8 @@ html[data-theme='dark'] .sq.cap-ring {
   flex-direction: column;
   gap: 12px;
   width: 100%;
-  max-width: 380px;
+  /* Match the step cards above (same as .onb-form). */
+  max-width: 420px;
 }
 .onb-running .progress-track {
   height: 6px;
