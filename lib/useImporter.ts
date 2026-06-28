@@ -442,9 +442,17 @@ export function useImporter({
      on the Lichess API. Analyzed locally on web, server-side on native. */
   const importFile = useCallback(
     async (file: File) => {
+      // Bound the upload so a huge PGN can't OOM the tab (file.text loads it all
+      // into memory) or kick off an effectively endless per-ply analysis loop.
+      const MAX_UPLOAD_BYTES = 4_000_000; // ~4 MB
+      const MAX_UPLOAD_GAMES = 200;
       const name = username.trim();
       if (!name) {
         setStatus({ kind: 'error', message: 'enter your Lichess username first' });
+        return;
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        setStatus({ kind: 'error', message: 'That PGN is too large (max 4 MB).' });
         return;
       }
       saveUsername(name);
@@ -477,8 +485,9 @@ export function useImporter({
         }
 
         // Web: parse + analyze locally with WASM. Eval-less PGNs (chess.com
-        // exports and the like) are annotated by the engine first.
-        const games = parsePgn(pgn);
+        // exports and the like) are annotated by the engine first. Cap the game
+        // count so an enormous PGN can't run the analysis loop for hours.
+        const games = parsePgn(pgn).slice(0, MAX_UPLOAD_GAMES);
         if (games.length === 0) {
           setStatus({ kind: 'error', message: 'No games found in that PGN file.' });
           return;
