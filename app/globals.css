@@ -1620,6 +1620,35 @@ html[data-theme='dark'] .sq.cap-ring {
     z-index: 70;
   }
 
+  /* Phones can't fit the prefs in the bar (and the overflow is what glitched in
+     landscape), so they move into the hamburger drawer: hidden until the drawer
+     opens, then a strip across the top of it with the mode sidebar (if any)
+     below. Works in every mode, since the strip is the topbar element repositioned. */
+  .topbar-prefs { display: none; }
+  .topbar-prefs.open {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    position: fixed;
+    top: 48px;
+    left: 0;
+    width: min(85%, 320px);
+    z-index: 82;
+    margin: 0;
+    padding: 7px 10px;
+    border-left: 0;
+    border-right: 1px solid var(--contour);
+    border-bottom: 1px solid var(--contour);
+    background: var(--bg);
+    box-shadow: 4px 6px 24px rgba(0, 0, 0, 0.25);
+  }
+  .topbar-prefs.open .icon-btn { padding: 8px 10px; }
+  /* Drop the sidebar below the prefs strip. */
+  .side { top: 46px; }
+  /* Import/stats sheets must sit above the drawer scrim (z-index 70). */
+  .import-sheet, .stats-sheet { z-index: 90; }
+
   .main {
     padding: 12px;
   }
@@ -2128,9 +2157,10 @@ html[data-theme='dark'] .sq.cap-ring {
 @media (max-width: 560px) {
   .topbar { gap: 6px; }
   .brand-word { display: none; }
-  .mode-seg button { padding: 0 7px; }
+  /* All four mode tabs must fit a ~390px bar without clipping "Play". */
+  .mode-seg { gap: 1px; }
+  .mode-seg button { padding: 0 5px; }
   .stats-strip { gap: 7px; padding: 5px 6px; }
-  .topbar-prefs { padding-left: 6px; margin-left: 6px; gap: 2px; }
   .icon-btn { padding: 4px 5px; }
 }
 
