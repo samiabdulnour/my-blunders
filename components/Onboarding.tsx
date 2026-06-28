@@ -48,19 +48,11 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
     [onComplete]
   );
 
-  // Don't strand the new user on a progress bar at all. The moment their games
-  // are *fetched* (before the slow per-move analysis), drop them into the app to
-  // play the famous-blunder library while their own games analyse in the
-  // background; real puzzles stream in and replace the placeholders as they're
-  // found. (autoImport off: the import is driven by the CTA, not the queue-drain
-  // loop — there's no queue on screen yet.)
-  const handleGamesFetched = useCallback(() => {
-    onGamesFetched?.();
-    enterApp(usernameRef.current.trim());
-  }, [onGamesFetched, enterApp]);
-
-  // Safety net: if a puzzle somehow arrives before the games-fetched signal,
-  // still hand off (a no-op once we've already entered).
+  // Hand off the moment the first real puzzle is ready, landing the user
+  // straight on one of their own blunders. Until then they wait on the progress
+  // screen — or tap "play famous blunders while this loads" to start solving the
+  // famous library immediately while the rest analyses behind them. (autoImport
+  // off: the import is driven by the CTA, not the queue-drain loop.)
   const handleImport = useCallback(
     (puzzles: Puzzle[]) => {
       onImport(puzzles);
@@ -71,11 +63,17 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
 
   const { username, setUsername, source, setSource, status, runImport, importFile } = useImporter({
     onImport: handleImport,
-    onGamesFetched: handleGamesFetched,
+    onGamesFetched,
     unseenCount: 0,
     autoImport: false,
   });
   usernameRef.current = username;
+
+  // Fetching-window progress: a real bar that fills as the engine works through
+  // the current game's moves; falls back to an indeterminate sweep before the
+  // first move-level update arrives (e.g. Lichess games that ship evals).
+  const moveProg = status.moveProgress;
+  const pct = moveProg && moveProg.total > 0 ? Math.round((moveProg.done / moveProg.total) * 100) : 0;
 
   // Drive the step checklist off the import status. A finished batch (even one
   // that yielded no puzzles) or an error still resolves here so nobody is stuck.
@@ -224,11 +222,16 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
         <div className="onb-running">
           {phase !== 'error' && (
             <div className="progress-track">
-              <div className="progress-fill indeterminate" />
+              {moveProg ? (
+                <div className="progress-fill" style={{ width: pct + '%' }} />
+              ) : (
+                <div className="progress-fill indeterminate" />
+              )}
             </div>
           )}
-          <div className="progress-text solo">
-            <span>{phase === 'error' ? status.message ?? 'Import failed' : 'Loading your games…'}</span>
+          <div className={'progress-text' + (phase === 'error' || !moveProg ? ' solo' : '')}>
+            <span>{phase === 'error' ? status.message ?? 'Import failed' : 'Finding your first blunder…'}</span>
+            {phase !== 'error' && moveProg && <span>{pct}%</span>}
           </div>
           {phase === 'error' ? (
             <>
@@ -243,10 +246,12 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
             </>
           ) : (
             <>
-              <div className="progress-note">opening now — play famous blunders while your own puzzles analyse in the background</div>
+              {/* Live detail so it's clear work is happening, plus the working
+                  "play while it loads" escape into the famous library. */}
+              <div className="progress-note">{status.message ?? 'analysing your recent games…'}</div>
               <div className="onb-alt">
                 <a onClick={() => enterApp(username.trim())}>
-                  play famous blunders now →
+                  play famous blunders while this loads →
                 </a>
               </div>
             </>

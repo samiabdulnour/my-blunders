@@ -43,6 +43,9 @@ export interface ImportStatus {
   message?: string;
   /** Current/total game count for the progress bar, when known. */
   progress?: { current: number; total: number };
+  /** Move-level analysis progress within the current game (engine-annotated
+   *  games only), so a fetching screen can show a bar that actually fills. */
+  moveProgress?: { done: number; total: number };
 }
 
 /** Games imported per batch. Small enough to feel responsive, large enough
@@ -348,7 +351,7 @@ export function useImporter({
             type: 'progress',
             current: i,
             total: games.length,
-            message: `analyzing game ${i + 1}/${games.length}...`,
+            message: `analysing game ${i + 1}…`,
           },
           ctx
         );
@@ -360,8 +363,9 @@ export function useImporter({
             if (done % 6 === 0 || done === total) {
               setStatus({
                 kind: 'working',
-                message: `analyzing game ${i + 1}/${games.length} — move ${Math.ceil(done / 2)}/${Math.ceil(total / 2)}`,
+                message: `analysing game ${i + 1} — move ${Math.ceil(done / 2)}/${Math.ceil(total / 2)}`,
                 progress: { current: i, total: games.length },
+                moveProgress: { done, total },
               });
             }
           });
@@ -495,8 +499,9 @@ export function useImporter({
               if (done % 6 === 0 || done === t) {
                 setStatus({
                   kind: 'working',
-                  message: `analyzing game ${i + 1}/${games.length} — move ${Math.ceil(done / 2)}/${Math.ceil(t / 2)}`,
+                  message: `analysing game ${i + 1} — move ${Math.ceil(done / 2)}/${Math.ceil(t / 2)}`,
                   progress: { current: i, total: games.length },
+                  moveProgress: { done, total: t },
                 });
               }
             });
