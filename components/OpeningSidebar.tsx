@@ -9,7 +9,7 @@ import { useClinic } from '@/lib/clinic-context';
  * import panel now, shared across modes.
  */
 export function OpeningSidebar() {
-  const { color, setColor, openings, focus, setFocus, setSelectedId } = useClinic();
+  const { color, setColor, openings, focus, setFocus, setSelectedId, loading, fetching } = useClinic();
 
   return (
     <div className="side">
@@ -27,12 +27,18 @@ export function OpeningSidebar() {
       </div>
 
       <div className="qcount">
-        → <em>{openings.length}</em> opening{openings.length === 1 ? '' : 's'}
+        {loading
+          ? <span className="q-loading">mapping your openings…</span>
+          : <>→ <em>{openings.length}</em> opening{openings.length === 1 ? '' : 's'}</>}
       </div>
 
       <div className="queue">
-        {openings.length === 0 ? (
-          <div className="queue-empty">Import games from Lichess above to map your openings.</div>
+        {loading ? (
+          <div className="queue-empty">Loading your openings…</div>
+        ) : openings.length === 0 ? (
+          <div className="queue-empty">
+            {fetching ? 'Importing your games…' : 'Import games from Lichess above to map your openings.'}
+          </div>
         ) : (
           <div className="op-list">
             <button
