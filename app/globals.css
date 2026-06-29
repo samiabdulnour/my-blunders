@@ -1731,6 +1731,55 @@ html[data-theme='dark'] .sq.cap-ring {
   }
 }
 
+/* Landscape phones: short viewport, wide screen — scale board by height
+   and restore side-by-side layout so nothing overflows vertically. */
+@media (orientation: landscape) and (max-height: 500px) {
+  /* Force slide-over sidebar for phones wider than 900px in landscape */
+  .body-row { position: relative; }
+  .side {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 80;
+    width: min(85%, 320px);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+  }
+  .body-row.side-closed .side { display: none; }
+  .scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 70;
+  }
+  .body-row.side-closed .scrim { display: none; }
+  /* Size board to fit inside landscape height without scrolling */
+  .bwrap {
+    --sq-size: min(42px, calc((100vh - 68px) / 8));
+  }
+  /* Board + result panel side by side (undo the portrait column stack) */
+  .board-row {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+  .result-slot {
+    width: 180px;
+    min-width: 0;
+  }
+  .main {
+    padding: 4px 8px;
+    overflow-y: hidden;
+  }
+}
+
+/* Drag-to-scroll cursor feedback */
+body.panning,
+body.panning * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 /* ── About page ───────────────────────────────────────────────────── */
 .about-back {
   font-size: var(--fs-micro);
@@ -2309,6 +2358,13 @@ html[data-theme='dark'] .sq.cap-ring {
   .play-side { width: 100%; max-width: 480px; }
   /* Stacked: the list isn't competing with the board height — give it more room. */
   .play-side .ps-moves { max-height: 320px; }
+  /* On mobile, surface the live game status first — you need to see your
+     verdict immediately after a move, not after scrolling past opening info. */
+  .ps-block-status  { order: 1; }
+  .ps-block-open    { order: 2; }
+  .ps-block-elo     { order: 3; }
+  .ps-controls      { order: 4; }
+  .ps-moves-block   { order: 5; }
 }
 
 /* ── Coordinates trainer ───────────────────────────────────────────── */

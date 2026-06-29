@@ -63,10 +63,12 @@ export function AppShell({
   const importSheetRef = useRef<HTMLDivElement | null>(null);
   const importBtnRef = useRef<HTMLButtonElement | null>(null);
 
-  // After mount, collapse the sidebar on narrow viewports (mobile).
+  // After mount, collapse the sidebar on mobile and landscape phones.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (window.matchMedia('(max-width: 900px)').matches) setSideOpen(false);
+    const isNarrow = window.matchMedia('(max-width: 900px)').matches;
+    const isLandscape = window.matchMedia('(orientation: landscape) and (max-height: 500px)').matches;
+    if (isNarrow || isLandscape) setSideOpen(false);
   }, []);
 
   // Click-away + Escape for the stats sheet (ignore clicks on the toggle).
@@ -111,7 +113,9 @@ export function AppShell({
 
   const closeOnMobile = () => {
     if (typeof window === 'undefined') return;
-    if (window.matchMedia('(max-width: 900px)').matches) setSideOpen(false);
+    const isNarrow = window.matchMedia('(max-width: 900px)').matches;
+    const isLandscape = window.matchMedia('(orientation: landscape) and (max-height: 500px)').matches;
+    if (isNarrow || isLandscape) setSideOpen(false);
   };
 
   return (

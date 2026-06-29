@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { layoutTree, findByPath, hotspots, weakSpots, lineString, formatEval, CARD_W, type LaidNode, type DrillItem } from '@/lib/opening-tree';
 import { useClinic } from '@/lib/clinic-context';
 import { fetchTheory, type Theory } from '@/lib/opening-explorer';
@@ -75,9 +75,74 @@ export function OpeningClinic() {
   const treeRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
+  // Pending scroll position to apply after a pinch-zoom re-render (useLayoutEffect
+  // reads it once the DOM has updated its new scrollable dimensions).
+  const pendingScrollRef = useRef<{ x: number; y: number } | null>(null);
   // What view we last auto-centred (colour|focus). Re-centre only when the view
   // changes — not on every incremental fetch, which would yank the canvas back.
   const centeredKeyRef = useRef<string | null>(null);
+
+  // After a pinch-zoom re-render, apply the stored scroll position so the pinch
+  // midpoint stays anchored in place (canvas dimensions have updated by now).
+  useLayoutEffect(() => {
+    const el = treeRef.current;
+    if (!el || !pendingScrollRef.current) return;
+    el.scrollLeft = Math.max(0, pendingScrollRef.current.x);
+    el.scrollTop = Math.max(0, pendingScrollRef.current.y);
+    pendingScrollRef.current = null;
+  }, [zoom]);
+
+  // Pinch-to-zoom on the tree canvas. Non-passive touchmove so we can
+  // preventDefault and stop the browser's own scroll/zoom during the gesture.
+  useEffect(() => {
+    const el = treeRef.current;
+    if (!el) return;
+    let pinching = false;
+    let startDist = 0;
+    let startZoom = 1;
+    let startScrollX = 0;
+    let startScrollY = 0;
+    let midX = 0;
+    let midY = 0;
+
+    const pinchDist = (t: TouchList) =>
+      Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length < 2) { pinching = false; return; }
+      pinching = true;
+      startDist = pinchDist(e.touches);
+      startZoom = zoomRef.current;
+      startScrollX = el.scrollLeft;
+      startScrollY = el.scrollTop;
+      const rect = el.getBoundingClientRect();
+      midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+      midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+    };
+
+    const onMove = (e: TouchEvent) => {
+      if (!pinching || e.touches.length < 2) return;
+      e.preventDefault();
+      const d = pinchDist(e.touches);
+      const newZ = Math.min(1.6, Math.max(0.4, startZoom * (d / startDist)));
+      // Keep the canvas point under the pinch midpoint stationary.
+      const layoutX = (startScrollX + midX) / startZoom;
+      const layoutY = (startScrollY + midY) / startZoom;
+      pendingScrollRef.current = { x: layoutX * newZ - midX, y: layoutY * newZ - midY };
+      setZoom(newZ);
+    };
+
+    const onEnd = (e: TouchEvent) => { if (e.touches.length < 2) pinching = false; };
+
+    el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend', onEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend', onEnd);
+    };
+  }, []);
 
   // Focus re-roots the tree at one node (an opening, or any clicked node) so you
   // can drill in; otherwise the whole tree. Path ids are absolute, so a focus
