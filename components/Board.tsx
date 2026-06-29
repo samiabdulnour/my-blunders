@@ -205,10 +205,9 @@ export function Board({
 
   const handlePointerUp = (e: React.PointerEvent) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
-    const wasActive = drag.active;
+    if (!drag.active) return; // tap — handleSquareClick clears drag+selected in one batch
     const from = drag.from;
     setDrag(null);
-    if (!wasActive) return; // tap, not drag — let the click handler run
     const target = findSquareAt(e.clientX, e.clientY);
     if (!target || target === from) return;
     const cands = (legalFrom[from] ?? []).filter((m) => m.to === target);
@@ -224,8 +223,12 @@ export function Board({
 
   /** Square click. Suppressed when the gesture was a real drag — the
    *  pointerup branch already applied the move (or rejected it) and we
-   *  don't want a stray click-to-select firing on top. */
+   *  don't want a stray click-to-select firing on top. For a tap the drag
+   *  state stays alive until here so we clear it in the same React batch
+   *  as the new selection, avoiding an intermediate frame where both are
+   *  null (which would flash the hint dots off then on). */
   const handleSquareClick = (sqn: string) => {
+    if (drag && !drag.active) setDrag(null);
     if (wasDraggingRef.current) {
       wasDraggingRef.current = false;
       return;

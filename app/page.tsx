@@ -135,6 +135,10 @@ export default function Page() {
    *  saved puzzles, not after a clear. Seeded from storage on hydrate. */
   const ownGamesRef = useRef(false);
 
+  // Drag-to-scroll ("hand pan") on desktop: click-drag on empty canvas space.
+  const mainRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef<{ startY: number; scrollTop: number } | null>(null);
+
   /* ── Hydrate persisted state, then load seed puzzles from the API ── */
   useEffect(() => {
     // Famous-blunder placeholders were persisted by an earlier build; never
@@ -760,6 +764,37 @@ export default function Page() {
     [loadPuzzle]
   );
 
+  // Drag-to-scroll on desktop: mouse-drag on empty space pans the main area.
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!panRef.current) return;
+      const main = mainRef.current;
+      if (!main) return;
+      main.scrollTop = panRef.current.scrollTop - (e.clientY - panRef.current.startY);
+    };
+    const onUp = () => {
+      panRef.current = null;
+      document.body.classList.remove('panning');
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
+  const handlePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const el = e.target as Element;
+    if (el.closest('[data-sq], button, a, input, select, textarea')) return;
+    const main = mainRef.current;
+    if (!main) return;
+    panRef.current = { startY: e.clientY, scrollTop: main.scrollTop };
+    document.body.classList.add('panning');
+    e.preventDefault();
+  };
+
   /* ── First run: onboarding ── */
   if (!onboarded) {
     return (
@@ -839,7 +874,7 @@ export default function Page() {
             onSelect={loadPuzzle}
           />
 
-          <div className="main">
+          <div className="main" ref={mainRef} onMouseDown={handlePanStart}>
             {!current ? (
           <div className="empty">
             <div>No puzzles loaded.</div>
