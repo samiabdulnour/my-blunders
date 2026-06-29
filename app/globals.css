@@ -2358,6 +2358,13 @@ body.panning * {
   .play-side { width: 100%; max-width: 480px; }
   /* Stacked: the list isn't competing with the board height — give it more room. */
   .play-side .ps-moves { max-height: 320px; }
+  /* On mobile, surface the live game status first — you need to see your
+     verdict immediately after a move, not after scrolling past opening info. */
+  .ps-block-status  { order: 1; }
+  .ps-block-open    { order: 2; }
+  .ps-block-elo     { order: 3; }
+  .ps-controls      { order: 4; }
+  .ps-moves-block   { order: 5; }
 }
 
 /* ── Coordinates trainer ───────────────────────────────────────────── */

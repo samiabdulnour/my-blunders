@@ -399,7 +399,7 @@ export function PlayMode() {
       </div>
 
       <aside className="play-side">
-        <div className="ps-block">
+        <div className="ps-block ps-block-open">
           <div className="ps-h">Opening</div>
           <div className="ps-opening">
             {opening
@@ -408,7 +408,7 @@ export function PlayMode() {
           </div>
         </div>
 
-        <div className="ps-block">
+        <div className="ps-block ps-block-elo">
           <div className="ps-h">Opponent strength</div>
           <div className="ps-elo">
             <button className="ps-step" onClick={() => setElo(elo - ELO_STEP)} disabled={elo <= MIN_ELO} aria-label="Weaker">−</button>
@@ -424,7 +424,7 @@ export function PlayMode() {
           </div>
         </div>
 
-        <div className="ps-block">
+        <div className="ps-block ps-block-status">
           <div className="ps-h">{statusHead}</div>
           {result ? (
             <div className="ps-result">{result}</div>
