@@ -352,6 +352,26 @@ select {
   opacity: 0.5;
   cursor: wait;
 }
+.imp-more-btn {
+  display: block;
+  width: 100%;
+  background: transparent;
+  color: var(--txt);
+  border: 1.5px solid var(--contour);
+  padding: 7px 12px;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  border-radius: 2px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.12s var(--ease-snap);
+}
+.imp-more-btn:hover {
+  background: var(--contour);
+  color: var(--bg2);
+}
 .imp-progress {
   height: 3px;
   background: var(--bg2);
@@ -1973,6 +1993,7 @@ body.panning * {
 .clinic-tree {
   flex: 1; min-width: 0; overflow: auto; position: relative;
   background: radial-gradient(circle at center, var(--border) 0.8px, transparent 1.2px) 0 0 / 22px 22px, var(--bg);
+  cursor: grab;
 }
 .clinic-bar {
   position: sticky; top: 0; left: 0; z-index: 5; display: flex; align-items: center; gap: 16px;

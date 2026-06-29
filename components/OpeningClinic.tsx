@@ -92,11 +92,13 @@ export function OpeningClinic() {
     pendingScrollRef.current = null;
   }, [zoom]);
 
-  // Pinch-to-zoom on the tree canvas. Non-passive touchmove so we can
-  // preventDefault and stop the browser's own scroll/zoom during the gesture.
+  // Pinch-to-zoom + mouse drag-to-pan on the tree canvas.
+  // Non-passive touchmove lets us preventDefault during pinch.
   useEffect(() => {
     const el = treeRef.current;
     if (!el) return;
+
+    // ── Touch pinch-to-zoom ─────────────────────────────────────────────────
     let pinching = false;
     let startDist = 0;
     let startZoom = 1;
@@ -108,7 +110,7 @@ export function OpeningClinic() {
     const pinchDist = (t: TouchList) =>
       Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
 
-    const onStart = (e: TouchEvent) => {
+    const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length < 2) { pinching = false; return; }
       pinching = true;
       startDist = pinchDist(e.touches);
@@ -120,7 +122,7 @@ export function OpeningClinic() {
       midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
     };
 
-    const onMove = (e: TouchEvent) => {
+    const onTouchMove = (e: TouchEvent) => {
       if (!pinching || e.touches.length < 2) return;
       e.preventDefault();
       const d = pinchDist(e.touches);
@@ -132,15 +134,49 @@ export function OpeningClinic() {
       setZoom(newZ);
     };
 
-    const onEnd = (e: TouchEvent) => { if (e.touches.length < 2) pinching = false; };
+    const onTouchEnd = (e: TouchEvent) => { if (e.touches.length < 2) pinching = false; };
 
-    el.addEventListener('touchstart', onStart, { passive: true });
-    el.addEventListener('touchmove', onMove, { passive: false });
-    el.addEventListener('touchend', onEnd, { passive: true });
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+
+    // ── Mouse drag-to-pan ───────────────────────────────────────────────────
+    let panStart: { x: number; y: number; scrollLeft: number; scrollTop: number } | null = null;
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      // Ignore clicks on interactive elements and node cards.
+      const target = e.target as Element;
+      if (target.closest('.cnode, button, a, input, select, textarea')) return;
+      panStart = { x: e.clientX, y: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
+      document.body.classList.add('panning');
+      e.preventDefault();
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!panStart) return;
+      el.scrollLeft = panStart.scrollLeft - (e.clientX - panStart.x);
+      el.scrollTop = panStart.scrollTop - (e.clientY - panStart.y);
+    };
+
+    const onMouseUp = () => {
+      if (!panStart) return;
+      panStart = null;
+      document.body.classList.remove('panning');
+    };
+
+    el.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+
     return () => {
-      el.removeEventListener('touchstart', onStart);
-      el.removeEventListener('touchmove', onMove);
-      el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.classList.remove('panning');
     };
   }, []);
 
