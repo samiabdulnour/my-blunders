@@ -405,7 +405,7 @@ export default function Page() {
      Three modes: free analysis (after solve — any legal move), multi-move
      solving (combination puzzles play out the engine line), and the
      single-move default. */
-  const makeMove = (mv: Move) => {
+  const makeMove = (mv: Move, fromDrag = false) => {
     if (!current) return;
     const cur = current;
     // Record the puzzle's outcome once (solved-status · stats · streak). A
@@ -453,11 +453,13 @@ export default function Page() {
       setLastFrom(mv.from);
       setLastTo(mv.to);
       setLegalFrom(groupLegal(next));
-      setIntroMove({ from: mv.from, to: mv.to });
-      const id = current.id;
-      setTimeout(() => {
-        if (currentRef.current?.id === id) setIntroMove(null);
-      }, 250);
+      if (!fromDrag) {
+        setIntroMove({ from: mv.from, to: mv.to });
+        const id = current.id;
+        setTimeout(() => {
+          if (currentRef.current?.id === id) setIntroMove(null);
+        }, 250);
+      }
       return;
     }
 
@@ -470,11 +472,13 @@ export default function Page() {
       setLastFrom(mv.from);
       setLastTo(mv.to);
       setFlashOk(mv.to);
-      setIntroMove({ from: mv.from, to: mv.to });
-      const okId = current.id;
-      setTimeout(() => {
-        if (currentRef.current?.id === okId) setIntroMove(null);
-      }, 350);
+      if (!fromDrag) {
+        setIntroMove({ from: mv.from, to: mv.to });
+        const okId = current.id;
+        setTimeout(() => {
+          if (currentRef.current?.id === okId) setIntroMove(null);
+        }, 350);
+      }
 
       // Normal puzzles are scored on the KEY move — you found the best move —
       // then you *play out* the critical continuation yourself (forgiving).
@@ -935,7 +939,7 @@ export default function Page() {
                 introMove={introMove}
                 revealed={analysis ? false : revealed || awaitingRetry}
                 onSquareClick={onSquareClick}
-                onDragMove={makeMove}
+                onDragMove={(mv) => makeMove(mv, true)}
               />
 
               {/* Reserve the 280px slot so the board doesn't shift when the
