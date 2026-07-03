@@ -63,12 +63,41 @@ export function AppShell({
   const importSheetRef = useRef<HTMLDivElement | null>(null);
   const importBtnRef = useRef<HTMLButtonElement | null>(null);
 
-  // After mount, collapse the sidebar on mobile and landscape phones.
+  // Collapse sidebar on narrow/landscape-phone viewports and keep it in sync
+  // when the user rotates the device. orientationchange fires once per actual
+  // rotation (unlike resize which fires on every animation frame), preventing
+  // the layout from flickering between portrait and landscape styles mid-rotation.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const isNarrow = window.matchMedia('(max-width: 900px)').matches;
-    const isLandscape = window.matchMedia('(orientation: landscape) and (max-height: 500px)').matches;
-    if (isNarrow || isLandscape) setSideOpen(false);
+    const mqlNarrow = window.matchMedia('(max-width: 900px)');
+    const mqlLandscape = window.matchMedia('(orientation: landscape) and (max-height: 500px)');
+
+    const sync = () => {
+      if (mqlNarrow.matches || mqlLandscape.matches) {
+        setSideOpen(false);
+      } else {
+        setSideOpen(true);
+      }
+    };
+
+    sync(); // initial
+
+    // screen.orientation is preferred; fall back to the older orientationchange.
+    const orientationTarget: EventTarget =
+      typeof screen !== 'undefined' && screen.orientation
+        ? screen.orientation
+        : window;
+    const orientationEvent =
+      typeof screen !== 'undefined' && screen.orientation ? 'change' : 'orientationchange';
+
+    orientationTarget.addEventListener(orientationEvent, sync);
+    // Also watch for window resize so desktop resizing to narrow collapses.
+    mqlNarrow.addEventListener('change', sync);
+
+    return () => {
+      orientationTarget.removeEventListener(orientationEvent, sync);
+      mqlNarrow.removeEventListener('change', sync);
+    };
   }, []);
 
   // Click-away + Escape for the stats sheet (ignore clicks on the toggle).
