@@ -51,39 +51,36 @@ function useSession() {
   return { running, over, elapsed, correct, wrong, setCorrect, setWrong, start, finish };
 }
 
-/** Left-panel nav: three mode buttons. */
+/** Left-panel nav: three mode buttons styled as compact sidebar list items. */
 function ModeNav({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode) => void }) {
   return (
-    <nav className="coords-nav">
+    <div className="side-block coords-nav">
       <button type="button" className={'ct-nav-btn' + (sub === 'find' ? ' on' : '')} onClick={() => onChangeSub('find')}>Find the square</button>
       <button type="button" className={'ct-nav-btn' + (sub === 'color' ? ' on' : '')} onClick={() => onChangeSub('color')}>Square colour</button>
       <button type="button" className={'ct-nav-btn' + (sub === 'replay' ? ' on' : '')} onClick={() => onChangeSub('replay')}>Play famous games</button>
-    </nav>
+    </div>
   );
 }
 
-/** Session controls in the sidebar: Start/Finish button + time/done stats. */
+/** Session controls in the sidebar — compact, matching sidebar density. */
 function SessionPanel({ running, over, elapsed, correct, wrong, onStart, onFinish }: {
   running: boolean; over: boolean; elapsed: number; correct: number; wrong: number;
   onStart: () => void; onFinish: () => void;
 }) {
   return (
-    <div className="ct-panel-section">
-      <button type="button" className="ct-action-full" onClick={running ? onFinish : onStart}>
-        {running ? 'Finish' : over ? 'Go again' : 'Start'}
-      </button>
-      <div className="ct-panel-stats">
-        <div className="ct-panel-stat">
-          <span className="ct-panel-num">{mmss(elapsed)}</span>
-          <span className="ct-panel-label">time</span>
-        </div>
-        <div className="ct-panel-stat">
-          <span className="ct-panel-num">{correct}</span>
-          <span className="ct-panel-label">done</span>
+    <div className="side-block ct-session-block">
+      <div className="side-h">Session</div>
+      <div className="ct-session-row">
+        <button type="button" className="ct-action-sm" onClick={running ? onFinish : onStart}>
+          {running ? 'Finish' : over ? 'Go again' : 'Start'}
+        </button>
+        <div className="ct-inline-stats">
+          <span className="ct-stat"><b className="num">{mmss(elapsed)}</b> time</span>
+          <span className="ct-stat"><b className="num">{correct}</b> done</span>
         </div>
       </div>
       {over && (
-        <p className="ct-panel-result">
+        <p className="ct-session-result">
           <b>{correct}</b> correct in {mmss(elapsed)}{wrong > 0 ? ` · ${wrong} missed` : ''}
         </p>
       )}
@@ -126,16 +123,15 @@ function FindMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode
   return (
     <>
       <aside className="coords-panel">
-        <div className="side-h">Coordinates</div>
+        <div className="side-h" style={{ padding: '14px 16px 6px' }}>Coordinates</div>
         <ModeNav sub={sub} onChangeSub={onChangeSub} />
-        <div className="ct-panel-sep" />
         <SessionPanel running={running} over={over} elapsed={elapsed} correct={correct} wrong={wrong} onStart={begin} onFinish={finish} />
-        <div className="ct-panel-sep" />
-        <div className="ct-panel-section">
-          <p className="ct-panel-persp">Board from <b>{orientation === 'white' ? 'White' : 'Black'}</b>&apos;s side</p>
-          <button type="button" className="ct-panel-btn" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>
-            Flip board
-          </button>
+        <div className="side-block ct-board-opts">
+          <div className="side-h">Board</div>
+          <div className="ct-persp-row">
+            <span className="ct-persp-txt">From <b>{orientation === 'white' ? 'White' : 'Black'}</b>&apos;s side</span>
+            <button type="button" className="ct-flip-sm" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip</button>
+          </div>
           <label className="ct-toggle">
             <input type="checkbox" checked={showCoords} onChange={(e) => setShowCoords(e.target.checked)} />
             Show coords
@@ -177,9 +173,8 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
   return (
     <>
       <aside className="coords-panel">
-        <div className="side-h">Coordinates</div>
+        <div className="side-h" style={{ padding: '14px 16px 6px' }}>Coordinates</div>
         <ModeNav sub={sub} onChangeSub={onChangeSub} />
-        <div className="ct-panel-sep" />
         <SessionPanel running={running} over={over} elapsed={elapsed} correct={correct} wrong={wrong} onStart={begin} onFinish={finish} />
       </aside>
       <div className="coords-content">
@@ -332,11 +327,10 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
   return (
     <>
       <aside className="coords-panel">
-        <div className="side-h">Coordinates</div>
+        <div className="side-h" style={{ padding: '14px 16px 6px' }}>Coordinates</div>
         <ModeNav sub={sub} onChangeSub={onChangeSub} />
-        <div className="ct-panel-sep" />
-        <div className="ct-panel-section">
-          <div className="ct-panel-label-h">Game</div>
+        <div className="side-block">
+          <div className="side-h">Game</div>
           <select className="ct-game-select" value={gameIdx} onChange={(e) => setGameIdx(Number(e.target.value))}>
             {FAMOUS_GAMES.map((g, i) => (
               <option key={g.id} value={i}>{g.title}{g.year ? ` · ${g.year}` : ''}</option>
@@ -345,18 +339,17 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
           <div className="ct-game-players">{game.white} – {game.black}</div>
           <p className="ct-game-context">{game.context}</p>
         </div>
-        <div className="ct-panel-sep" />
-        <div className="ct-panel-section">
-          <div className="ct-panel-label-h">{done ? 'Game complete ♚' : `${sideToMove === 'w' ? 'White' : 'Black'} to move`}</div>
+        <div className="side-block">
+          <div className="side-h">{done ? 'Game complete ♚' : `${sideToMove === 'w' ? 'White' : 'Black'} to move`}</div>
           {done ? (
             <div className="ps-hint">You replayed the whole game. Result: <b>{game.result}</b>.</div>
           ) : (
-            <div className="ps-hint">Play the game&apos;s next move{wrong ? ' — that wasn’t it, try again.' : '.'}</div>
+            <div className="ps-hint">Play the game&apos;s next move{wrong ? " — that wasn’t it, try again." : '.'}</div>
           )}
           <div className="ct-controls">
-            <button type="button" className="ct-panel-btn" onClick={showMove} disabled={done}>Show move</button>
-            <button type="button" className="ct-panel-btn" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip board</button>
-            <button type="button" className="ct-panel-btn" onClick={restart} disabled={ply === 0}>Restart</button>
+            <button type="button" className="ps-btn" onClick={showMove} disabled={done}>Show move</button>
+            <button type="button" className="ps-btn" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip board</button>
+            <button type="button" className="ps-btn" onClick={restart} disabled={ply === 0}>Restart</button>
           </div>
         </div>
       </aside>

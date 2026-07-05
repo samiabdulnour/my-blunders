@@ -2405,58 +2405,50 @@ body.panning * {
 }
 .coords-panel .side-h { flex-shrink: 0; }
 
-/* Mode navigation buttons — stacked in the panel */
-.coords-nav { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; }
+/* Mode navigation buttons — left-border indicator, same density as sidebar items */
+.coords-nav { display: flex; flex-direction: column; padding: 6px 0; }
 .ct-nav-btn {
   display: block; width: 100%; text-align: left;
-  padding: 8px 10px; border: 0; border-radius: 4px;
+  padding: 7px 16px; border: 0; border-left: 2px solid transparent;
   font-size: var(--fs-micro); font-weight: var(--fw-bold);
   text-transform: uppercase; letter-spacing: var(--track-caps);
   color: var(--txt-dim); background: transparent; cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
-.ct-nav-btn.on { background: var(--coral); color: #fff; }
+.ct-nav-btn.on { border-left-color: var(--coral); background: var(--bg3); color: var(--txt); }
 .ct-nav-btn:hover:not(.on) { background: var(--bg3); color: var(--txt); }
 
-/* Panel sections */
-.ct-panel-sep { height: 1px; background: var(--border); flex-shrink: 0; }
-.ct-panel-section { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
-.ct-panel-label-h { font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); }
-
-/* Full-width action button (Start/Finish/Go again) */
-.ct-action-full {
-  width: 100%; padding: 10px; border: 0; border-radius: 4px;
+/* Session block — compact: Start/Finish button inline with stats */
+.ct-session-row { display: flex; align-items: center; gap: 12px; }
+.ct-action-sm {
+  padding: 6px 12px; border: 0; border-radius: 3px; flex-shrink: 0;
   background: var(--coral); color: #fff;
   font-size: var(--fs-micro); font-weight: var(--fw-bold);
   text-transform: uppercase; letter-spacing: var(--track-caps);
   cursor: pointer;
 }
-.ct-action-full:hover { filter: brightness(1.05); }
+.ct-action-sm:hover { filter: brightness(1.05); }
+.ct-inline-stats { display: flex; gap: 14px; align-items: baseline; }
+.ct-stat { font-size: var(--fs-micro); color: var(--txt-dim); }
+.ct-stat b { font-weight: var(--fw-bold); color: var(--txt); font-variant-numeric: tabular-nums; }
+.ct-session-result { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.4; margin: 6px 0 0; }
+.ct-session-result b { color: var(--txt); }
 
-/* Time + done stats in the panel */
-.ct-panel-stats { display: flex; gap: 20px; }
-.ct-panel-stat { display: flex; flex-direction: column; }
-.ct-panel-num { font-size: var(--fs-title); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; line-height: 1.1; }
-.ct-panel-label { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); }
-.ct-panel-result { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.4; margin: 0; }
-.ct-panel-result b { color: var(--txt); }
-
-/* Board options section */
-.ct-panel-persp { font-size: var(--fs-base); color: var(--txt-dim); margin: 0; }
-.ct-panel-persp b { color: var(--txt); }
-.ct-panel-btn {
-  display: block; width: 100%; text-align: center;
-  padding: 7px 10px; border: 1px solid var(--border2); border-radius: 4px;
-  background: var(--bg2); color: var(--txt);
+/* Board options block */
+.ct-persp-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.ct-persp-txt { font-size: var(--fs-micro); color: var(--txt-dim); }
+.ct-persp-txt b { color: var(--txt); font-weight: var(--fw-bold); }
+.ct-flip-sm {
+  padding: 4px 10px; border: 1px solid var(--border2); border-radius: 3px;
+  background: var(--bg); color: var(--txt);
   font-size: var(--fs-micro); font-weight: var(--fw-bold);
   text-transform: uppercase; letter-spacing: var(--track-caps);
-  cursor: pointer;
+  cursor: pointer; flex-shrink: 0;
 }
-.ct-panel-btn:hover { border-color: var(--contour); }
-.ct-panel-btn:disabled { opacity: 0.4; cursor: default; }
-.ct-controls { display: flex; flex-direction: column; gap: 8px; }
+.ct-flip-sm:hover { border-color: var(--contour); }
 .ct-toggle { display: flex; align-items: center; gap: 8px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); cursor: pointer; }
 .ct-toggle input { cursor: pointer; accent-color: var(--coral); }
+.ct-controls { display: flex; flex-direction: column; gap: 8px; }
 
 /* Right content area — board + prompts */
 .coords-content {
@@ -2473,9 +2465,10 @@ body.panning * {
 .ct-coord { font-size: 52px; font-weight: var(--fw-bold); letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--txt); }
 .ct-prompt.small .ct-coord { font-size: var(--fs-title); margin: 0 6px; }
 .ct-idle { color: var(--txt-faint); font-size: var(--fs-base); }
-.ct-check { font-size: var(--fs-base); font-weight: var(--fw-bold); }
+.ct-check { font-size: var(--fs-title); font-weight: var(--fw-bold); }
+.ct-prompt.small .ct-check { font-size: var(--fs-base); }
 .ct-check.ok { color: var(--green); }
-.ct-check.fail { color: var(--red); }
+.ct-check.fail { color: var(--red); font-size: var(--fs-base); text-transform: none; letter-spacing: 0; }
 
 /* Light / Dark buttons for colour mode */
 .ct-color-btns { display: flex; gap: 16px; }
@@ -2498,10 +2491,10 @@ body.panning * {
 .ct-sq.fail { box-shadow: inset 0 0 0 5px var(--red); }
 
 /* Rim coordinates when showCoords is on */
-.ct-board-area { display: inline-grid; grid-template-columns: 18px auto; grid-template-rows: auto 18px; gap: 0; }
-.ct-ranks { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; justify-content: space-around; text-align: right; padding-right: 4px; font-size: 10px; color: var(--txt-dim); }
+.ct-board-area { display: grid; grid-template-columns: 16px auto; grid-template-rows: auto 16px; }
 .ct-board-area .ct-board { grid-column: 2; grid-row: 1; }
-.ct-files { grid-column: 2; grid-row: 2; display: flex; justify-content: space-around; font-size: 10px; color: var(--txt-dim); padding-top: 4px; }
+.ct-ranks { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; justify-content: space-around; align-items: center; font-size: 11px; font-weight: var(--fw-bold); color: var(--txt-dim); font-variant-numeric: tabular-nums; }
+.ct-files { grid-column: 2; grid-row: 2; display: flex; justify-content: space-around; align-items: center; font-size: 11px; font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; }
 
 /* Game info (replay) in the panel */
 .ct-game-select { width: 100%; padding: 7px 9px; border: 1px solid var(--border2); border-radius: 4px; background: var(--bg); color: var(--txt); font: inherit; font-size: var(--fs-base); cursor: pointer; }
@@ -2524,27 +2517,10 @@ body.panning * {
   .coords-panel { width: 100%; border-right: none; border-bottom: 1px solid var(--border); flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
   .coords-panel .side-h { width: 100%; }
   .coords-nav { flex-direction: row; flex-wrap: wrap; }
-  .ct-panel-sep { display: none; }
-  .ct-panel-section { padding: 10px 12px; }
   .coords-content { padding: 16px; }
   .ct-board { width: min(400px, 92vw); }
   .ct-replay-moves { width: 100%; max-width: 440px; }
   .ct-moves { max-height: 180px; }
   .coords-replay-content { padding: 12px; }
 }
-.ct-persp { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-faint); }
-.ct-persp b { color: var(--txt-dim); }
-.ct-check { font-size: var(--fs-title); font-weight: var(--fw-bold); }
-.ct-prompt.small .ct-check { font-size: var(--fs-base); }
-.ct-check.ok { color: var(--green); }
-.ct-check.fail { color: var(--red); font-size: var(--fs-base); text-transform: none; letter-spacing: 0; }
-
-/* Edge coordinates around the find-mode board */
-.ct-board-area { display: grid; grid-template-columns: 16px auto; grid-template-rows: auto 16px; }
-.ct-board-area .ct-board { grid-column: 2; grid-row: 1; }
-.ct-ranks { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; justify-content: space-around; align-items: center; font-size: 11px; font-weight: var(--fw-bold); color: var(--txt-dim); font-variant-numeric: tabular-nums; }
-.ct-files { grid-column: 2; grid-row: 2; display: flex; justify-content: space-around; align-items: center; font-size: 11px; font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; }
-
-/* Replay game info */
-.ct-game-players { margin-top: 7px; font-size: var(--fs-base); color: var(--txt-dim); font-weight: var(--fw-bold); }
 .ct-game-context { margin: 8px 0 0; font-size: var(--fs-micro); color: var(--txt-faint); line-height: 1.55; }
