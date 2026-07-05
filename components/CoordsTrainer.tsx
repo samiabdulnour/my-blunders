@@ -5,6 +5,16 @@ import { Chess, type Move } from 'chess.js';
 import { Board } from './Board';
 import { FAMOUS_GAMES } from '@/lib/famous-games';
 
+// Group the games by era for the picker's <optgroup>s, keeping each game's
+// original index in FAMOUS_GAMES as the option value (the array is already
+// ordered by era, so groups come out contiguous and chronological).
+const GAME_GROUPS = FAMOUS_GAMES.reduce<{ era: string; games: { g: (typeof FAMOUS_GAMES)[number]; i: number }[] }[]>((acc, g, i) => {
+  const last = acc[acc.length - 1];
+  if (last && last.era === g.era) last.games.push({ g, i });
+  else acc.push({ era: g.era, games: [{ g, i }] });
+  return acc;
+}, []);
+
 /**
  * Coordinate / board-vision trainer (Lichess-style), three modes:
  *  · Find the square — a coordinate is named above the board; click it.
@@ -421,10 +431,14 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
     <>
       <CoordsPanel sub={sub} onChangeSub={onChangeSub}>
         <div className="side-block">
-          <div className="side-h">Game</div>
+          <div className="side-h">Game · {FAMOUS_GAMES.length}</div>
           <select className="ct-game-select" value={gameIdx} onChange={(e) => setGameIdx(Number(e.target.value))}>
-            {FAMOUS_GAMES.map((g, i) => (
-              <option key={g.id} value={i}>{g.title}{g.year ? ` · ${g.year}` : ''}</option>
+            {GAME_GROUPS.map((grp) => (
+              <optgroup key={grp.era} label={grp.era}>
+                {grp.games.map(({ g, i }) => (
+                  <option key={g.id} value={i}>{g.title}{g.year ? ` · ${g.year}` : ''}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
           <div className="ct-game-players">{game.white} – {game.black}</div>
