@@ -2392,18 +2392,18 @@ body.panning * {
 /* Uses the same .side + .main > .board-col > .board-row + .result-slot  */
 /* structure as Puzzle mode — no custom shell wrapper needed.             */
 
-/* Mode nav list — visible bordered buttons */
+/* Mode nav list — visible bordered buttons, rectangular corners, white bg */
 .ct-mode-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .ct-nav-btn {
   display: block; width: 100%; text-align: left;
-  padding: 8px 12px; border: 1px solid var(--border2); border-radius: 4px;
+  padding: 8px 12px; border: 1px solid var(--border2); border-radius: 2px;
   font-size: var(--fs-micro); font-weight: var(--fw-bold);
   text-transform: uppercase; letter-spacing: var(--track-caps);
-  color: var(--txt-dim); background: var(--bg); cursor: pointer;
-  transition: border-color 0.1s, color 0.1s, background 0.1s;
+  color: var(--txt-dim); background: var(--bg2); cursor: pointer;
+  transition: border-color 0.1s, color 0.1s;
 }
-.ct-nav-btn.on { border-color: var(--coral); color: var(--coral); }
-.ct-nav-btn:hover:not(.on) { border-color: var(--contour); color: var(--txt); background: var(--bg3); }
+.ct-nav-btn.on { border-color: var(--coral); color: var(--coral); background: var(--bg2); }
+.ct-nav-btn:hover:not(.on) { border-color: var(--contour); color: var(--txt); }
 
 /* Session stats (no button — Start/Finish lives in the result card) */
 .ct-inline-stats { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: baseline; margin-top: 4px; }
@@ -2417,10 +2417,11 @@ body.panning * {
 .ct-toggle input { cursor: pointer; accent-color: var(--coral); }
 .ct-controls { display: flex; flex-direction: column; gap: 8px; }
 
-/* Coordinate shown above the board (Find mode + Replay mode header line) */
+/* Coordinate shown above the board — width matches board so it centers over it */
 .ct-above-board {
+  width: 480px;
   height: 44px;
-  display: flex; align-items: center; padding: 0 2px;
+  display: flex; align-items: center; justify-content: center;
 }
 .ct-coord-above {
   font-size: 30px; font-weight: var(--fw-bold);
@@ -2431,6 +2432,9 @@ body.panning * {
   font-size: var(--fs-micro); font-weight: var(--fw-bold);
   text-transform: uppercase; letter-spacing: var(--track-caps);
   color: var(--txt-dim);
+}
+@media (max-width: 900px) {
+  .ct-above-board { width: min(480px, 92vw); }
 }
 
 /* Colour mode — big coordinate replaces the board */

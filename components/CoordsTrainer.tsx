@@ -102,19 +102,6 @@ function FindMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode
     <>
       <CoordsPanel sub={sub} onChangeSub={onChangeSub}>
         <div className="side-block">
-          <div className="side-h">Session</div>
-          <div className="ct-inline-stats">
-            <span className="ct-stat"><b>{mmss(elapsed)}</b> time</span>
-            <span className="ct-stat"><b>{correct}</b> correct</span>
-            {wrong > 0 && <span className="ct-stat"><b>{wrong}</b> missed</span>}
-          </div>
-          {over && (
-            <p className="ct-session-result">
-              <b>{correct}</b> correct in {mmss(elapsed)}{wrong > 0 ? ` · ${wrong} missed` : ''}
-            </p>
-          )}
-        </div>
-        <div className="side-block">
           <div className="side-h">Board</div>
           <div className="ct-controls">
             <button
@@ -206,21 +193,7 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
 
   return (
     <>
-      <CoordsPanel sub={sub} onChangeSub={onChangeSub}>
-        <div className="side-block">
-          <div className="side-h">Session</div>
-          <div className="ct-inline-stats">
-            <span className="ct-stat"><b>{mmss(elapsed)}</b> time</span>
-            <span className="ct-stat"><b>{correct}</b> correct</span>
-            {wrong > 0 && <span className="ct-stat"><b>{wrong}</b> missed</span>}
-          </div>
-          {over && (
-            <p className="ct-session-result">
-              <b>{correct}</b> correct in {mmss(elapsed)}{wrong > 0 ? ` · ${wrong} missed` : ''}
-            </p>
-          )}
-        </div>
-      </CoordsPanel>
+      <CoordsPanel sub={sub} onChangeSub={onChangeSub} />
 
       <div className="main">
         <div className="board-col">
