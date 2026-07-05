@@ -156,6 +156,14 @@ function FindMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode
                     )}
                   </div>
                 </div>
+                {!running && !over && (
+                  <p className="ct-mode-note">
+                    Knowing every square by name is the foundation of chess study. It lets you follow
+                    game notation, understand engine analysis, discuss tactics with other players, and
+                    build a mental map of the board — so you can visualise threats and ideas without
+                    ever losing your place.
+                  </p>
+                )}
                 <div className="btn-row">
                   {running ? (
                     <button className="btn" onClick={finish}>Finish</button>

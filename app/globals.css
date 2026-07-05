@@ -2412,6 +2412,9 @@ body.panning * {
 .ct-session-result { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.4; margin: 6px 0 0; }
 .ct-session-result b { color: var(--txt); }
 
+/* Explanatory note shown in the idle result card */
+.ct-mode-note { margin: 10px 0 0; font-size: var(--fs-micro); color: var(--txt-dim); line-height: 1.6; }
+
 /* Board options — flip button + show-coords toggle */
 .ct-toggle { display: flex; align-items: center; gap: 8px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); cursor: pointer; }
 .ct-toggle input { cursor: pointer; accent-color: var(--coral); }
