@@ -7,18 +7,18 @@ import { FAMOUS_GAMES } from '@/lib/famous-games';
 
 /**
  * Coordinate / board-vision trainer (Lichess-style), three modes:
- *  · Find the square — a coordinate is named; click it on a piece-less board.
- *  · Square colour   — a coordinate is named; say if it's a light or dark square.
+ *  · Find the square — a coordinate is named above the board; click it.
+ *  · Square colour   — a coordinate is named; say if it's light or dark.
  *  · Play famous games — replay canonical games move-by-move for both sides.
- * The drills are open-ended (start, then finish when you like) with a count-up
- * clock — no countdown, so there's no time pressure.
+ *
+ * Uses the same .side + .main > .board-col > .board-row + .result-slot
+ * layout as Puzzle mode so the board sits in exactly the same place.
  */
 
 type SubMode = 'find' | 'color' | 'replay';
 
 const FILES = 'abcdefgh';
 
-/** a1 is dark; a square is light when file+rank index sum is odd. */
 function isLight(sq: string): boolean {
   const f = FILES.indexOf(sq[0]);
   const r = Number(sq[1]) - 1;
@@ -31,23 +31,6 @@ function mmss(s: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-export function CoordsTrainer() {
-  const [sub, setSub] = useState<SubMode>('find');
-  return (
-    <div className="coords">
-      <div className="coords-head">
-        <div className="seg-tabs coords-modes" role="tablist" aria-label="Trainer mode">
-          <button type="button" role="tab" aria-selected={sub === 'find'} className={'seg-tab' + (sub === 'find' ? ' on' : '')} onClick={() => setSub('find')}>Find the square</button>
-          <button type="button" role="tab" aria-selected={sub === 'color'} className={'seg-tab' + (sub === 'color' ? ' on' : '')} onClick={() => setSub('color')}>Square colour</button>
-          <button type="button" role="tab" aria-selected={sub === 'replay'} className={'seg-tab' + (sub === 'replay' ? ' on' : '')} onClick={() => setSub('replay')}>Play famous games</button>
-        </div>
-      </div>
-      {sub === 'find' ? <FindMode /> : sub === 'color' ? <ColorMode /> : <ReplayMode />}
-    </div>
-  );
-}
-
-/** Open-ended drill session: a count-up clock and tallies, ended by Finish. */
 function useSession() {
   const [running, setRunning] = useState(false);
   const [over, setOver] = useState(false);
@@ -66,77 +49,35 @@ function useSession() {
   return { running, over, elapsed, correct, wrong, setCorrect, setWrong, start, finish };
 }
 
-/** One control line for the whole drill: the primary action (Start/Finish/Go
- *  again), the time / done readout, and — via `children` — any board options,
- *  all on a single centred row so nothing floats off in a mismatched second row. */
-function SessionBar({ running, over, elapsed, correct, onStart, onFinish, children }: { running: boolean; over: boolean; elapsed: number; correct: number; onStart: () => void; onFinish: () => void; children?: React.ReactNode }) {
+/** Shared left sidebar using the same .side class as Puzzle mode. */
+function CoordsPanel({ sub, onChangeSub, children }: {
+  sub: SubMode;
+  onChangeSub: (s: SubMode) => void;
+  children?: React.ReactNode;
+}) {
   return (
-    <div className="ct-bar">
-      {running
-        ? <button className="ct-action" onClick={onFinish}>Finish</button>
-        : <button className="ct-action" onClick={onStart}>{over ? 'Go again' : 'Start'}</button>}
-      <div className="ct-stats">
-        <span className="ct-stat"><b className="num">{mmss(elapsed)}</b> time</span>
-        <span className="ct-stat"><b className="num">{correct}</b> done</span>
+    <div className="side">
+      <div className="side-block">
+        <div className="side-h">Coordinates</div>
+        <div className="ct-mode-list">
+          <button type="button" className={'ct-nav-btn' + (sub === 'find' ? ' on' : '')} onClick={() => onChangeSub('find')}>Find the square</button>
+          <button type="button" className={'ct-nav-btn' + (sub === 'color' ? ' on' : '')} onClick={() => onChangeSub('color')}>Square colour</button>
+          <button type="button" className={'ct-nav-btn' + (sub === 'replay' ? ' on' : '')} onClick={() => onChangeSub('replay')}>Play famous games</button>
+        </div>
       </div>
-      {children && (
-        <>
-          <span className="ct-bar-sep" aria-hidden="true" />
-          <div className="ct-opts">{children}</div>
-        </>
-      )}
+      {children}
     </div>
   );
 }
 
-/** Prompt slot shown above the board/buttons — fixed structure so nothing jumps
- *  between idle, running and finished states. */
-function Prompt({ running, over, elapsed, correct, wrong, idle, children }: { running: boolean; over: boolean; elapsed: number; correct: number; wrong: number; idle: string; children?: React.ReactNode }) {
-  if (running) return <>{children}</>;
-  if (over) return <span className="ct-idle"><b>{correct}</b> correct in {mmss(elapsed)}{wrong > 0 ? ` · ${wrong} missed` : ''}</span>;
-  return <span className="ct-idle">{idle}</span>;
+export function CoordsTrainer() {
+  const [sub, setSub] = useState<SubMode>('find');
+  return sub === 'find' ? <FindMode sub={sub} onChangeSub={setSub} />
+       : sub === 'color' ? <ColorMode sub={sub} onChangeSub={setSub} />
+       : <ReplayMode sub={sub} onChangeSub={setSub} />;
 }
 
-function ColorMode() {
-  const { running, over, elapsed, correct, wrong, setCorrect, setWrong, start, finish } = useSession();
-  const [target, setTarget] = useState('e4');
-  const [fb, setFb] = useState<'ok' | 'fail' | null>(null);
-
-  const begin = () => { setTarget(randomSquare()); setFb(null); start(); };
-  const answer = (light: boolean) => {
-    if (!running || fb === 'fail') return;
-    if (isLight(target) === light) {
-      setCorrect((s) => s + 1);
-      setFb('ok');
-      window.setTimeout(() => { setFb(null); setTarget(randomSquare()); }, 350);
-    } else {
-      // Wrong: count it, show it, and stay on this square so guessing one colour
-      // can't farm points — you have to actually get it right to move on.
-      setWrong((w) => w + 1);
-      setFb('fail');
-      window.setTimeout(() => setFb(null), 600);
-    }
-  };
-
-  return (
-    <div className="ct-pane">
-      <SessionBar running={running} over={over} elapsed={elapsed} correct={correct} onStart={begin} onFinish={finish} />
-      <div className={'ct-prompt' + (fb ? ' f-' + fb : '')}>
-        <Prompt running={running} over={over} elapsed={elapsed} correct={correct} wrong={wrong} idle="Light or dark square?">
-          <span className="ct-coord">{target}</span>
-          {fb === 'ok' && <span className="ct-check ok">✓</span>}
-          {fb === 'fail' && <span className="ct-check fail">✗ it&apos;s {isLight(target) ? 'light' : 'dark'}</span>}
-        </Prompt>
-      </div>
-      <div className="ct-color-btns">
-        <button className="ct-color-btn light" onClick={() => answer(true)} disabled={!running}>Light</button>
-        <button className="ct-color-btn dark" onClick={() => answer(false)} disabled={!running}>Dark</button>
-      </div>
-    </div>
-  );
-}
-
-function FindMode() {
+function FindMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode) => void }) {
   const { running, over, elapsed, correct, wrong, setCorrect, setWrong, start, finish } = useSession();
   const [target, setTarget] = useState('e4');
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
@@ -157,23 +98,181 @@ function FindMode() {
     }
   };
 
-  // The board stays centred and in the same place in every state (idle/running/
-  // finished); only the prompt above it changes. Everything else — action,
-  // clock, and board options — lives on the one control line above it.
   return (
-    <div className="ct-pane ct-find">
-      <SessionBar running={running} over={over} elapsed={elapsed} correct={correct} onStart={begin} onFinish={finish}>
-        <span className="ct-persp">Board from <b>{orientation === 'white' ? 'White' : 'Black'}</b>’s side</span>
-        <label className="ct-toggle"><input type="checkbox" checked={showCoords} onChange={(e) => setShowCoords(e.target.checked)} /> Coords</label>
-        <button className="ct-flip" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip</button>
-      </SessionBar>
-      <div className="ct-prompt small">
-        <Prompt running={running} over={over} elapsed={elapsed} correct={correct} wrong={wrong} idle="">
-          Find <span className="ct-coord">{target}</span>
-        </Prompt>
+    <>
+      <CoordsPanel sub={sub} onChangeSub={onChangeSub}>
+        <div className="side-block">
+          <div className="side-h">Board</div>
+          <div className="ct-controls">
+            <button
+              type="button"
+              className="ps-btn"
+              onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}
+            >
+              Flip — from {orientation === 'white' ? "White" : "Black"}&apos;s side
+            </button>
+            <label className="ct-toggle">
+              <input type="checkbox" checked={showCoords} onChange={(e) => setShowCoords(e.target.checked)} />
+              Show coordinates
+            </label>
+          </div>
+        </div>
+      </CoordsPanel>
+
+      <div className="main">
+        <div className="board-col">
+          <div className="ct-above-board">
+            {running
+              ? <span className="ct-coord-above">{target}</span>
+              : <span className="ct-coord-above ct-coord-idle">{over ? '—' : '?'}</span>
+            }
+          </div>
+          <div className="board-row">
+            <CoordBoard orientation={orientation} onPick={running ? pick : () => {}} flash={flash} interactive={running} showCoords={showCoords} />
+            <div className="result-slot">
+              <div className="pre-result">
+                <div className="verdict idle">
+                  <div className="verdict-ico">
+                    {running ? (flash ? (flash.ok ? '✓' : '✗') : '→') : over ? '★' : '?'}
+                  </div>
+                  <div>
+                    {running ? (
+                      <>
+                        <div className="verdict-title">{correct} correct · {wrong} missed</div>
+                        <div className="verdict-sub">Click the square on the board.</div>
+                      </>
+                    ) : over ? (
+                      <>
+                        <div className="verdict-title">Session done</div>
+                        <div className="verdict-sub">
+                          {correct} correct in {mmss(elapsed)}{wrong > 0 ? ` · ${wrong} missed` : ''}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="verdict-title">Find the square</div>
+                        <div className="verdict-sub">The coordinate appears above the board — click it.</div>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {!running && !over && (
+                  <p className="ct-mode-note">
+                    Knowing every square by name is the foundation of chess study. It lets you follow
+                    game notation, understand engine analysis, discuss tactics with other players, and
+                    build a mental map of the board — so you can visualise threats and ideas without
+                    ever losing your place.
+                  </p>
+                )}
+                <div className="btn-row">
+                  {running ? (
+                    <button className="btn" onClick={finish}>Finish</button>
+                  ) : (
+                    <button className="btn prim" onClick={begin}>{over ? 'Go again' : 'Start'}</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <CoordBoard orientation={orientation} onPick={running ? pick : () => {}} flash={flash} interactive={running} showCoords={showCoords} />
-    </div>
+    </>
+  );
+}
+
+function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode) => void }) {
+  const { running, over, elapsed, correct, wrong, setCorrect, setWrong, start, finish } = useSession();
+  const [target, setTarget] = useState('e4');
+  const [fb, setFb] = useState<'ok' | 'fail' | null>(null);
+
+  const begin = () => { setTarget(randomSquare()); setFb(null); start(); };
+  const answer = (light: boolean) => {
+    if (!running || fb === 'fail') return;
+    if (isLight(target) === light) {
+      setCorrect((s) => s + 1);
+      setFb('ok');
+      window.setTimeout(() => { setFb(null); setTarget(randomSquare()); }, 350);
+    } else {
+      setWrong((w) => w + 1);
+      setFb('fail');
+      window.setTimeout(() => setFb(null), 600);
+    }
+  };
+
+  return (
+    <>
+      <CoordsPanel sub={sub} onChangeSub={onChangeSub} />
+
+      <div className="main">
+        <div className="board-col">
+          <div className="ct-above-board">
+            <span className="ct-coord-above ct-coord-idle">colour</span>
+          </div>
+          <div className="board-row">
+            <div className="ct-color-area">
+              <div className={'ct-coord-big' + (fb === 'ok' ? ' ok' : fb === 'fail' ? ' fail' : '')}>
+                {running ? target : <span className="ct-coord-ghost">e4</span>}
+              </div>
+              {fb === 'fail' && (
+                <div className="ct-color-hint">{target} is {isLight(target) ? 'light' : 'dark'}</div>
+              )}
+              <div className="ct-color-btns">
+                <button type="button" className="ct-color-btn light" onClick={() => answer(true)} disabled={!running}>Light</button>
+                <button type="button" className="ct-color-btn dark" onClick={() => answer(false)} disabled={!running}>Dark</button>
+              </div>
+            </div>
+            <div className="result-slot">
+              <div className="pre-result">
+                <div className="verdict idle">
+                  <div className="verdict-ico">
+                    {running ? (fb === 'ok' ? '✓' : fb === 'fail' ? '✗' : '?') : over ? '★' : '?'}
+                  </div>
+                  <div>
+                    {running && fb === 'fail' ? (
+                      <>
+                        <div className="verdict-title">Not quite</div>
+                        <div className="verdict-sub">{target} is {isLight(target) ? 'light' : 'dark'}.</div>
+                      </>
+                    ) : running ? (
+                      <>
+                        <div className="verdict-title">{correct} correct · {wrong} missed</div>
+                        <div className="verdict-sub">Light or dark?</div>
+                      </>
+                    ) : over ? (
+                      <>
+                        <div className="verdict-title">Session done</div>
+                        <div className="verdict-sub">
+                          {correct} correct in {mmss(elapsed)}{wrong > 0 ? ` · ${wrong} missed` : ''}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="verdict-title">Square colour</div>
+                        <div className="verdict-sub">Is the named square light or dark?</div>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {!running && !over && (
+                  <p className="ct-mode-note">
+                    Recognising square colours at a glance sharpens your feel for bishop dynamics,
+                    pawn structure, and opposite-coloured bishop endings. Strong players see the
+                    board in two shades — this drill builds that instinct until it becomes automatic.
+                  </p>
+                )}
+                <div className="btn-row">
+                  {running ? (
+                    <button className="btn" onClick={finish}>Finish</button>
+                  ) : (
+                    <button className="btn prim" onClick={begin}>{over ? 'Go again' : 'Start'}</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -217,7 +316,7 @@ function CoordBoard({ orientation, onPick, flash, interactive, showCoords }: {
   );
 }
 
-function ReplayMode() {
+function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode) => void }) {
   const [gameIdx, setGameIdx] = useState(0);
   const game = FAMOUS_GAMES[gameIdx];
   const moves = useMemo(() => game.san.trim().split(/\s+/), [game]);
@@ -236,7 +335,6 @@ function ReplayMode() {
     setPly(0); setSelected(null); setLastMove(null); setWrong(null);
   }, [gameIdx]);
 
-  // Keep the move to play in view as the game advances (scroll the list, not the page).
   const movesRef = useRef<HTMLOListElement | null>(null);
   useEffect(() => {
     const ol = movesRef.current;
@@ -295,6 +393,21 @@ function ReplayMode() {
     const mv = chessRef.current.move(expected);
     if (mv) advance(mv);
   };
+
+  const undo = () => {
+    if (ply === 0) return;
+    const targetPly = ply - 1;
+    const g = new Chess();
+    let lastMv: Move | null = null;
+    for (let i = 0; i < targetPly; i++) lastMv = g.move(moves[i]);
+    chessRef.current = g;
+    setFen(g.fen());
+    setLastMove(lastMv ? { from: lastMv.from, to: lastMv.to } : null);
+    setPly(targetPly);
+    setSelected(null);
+    setWrong(null);
+  };
+
   const restart = () => {
     chessRef.current = new Chess();
     setFen(chessRef.current.fen());
@@ -305,43 +418,10 @@ function ReplayMode() {
   for (let i = 0; i < moves.length; i += 2) rows.push({ n: i / 2 + 1, w: moves[i], wPly: i, b: moves[i + 1], bPly: i + 1 });
 
   return (
-    <div className="ct-replay">
-      {/* Move list on the left — its own scroll area, so long games don't make
-          you scroll the whole page, and it never drops out of view. */}
-      <aside className="ct-replay-moves ps-block">
-        <div className="ps-h">Moves · {Math.ceil(moves.length / 2)}</div>
-        <ol className="ps-moves ct-moves" ref={movesRef}>
-          {rows.map((r) => (
-            <li className="ps-move-row" key={r.n}>
-              <span className="ps-move-no num">{r.n}.</span>
-              <span className={'ct-ply' + (r.wPly < ply ? ' done' : '') + (r.wPly === ply ? ' next' : '')}>{r.w}</span>
-              <span className={'ct-ply' + (r.b ? (r.bPly < ply ? ' done' : '') + (r.bPly === ply ? ' next' : '') : '')}>{r.b ?? ''}</span>
-            </li>
-          ))}
-        </ol>
-      </aside>
-
-      <div className="ct-replay-board">
-        <Board
-          chess={boardChess}
-          orientation={orientation}
-          selected={selected}
-          legalFrom={legalFrom}
-          lastFrom={lastMove?.from ?? null}
-          lastTo={lastMove?.to ?? null}
-          flashOk={null}
-          flashFail={wrong?.to ?? null}
-          bounceBack={wrong}
-          introMove={null}
-          revealed={done}
-          onSquareClick={onSquareClick}
-          onDragMove={(mv) => tryMove(mv)}
-        />
-      </div>
-
-      <aside className="ct-replay-side">
-        <div className="ps-block">
-          <div className="ps-h">Game</div>
+    <>
+      <CoordsPanel sub={sub} onChangeSub={onChangeSub}>
+        <div className="side-block">
+          <div className="side-h">Game</div>
           <select className="ct-game-select" value={gameIdx} onChange={(e) => setGameIdx(Number(e.target.value))}>
             {FAMOUS_GAMES.map((g, i) => (
               <option key={g.id} value={i}>{g.title}{g.year ? ` · ${g.year}` : ''}</option>
@@ -350,21 +430,70 @@ function ReplayMode() {
           <div className="ct-game-players">{game.white} – {game.black}</div>
           <p className="ct-game-context">{game.context}</p>
         </div>
-
-        <div className="ps-block">
-          <div className="ps-h">{done ? 'Game complete ♚' : `${sideToMove === 'w' ? 'White' : 'Black'} to move`}</div>
-          {done ? (
-            <div className="ps-hint">You replayed the whole game. Result: <b>{game.result}</b>.</div>
-          ) : (
-            <div className="ps-hint">Play the game&apos;s next move{wrong ? ' — that wasn’t it, try again.' : '.'}</div>
-          )}
+        <div className="side-block">
+          <div className="side-h">Controls</div>
           <div className="ct-controls">
-            <button className="ps-btn" onClick={showMove} disabled={done}>Show move</button>
-            <button className="ps-btn" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip board</button>
-            <button className="ps-btn" onClick={restart} disabled={ply === 0}>Restart</button>
+            <button type="button" className="ps-btn" onClick={showMove} disabled={done}>Show move</button>
+            <button type="button" className="ps-btn" onClick={undo} disabled={ply === 0}>Undo</button>
+            <button type="button" className="ps-btn" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip board</button>
+            <button type="button" className="ps-btn" onClick={restart} disabled={ply === 0}>Restart</button>
           </div>
         </div>
-      </aside>
-    </div>
+      </CoordsPanel>
+
+      <div className="main">
+        <div className="board-col">
+          <div className="ct-above-board">
+            <span className="ct-coord-above ct-coord-idle">
+              {done ? `${game.result} — game over` : `${sideToMove === 'w' ? 'White' : 'Black'} to move · move ${Math.floor(ply / 2) + 1}`}
+            </span>
+          </div>
+          <div className="board-row">
+            <Board
+              chess={boardChess}
+              orientation={orientation}
+              selected={selected}
+              legalFrom={legalFrom}
+              lastFrom={lastMove?.from ?? null}
+              lastTo={lastMove?.to ?? null}
+              flashOk={null}
+              flashFail={wrong?.to ?? null}
+              bounceBack={wrong}
+              introMove={null}
+              revealed={done}
+              onSquareClick={onSquareClick}
+              onDragMove={(mv) => tryMove(mv)}
+            />
+            <div className="result-slot">
+              <div className="pre-result">
+                <div className="verdict idle">
+                  <div className="verdict-ico">{done ? '♛' : sideToMove === 'w' ? '○' : '●'}</div>
+                  <div>
+                    <div className="verdict-title">
+                      {done ? 'Game complete' : wrong ? "Not that move" : `${sideToMove === 'w' ? 'White' : 'Black'} to move`}
+                    </div>
+                    <div className="verdict-sub">
+                      {done ? `Result: ${game.result}` : wrong ? "Try another square." : "Play the next move."}
+                    </div>
+                  </div>
+                </div>
+                <div className="ct-moves-block">
+                  <div className="ct-moves-h">Moves · {Math.ceil(moves.length / 2)}</div>
+                  <ol className="ct-moves" ref={movesRef}>
+                    {rows.map((r) => (
+                      <li className="ps-move-row" key={r.n}>
+                        <span className="ps-move-no num">{r.n}.</span>
+                        <span className={'ct-ply' + (r.wPly < ply ? ' done' : '') + (r.wPly === ply ? ' next' : '')}>{r.w}</span>
+                        <span className={'ct-ply' + (r.b ? (r.bPly < ply ? ' done' : '') + (r.bPly === ply ? ' next' : '') : '')}>{r.b ?? ''}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

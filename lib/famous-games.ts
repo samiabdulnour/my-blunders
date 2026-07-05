@@ -143,4 +143,37 @@ export const FAMOUS_GAMES: FamousGame[] = [
       'AVRO 1938. Botvinnik\'s knight sacrifice on h5 and the storming e-pawn against the legendary Capablanca produced one of the most famous combinations in chess history — a future World Champion overcoming a past one.',
     san: 'd4 Nf6 c4 e6 Nc3 Bb4 e3 d5 a3 Bxc3+ bxc3 c5 cxd5 exd5 Bd3 O-O Ne2 b6 O-O Ba6 Bxa6 Nxa6 Bb2 Qd7 a4 Rfe8 Qd3 c4 Qc2 Nb8 Rae1 Nc6 Ng3 Na5 f3 Nb3 e4 Qxa4 e5 Nd7 Qf2 g6 f4 f5 exf6 Nxf6 f5 Rxe1 Rxe1 Re8 Re6 Rxe6 fxe6 Kg7 Qf4 Qe8 Qe5 Qe7 Ba3 Qxa3 Nh5+ gxh5 Qg5+ Kf8 Qxf6+ Kg8 e7 Qc1+ Kf2 Qc2+ Kg3 Qd3+ Kh4 Qe4+ Kxh5 Qe2+ Kh4 Qe4+ g4 Qe1+ Kh5',
   },
+  {
+    id: 'lasker-thomas',
+    title: 'Lasker – Thomas',
+    white: 'Edward Lasker',
+    black: 'Sir George Thomas',
+    year: 1912,
+    result: '1-0',
+    context:
+      'London 1912. Lasker sacrificed his queen to launch the black king on a walk from g8 to d2, where it is mated in the centre. One of the most theatrical king-hunt combinations in chess history.',
+    san: 'd4 e6 Nf3 f5 Nc3 Nf6 Bg5 Be7 Bxf6 Bxf6 e4 fxe4 Nxe4 b6 Ne5 O-O Bd3 Bb7 Qh5 Qe7 Qxh7+ Kxh7 Nxf6+ Kh6 Neg4+ Kg5 h4+ Kf4 g3+ Kf3 Be2+ Kg2 Rh2+ Kg1 Kd2#',
+  },
+  {
+    id: 'levitsky-marshall',
+    title: 'Levitsky – Marshall',
+    white: 'Stefan Levitsky',
+    black: 'Frank Marshall',
+    year: 1912,
+    result: '0-1',
+    context:
+      'Breslau 1912. Marshall\'s queen sacrifice Qg3!! is one of the most celebrated moves ever played — legend has it the audience showered the board with gold coins. The queen cannot be captured without immediate mate.',
+    san: 'd4 e6 e4 d5 Nc3 c5 Nf3 Nc6 exd5 exd5 Be2 Nf6 O-O Be7 Bg5 O-O dxc5 Be6 Nd4 Bxc5 Nxe6 fxe6 Bg4 Qd6 Bh3 Rae8 Qd2 Bb4 Bxf6 Rxf6 Rad1 Qc5 Qe2 Bxc3 bxc3 Qxc3 Rxd5 Nd4 Qh5 Ref8 Re5 Rh6 Qg5 Rxh3 Rc5 Qg3',
+  },
+  {
+    id: 'larsen-spassky',
+    title: 'Larsen – Spassky',
+    white: 'Bent Larsen',
+    black: 'Boris Spassky',
+    year: 1970,
+    result: '0-1',
+    context:
+      'USSR vs Rest of the World, Belgrade 1970. Spassky sacrificed a rook on h1 then promoted a pawn, demolishing Larsen in 19 moves — a thunderbolt attack that has been called one of the most spectacular short games of the 20th century.',
+    san: 'b3 e5 Bb2 Nc6 c4 Nf6 Nf3 e4 Nd4 Bc5 Nxc6 dxc6 e3 Bf5 Qc2 Qe7 Be2 O-O-O f4 Ng4 g3 h5 h3 h4 hxg4 hxg3 Rg1 Rh1 Rxh1 g2 Rf1 Qh4+ Kd1 gxf1=Q+ Bxf1 Bxg4+ Be2 Qh1',
+  },
 ];

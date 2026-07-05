@@ -856,9 +856,7 @@ export default function Page() {
           <PlayMode />
         </div>
       ) : mode === 'coords' ? (
-        <div className="main coords-mode">
-          <CoordsTrainer />
-        </div>
+        <CoordsTrainer />
       ) : (
         <>
           <Sidebar
