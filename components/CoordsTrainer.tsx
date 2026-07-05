@@ -7,7 +7,7 @@ import { FAMOUS_GAMES } from '@/lib/famous-games';
 
 /**
  * Coordinate / board-vision trainer (Lichess-style), three modes:
- *  · Find the square — a coordinate is named; click it on a piece-less board.
+ *  · Find the square — a coordinate is named above the board; click it.
  *  · Square colour   — a coordinate is named; say if it's light or dark.
  *  · Play famous games — replay canonical games move-by-move for both sides.
  *
@@ -103,14 +103,10 @@ function FindMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode
       <CoordsPanel sub={sub} onChangeSub={onChangeSub}>
         <div className="side-block">
           <div className="side-h">Session</div>
-          <div className="ct-session-row">
-            <button type="button" className="ct-action-sm" onClick={running ? finish : begin}>
-              {running ? 'Finish' : over ? 'Go again' : 'Start'}
-            </button>
-            <div className="ct-inline-stats">
-              <span className="ct-stat"><b>{mmss(elapsed)}</b> time</span>
-              <span className="ct-stat"><b>{correct}</b> done</span>
-            </div>
+          <div className="ct-inline-stats">
+            <span className="ct-stat"><b>{mmss(elapsed)}</b> time</span>
+            <span className="ct-stat"><b>{correct}</b> correct</span>
+            {wrong > 0 && <span className="ct-stat"><b>{wrong}</b> missed</span>}
           </div>
           {over && (
             <p className="ct-session-result">
@@ -120,49 +116,66 @@ function FindMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode
         </div>
         <div className="side-block">
           <div className="side-h">Board</div>
-          <div className="ct-persp-row">
-            <span className="ct-persp-txt">From <b>{orientation === 'white' ? 'White' : 'Black'}</b>&apos;s side</span>
-            <button type="button" className="ct-flip-sm" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip</button>
+          <div className="ct-controls">
+            <button
+              type="button"
+              className="ps-btn"
+              onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}
+            >
+              Flip — from {orientation === 'white' ? "White" : "Black"}&apos;s side
+            </button>
+            <label className="ct-toggle">
+              <input type="checkbox" checked={showCoords} onChange={(e) => setShowCoords(e.target.checked)} />
+              Show coordinates
+            </label>
           </div>
-          <label className="ct-toggle">
-            <input type="checkbox" checked={showCoords} onChange={(e) => setShowCoords(e.target.checked)} />
-            Show coords
-          </label>
         </div>
       </CoordsPanel>
 
       <div className="main">
         <div className="board-col">
+          <div className="ct-above-board">
+            {running
+              ? <span className="ct-coord-above">{target}</span>
+              : <span className="ct-coord-above ct-coord-idle">{over ? '—' : '?'}</span>
+            }
+          </div>
           <div className="board-row">
             <CoordBoard orientation={orientation} onPick={running ? pick : () => {}} flash={flash} interactive={running} showCoords={showCoords} />
             <div className="result-slot">
               <div className="pre-result">
                 <div className="verdict idle">
-                  <div className="verdict-ico">{running ? '→' : '?'}</div>
+                  <div className="verdict-ico">
+                    {running ? (flash ? (flash.ok ? '✓' : '✗') : '→') : over ? '★' : '?'}
+                  </div>
                   <div>
                     {running ? (
                       <>
-                        <div className="verdict-title">Find <span className="ct-coord-inline">{target}</span></div>
+                        <div className="verdict-title">{correct} correct · {wrong} missed</div>
                         <div className="verdict-sub">Click the square on the board.</div>
                       </>
                     ) : over ? (
                       <>
                         <div className="verdict-title">Session done</div>
-                        <div className="verdict-sub">{correct} correct · {wrong} missed</div>
+                        <div className="verdict-sub">
+                          {correct} correct in {mmss(elapsed)}{wrong > 0 ? ` · ${wrong} missed` : ''}
+                        </div>
                       </>
                     ) : (
                       <>
                         <div className="verdict-title">Find the square</div>
-                        <div className="verdict-sub">A coordinate is shown — click it on the board.</div>
+                        <div className="verdict-sub">The coordinate appears above the board — click it.</div>
                       </>
                     )}
                   </div>
                 </div>
-                {!running && (
-                  <div className="btn-row">
-                    <button className="btn" onClick={begin}>{over ? 'Go again' : 'Start'}</button>
-                  </div>
-                )}
+                <div className="btn-row">
+                  {running ? (
+                    <button className="btn" onClick={finish}>Finish</button>
+                  ) : (
+                    <button className="btn prim" onClick={begin}>{over ? 'Go again' : 'Start'}</button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -196,14 +209,10 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
       <CoordsPanel sub={sub} onChangeSub={onChangeSub}>
         <div className="side-block">
           <div className="side-h">Session</div>
-          <div className="ct-session-row">
-            <button type="button" className="ct-action-sm" onClick={running ? finish : begin}>
-              {running ? 'Finish' : over ? 'Go again' : 'Start'}
-            </button>
-            <div className="ct-inline-stats">
-              <span className="ct-stat"><b>{mmss(elapsed)}</b> time</span>
-              <span className="ct-stat"><b>{correct}</b> done</span>
-            </div>
+          <div className="ct-inline-stats">
+            <span className="ct-stat"><b>{mmss(elapsed)}</b> time</span>
+            <span className="ct-stat"><b>{correct}</b> correct</span>
+            {wrong > 0 && <span className="ct-stat"><b>{wrong}</b> missed</span>}
           </div>
           {over && (
             <p className="ct-session-result">
@@ -215,6 +224,9 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
 
       <div className="main">
         <div className="board-col">
+          <div className="ct-above-board">
+            <span className="ct-coord-above ct-coord-idle">colour</span>
+          </div>
           <div className="board-row">
             <div className="ct-color-area">
               <div className={'ct-coord-big' + (fb === 'ok' ? ' ok' : fb === 'fail' ? ' fail' : '')}>
@@ -231,7 +243,9 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
             <div className="result-slot">
               <div className="pre-result">
                 <div className="verdict idle">
-                  <div className="verdict-ico">{running ? (fb === 'ok' ? '✓' : fb === 'fail' ? '✗' : '?') : '?'}</div>
+                  <div className="verdict-ico">
+                    {running ? (fb === 'ok' ? '✓' : fb === 'fail' ? '✗' : '?') : over ? '★' : '?'}
+                  </div>
                   <div>
                     {running && fb === 'fail' ? (
                       <>
@@ -240,13 +254,15 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
                       </>
                     ) : running ? (
                       <>
-                        <div className="verdict-title">Light or dark?</div>
-                        <div className="verdict-sub">Pick the colour of the named square.</div>
+                        <div className="verdict-title">{correct} correct · {wrong} missed</div>
+                        <div className="verdict-sub">Light or dark?</div>
                       </>
                     ) : over ? (
                       <>
                         <div className="verdict-title">Session done</div>
-                        <div className="verdict-sub">{correct} correct · {wrong} missed</div>
+                        <div className="verdict-sub">
+                          {correct} correct in {mmss(elapsed)}{wrong > 0 ? ` · ${wrong} missed` : ''}
+                        </div>
                       </>
                     ) : (
                       <>
@@ -256,11 +272,13 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
                     )}
                   </div>
                 </div>
-                {!running && (
-                  <div className="btn-row">
-                    <button className="btn" onClick={begin}>{over ? 'Go again' : 'Start'}</button>
-                  </div>
-                )}
+                <div className="btn-row">
+                  {running ? (
+                    <button className="btn" onClick={finish}>Finish</button>
+                  ) : (
+                    <button className="btn prim" onClick={begin}>{over ? 'Go again' : 'Start'}</button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -387,6 +405,21 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
     const mv = chessRef.current.move(expected);
     if (mv) advance(mv);
   };
+
+  const undo = () => {
+    if (ply === 0) return;
+    const targetPly = ply - 1;
+    const g = new Chess();
+    let lastMv: Move | null = null;
+    for (let i = 0; i < targetPly; i++) lastMv = g.move(moves[i]);
+    chessRef.current = g;
+    setFen(g.fen());
+    setLastMove(lastMv ? { from: lastMv.from, to: lastMv.to } : null);
+    setPly(targetPly);
+    setSelected(null);
+    setWrong(null);
+  };
+
   const restart = () => {
     chessRef.current = new Chess();
     setFen(chessRef.current.fen());
@@ -413,6 +446,7 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
           <div className="side-h">Controls</div>
           <div className="ct-controls">
             <button type="button" className="ps-btn" onClick={showMove} disabled={done}>Show move</button>
+            <button type="button" className="ps-btn" onClick={undo} disabled={ply === 0}>Undo</button>
             <button type="button" className="ps-btn" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip board</button>
             <button type="button" className="ps-btn" onClick={restart} disabled={ply === 0}>Restart</button>
           </div>
@@ -421,6 +455,11 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
 
       <div className="main">
         <div className="board-col">
+          <div className="ct-above-board">
+            <span className="ct-coord-above ct-coord-idle">
+              {done ? `${game.result} — game over` : `${sideToMove === 'w' ? 'White' : 'Black'} to move · move ${Math.floor(ply / 2) + 1}`}
+            </span>
+          </div>
           <div className="board-row">
             <Board
               chess={boardChess}
@@ -440,13 +479,13 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
             <div className="result-slot">
               <div className="pre-result">
                 <div className="verdict idle">
-                  <div className="verdict-ico">{done ? '♚' : sideToMove === 'w' ? '○' : '●'}</div>
+                  <div className="verdict-ico">{done ? '♛' : sideToMove === 'w' ? '○' : '●'}</div>
                   <div>
                     <div className="verdict-title">
-                      {done ? 'Game complete' : `${sideToMove === 'w' ? 'White' : 'Black'} to move`}
+                      {done ? 'Game complete' : wrong ? "Not that move" : `${sideToMove === 'w' ? 'White' : 'Black'} to move`}
                     </div>
                     <div className="verdict-sub">
-                      {done ? `Result: ${game.result}` : wrong ? "That wasn't it — try again." : 'Play the game’s next move.'}
+                      {done ? `Result: ${game.result}` : wrong ? "Try another square." : "Play the next move."}
                     </div>
                   </div>
                 </div>

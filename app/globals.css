@@ -2392,51 +2392,46 @@ body.panning * {
 /* Uses the same .side + .main > .board-col > .board-row + .result-slot  */
 /* structure as Puzzle mode — no custom shell wrapper needed.             */
 
-/* Mode nav list — buttons flush-left within the .side-block */
-.ct-mode-list { display: flex; flex-direction: column; margin: 8px -16px -14px; }
+/* Mode nav list — visible bordered buttons */
+.ct-mode-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .ct-nav-btn {
   display: block; width: 100%; text-align: left;
-  padding: 7px 16px; border: 0; border-left: 2px solid transparent;
+  padding: 8px 12px; border: 1px solid var(--border2); border-radius: 4px;
   font-size: var(--fs-micro); font-weight: var(--fw-bold);
   text-transform: uppercase; letter-spacing: var(--track-caps);
-  color: var(--txt-dim); background: transparent; cursor: pointer;
-  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  color: var(--txt-dim); background: var(--bg); cursor: pointer;
+  transition: border-color 0.1s, color 0.1s, background 0.1s;
 }
-.ct-nav-btn.on { border-left-color: var(--coral); background: var(--bg3); color: var(--txt); }
-.ct-nav-btn:hover:not(.on) { background: var(--bg3); color: var(--txt); }
+.ct-nav-btn.on { border-color: var(--coral); color: var(--coral); }
+.ct-nav-btn:hover:not(.on) { border-color: var(--contour); color: var(--txt); background: var(--bg3); }
 
-/* Session block — Start/Finish inline with stats */
-.ct-session-row { display: flex; align-items: center; gap: 12px; }
-.ct-action-sm {
-  padding: 6px 12px; border: 0; border-radius: 3px; flex-shrink: 0;
-  background: var(--coral); color: #fff;
-  font-size: var(--fs-micro); font-weight: var(--fw-bold);
-  text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer;
-}
-.ct-action-sm:hover { filter: brightness(1.05); }
-.ct-inline-stats { display: flex; gap: 14px; align-items: baseline; }
+/* Session stats (no button — Start/Finish lives in the result card) */
+.ct-inline-stats { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: baseline; margin-top: 4px; }
 .ct-stat { font-size: var(--fs-micro); color: var(--txt-dim); }
 .ct-stat b { font-weight: var(--fw-bold); color: var(--txt); font-variant-numeric: tabular-nums; }
 .ct-session-result { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.4; margin: 6px 0 0; }
 .ct-session-result b { color: var(--txt); }
 
-/* Board options — perspective + flip + show-coords toggle */
-.ct-persp-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.ct-persp-txt { font-size: var(--fs-micro); color: var(--txt-dim); }
-.ct-persp-txt b { color: var(--txt); font-weight: var(--fw-bold); }
-.ct-flip-sm {
-  padding: 4px 10px; border: 1px solid var(--border2); border-radius: 3px;
-  background: var(--bg); color: var(--txt);
-  font-size: var(--fs-micro); font-weight: var(--fw-bold);
-  text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; flex-shrink: 0;
-}
-.ct-flip-sm:hover { border-color: var(--contour); }
+/* Board options — flip button + show-coords toggle */
 .ct-toggle { display: flex; align-items: center; gap: 8px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); cursor: pointer; }
 .ct-toggle input { cursor: pointer; accent-color: var(--coral); }
 .ct-controls { display: flex; flex-direction: column; gap: 8px; }
 
-/* Inline coordinate in the verdict-title (Find mode) */
-.ct-coord-inline { font-weight: var(--fw-bold); color: var(--coral); font-variant-numeric: tabular-nums; font-size: var(--fs-title); }
+/* Coordinate shown above the board (Find mode + Replay mode header line) */
+.ct-above-board {
+  height: 44px;
+  display: flex; align-items: center; padding: 0 2px;
+}
+.ct-coord-above {
+  font-size: 30px; font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1;
+  color: var(--coral);
+}
+.ct-coord-above.ct-coord-idle {
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
+  text-transform: uppercase; letter-spacing: var(--track-caps);
+  color: var(--txt-dim);
+}
 
 /* Colour mode — big coordinate replaces the board */
 .ct-color-area { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; width: 480px; min-height: 480px; }
