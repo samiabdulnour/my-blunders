@@ -2392,7 +2392,7 @@ body.panning * {
 /* Uses the same .side + .main > .board-col > .board-row + .result-slot  */
 /* structure as Puzzle mode — no custom shell wrapper needed.             */
 
-/* Mode nav list — visible bordered buttons, rectangular corners, white bg */
+/* Mode nav list — matches .seg-tab style from the puzzle queue */
 .ct-mode-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .ct-nav-btn {
   display: block; width: 100%; text-align: left;
@@ -2400,10 +2400,10 @@ body.panning * {
   font-size: var(--fs-micro); font-weight: var(--fw-bold);
   text-transform: uppercase; letter-spacing: var(--track-caps);
   color: var(--txt-dim); background: var(--bg2); cursor: pointer;
-  transition: border-color 0.1s, color 0.1s;
+  transition: border-color 0.1s, color 0.1s, background 0.1s;
 }
-.ct-nav-btn.on { border-color: var(--coral); color: var(--coral); background: var(--bg2); }
-.ct-nav-btn:hover:not(.on) { border-color: var(--contour); color: var(--txt); }
+.ct-nav-btn.on { background: var(--coral); color: #16140f; border-color: var(--coral); }
+.ct-nav-btn:hover:not(.on) { background: var(--bg3); color: var(--txt); border-color: var(--contour); }
 
 /* Session stats (no button — Start/Finish lives in the result card) */
 .ct-inline-stats { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: baseline; margin-top: 4px; }

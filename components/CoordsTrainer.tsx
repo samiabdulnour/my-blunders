@@ -253,6 +253,13 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
                     )}
                   </div>
                 </div>
+                {!running && !over && (
+                  <p className="ct-mode-note">
+                    Recognising square colours at a glance sharpens your feel for bishop dynamics,
+                    pawn structure, and opposite-coloured bishop endings. Strong players see the
+                    board in two shades — this drill builds that instinct until it becomes automatic.
+                  </p>
+                )}
                 <div className="btn-row">
                   {running ? (
                     <button className="btn" onClick={finish}>Finish</button>
