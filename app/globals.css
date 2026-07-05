@@ -2396,14 +2396,14 @@ body.panning * {
 .ct-mode-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .ct-nav-btn {
   display: block; width: 100%; text-align: left;
-  padding: 8px 12px; border: 1px solid var(--border2); border-radius: 2px;
+  padding: 8px 12px; border: 1px solid var(--contour); border-radius: 2px;
   font-size: var(--fs-micro); font-weight: var(--fw-bold);
   text-transform: uppercase; letter-spacing: var(--track-caps);
-  color: var(--txt-dim); background: var(--bg2); cursor: pointer;
-  transition: border-color 0.1s, color 0.1s, background 0.1s;
+  color: var(--txt); background: var(--bg2); cursor: pointer;
+  transition: background 0.1s;
 }
-.ct-nav-btn.on { background: var(--coral); color: #16140f; border-color: var(--coral); }
-.ct-nav-btn:hover:not(.on) { background: var(--bg3); color: var(--txt); border-color: var(--contour); }
+.ct-nav-btn.on { background: var(--coral); color: #16140f; border-color: var(--contour); }
+.ct-nav-btn:hover:not(.on) { background: var(--bg3); }
 
 /* Session stats (no button — Start/Finish lives in the result card) */
 .ct-inline-stats { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: baseline; margin-top: 4px; }
