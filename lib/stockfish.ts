@@ -6,6 +6,7 @@ import {
   type AnalysisResult,
   type ChessEngine,
 } from './engine/uci';
+import { cloudEval } from './engine/lichess-eval';
 
 /**
  * Native Stockfish backend — spawns the local `stockfish` binary and speaks
@@ -114,7 +115,17 @@ function runUci(opts: AnalyzeOpts): Promise<AnalysisResult> {
 }
 
 export async function analyzePosition(opts: AnalyzeOpts): Promise<AnalysisResult> {
-  return runUci(opts);
+  try {
+    return await runUci(opts);
+  } catch (err) {
+    // Hosts without the `stockfish` binary (e.g. Vercel serverless) reject at
+    // spawn. Fall back to Lichess's cloud eval so single-position analysis still
+    // works there; if the position isn't cached (null), surface the original
+    // engine error so nothing is silently swallowed.
+    const cloud = await cloudEval(opts).catch(() => null);
+    if (cloud) return cloud;
+    throw err;
+  }
 }
 
 /** Convenience: just give me the best move at this position, as SAN. */
