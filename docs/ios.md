@@ -1,15 +1,21 @@
 # iOS build — "My Blunders"
 
 Capacitor wraps the Next.js static export in a native iOS shell. The web
-UI runs inside a WebKit view; API calls (`/api/puzzles`, Lichess import,
-PGN analysis) go over the network to the Render deployment.
+UI runs inside a WebKit view and is **fully self-contained** — it needs no
+backend of ours. Games are fetched straight from Lichess / chess.com (over
+Capacitor's native HTTP, which bypasses the WebView's CORS), and Stockfish
+runs on-device via the bundled WASM engine. No Render / server deployment
+is required for the app to work.
 
 - **Bundle ID**: `com.samiabdulnour.myblunders`
 - **App name**: `My Blunders`
-- **Backend**: your existing Render deployment — URL lives in
-  `NEXT_PUBLIC_API_BASE`
+- **Backend**: none. Everything runs on-device; `NEXT_PUBLIC_API_BASE`
+  is not needed for the app (it can stay unset).
 - **iOS project root**: `ios/` (committed)
 - **Xcode workspace**: `ios/App/App.xcworkspace`
+- **License note**: the app ships the GPL-3.0 Stockfish WASM engine, so it
+  "conveys" it under the GPL — the in-app **About** page carries the required
+  license notice and written source offer. Keep that page in any redesign.
 
 ## One-time setup (first time only)
 
@@ -33,26 +39,11 @@ is enough.
 - Enroll as Individual — $99/yr, billed to your Apple ID
 - Approval typically takes 24–48 hours
 
-### 3. Set `NEXT_PUBLIC_API_BASE` for the iOS build
+### 3. (Nothing to configure — the app is self-contained)
 
-The static bundle inlines this value at build time, so every subsequent
-`npm run ios:sync` needs the env var present.
-
-Easiest: add it to a local `.env.local` (gitignored):
-
-```
-NEXT_PUBLIC_API_BASE=https://my-lichess-blunders.onrender.com
-```
-
-Or export it in your shell:
-
-```sh
-export NEXT_PUBLIC_API_BASE=https://my-lichess-blunders.onrender.com
-```
-
-Verify the Render deployment is live and responds at
-`${NEXT_PUBLIC_API_BASE}/api/puzzles` — the app bails if that endpoint
-is unreachable on first launch.
+The app needs no backend, so there's **no `NEXT_PUBLIC_API_BASE` to set**.
+Leave it unset. `npm run ios:sync` builds a static bundle that fetches
+games directly from Lichess / chess.com and analyses them on-device.
 
 ## Everyday workflow
 

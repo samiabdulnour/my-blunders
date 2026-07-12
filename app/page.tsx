@@ -15,6 +15,8 @@ import { ResultPanel } from '@/components/ResultPanel';
 import { Onboarding } from '@/components/Onboarding';
 import { BrandMark } from '@/components/BrandMark';
 import { apiUrl } from '@/lib/api';
+import { isNativeApp } from '@/lib/platform';
+import { SEED_PUZZLES } from '@/lib/seed-puzzles';
 import { ecoName } from '@/lib/eco-names';
 import { clearElo } from '@/lib/player-elo';
 import { FAMOUS_PUZZLES } from '@/lib/famous-puzzles';
@@ -51,6 +53,18 @@ import {
 } from '@/lib/storage';
 
 const DEFAULT_STATS: SessionStats = { correct: 0, wrong: 0, streak: 0, bestStreak: 0 };
+
+/**
+ * The starter puzzle set. On the web this comes from the `/api/puzzles` route;
+ * in the self-contained native app there is no server, so we return the same
+ * seed array locally rather than firing a request that would 404 on the
+ * `capacitor://` origin. Either way the payload is identical (today: empty, so
+ * the UI falls back to the famous-blunder library).
+ */
+function loadSeedPuzzles(): Promise<{ puzzles: Puzzle[] }> {
+  if (isNativeApp()) return Promise.resolve({ puzzles: SEED_PUZZLES });
+  return fetch(apiUrl('/api/puzzles')).then((r) => r.json());
+}
 
 export default function Page() {
   const [all, setAll] = useState<Puzzle[]>([]);
@@ -159,8 +173,7 @@ export default function Page() {
     // Persisted prefs are in hand — safe to persist on change from here.
     hydrated.current = true;
 
-    fetch(apiUrl('/api/puzzles'))
-      .then((r) => r.json())
+    loadSeedPuzzles()
       .then((data: { puzzles: Puzzle[] }) => {
         const real = mergePuzzles(data.puzzles ?? [], saved);
         if (real.length > 0) {
@@ -723,8 +736,7 @@ export default function Page() {
     if (!isGuest) return; // account-holder: empty queue, no placeholders
 
     // Guest: fall back to seed puzzles, or the famous library when there are none.
-    fetch(apiUrl('/api/puzzles'))
-      .then((r) => r.json())
+    loadSeedPuzzles()
       .then((data: { puzzles: Puzzle[] }) => {
         const seeds = data.puzzles ?? [];
         const base = seeds.length > 0 ? seeds : FAMOUS_PUZZLES;

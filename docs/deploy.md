@@ -4,9 +4,10 @@
 
 - **Web → Vercel.** Served from a global CDN, so it loads instantly with no
   cold-start spin-down. This is the public site at **myblunders.com**.
-- **iOS analysis → Render** (or any always-on Node host). The native build runs
-  Stockfish server-side and points at it via `NEXT_PUBLIC_API_BASE`. The web app
-  needs none of this — it analyzes in the browser with WASM (see the README
+- **iOS → no backend.** The native build is fully self-contained: it fetches
+  games directly from Lichess / chess.com and analyzes them on-device with the
+  bundled WASM engine (see `docs/ios.md`). It needs no Render / server host.
+  Like the web, it analyzes in the browser/WebView with WASM (see the README
   architecture table).
 
 Because web analysis moved to the client, the web tier is just static pages +
@@ -48,9 +49,11 @@ Every push to `main` now auto-deploys to production; PRs get preview URLs.
 > works and lets Vercel manage records for you — but the A/CNAME approach above
 > keeps DNS at your registrar and is the simplest one-time setup.
 
-## Keeping (or pausing) Render
+## Render is no longer needed
 
-The iOS app isn't shipped yet, so the Render service is only needed once you
-build/ship iOS. You can keep it running as the iOS API base, or pause it to save
-cost and bring it back when iOS is ready. The web site on Vercel is fully
-independent of it.
+Server-side Stockfish has been retired from both surfaces: the web analyzes in
+the browser and the iOS app analyzes on-device, each fetching PGN without our
+help (web via the same-origin proxy on Vercel, iOS directly from the sources).
+The old Render service — which existed only to run server-side Stockfish for the
+iOS build — can be paused/decommissioned. The Stockfish API routes still build on
+Vercel but are unused by either client.
