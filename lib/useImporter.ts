@@ -5,6 +5,8 @@ import type { GameSource, Puzzle } from './types';
 import { apiUrl } from './api';
 import { isNativeApp } from './platform';
 import { parsePgn, oldestGameStartMs, type ParsedGame } from './pgn';
+import { fetchLichessGamesPgn } from './lichess';
+import { fetchChessComGamesPgn } from './chesscom';
 import { generatePuzzlesFromGame, annotateEvalsIfMissing } from './puzzle-generator';
 import { summarizeGame, type OpeningGame } from './opening-tree';
 import { getWasmEngine } from './engine/wasm-engine';
@@ -93,19 +95,23 @@ interface UseImporterOptions {
 }
 
 /**
- * Encapsulates everything about pulling games from Lichess and turning them
- * into puzzles. There are two analysis backends, chosen at runtime:
+ * Encapsulates everything about pulling games from Lichess/chess.com and
+ * turning them into puzzles. Analysis is always on-device (WASM Stockfish);
+ * only where the PGN is fetched from differs by platform:
  *
- *   · web    — fetch raw PGN from the `/api/lichess/pgn` proxy, then parse and
- *              analyze entirely in the browser with WASM Stockfish. The server
- *              does no chess compute, so it scales for free.
- *   · native — the iOS Capacitor build keeps streaming from `/api/lichess/import`,
- *              which runs Stockfish on the Render backend (so the app never
- *              ships the GPL engine binary).
+ *   · web    — fetch raw PGN from the same-origin `/api/lichess/pgn` /
+ *              `/api/chesscom/pgn` proxy (keeps the browser same-origin and lets
+ *              a server-side token lift rate limits), then parse + analyze in the
+ *              browser. The server does no chess compute, so it scales for free.
+ *   · native — the iOS Capacitor build fetches PGN **directly** from Lichess /
+ *              chess.com (Capacitor's native HTTP bypasses CORS) and analyzes
+ *              on-device too, so the app needs no backend at all. It does ship
+ *              the GPL WASM engine in the bundle — see the in-app About page for
+ *              the license notice + source offer that keeps that compliant.
  *
- * Both paths emit the same event shape and run through `processEvent`, so the
- * sidebar import bar and the first-run onboarding flow behave the same either
- * way. State that needs to survive reloads (username, pagination cursor,
+ * Both platforms run the identical parse → analyze → `processEvent` pipeline, so
+ * the sidebar import bar and the first-run onboarding flow behave the same
+ * either way. State that needs to survive reloads (username, pagination cursor,
  * fetched-game count) is mirrored to localStorage.
  */
 export function useImporter({
@@ -271,63 +277,7 @@ export function useImporter({
     [onImport, onGamesFetched]
   );
 
-  /* ── Native path: stream NDJSON puzzles from the server (server-side SF) ── */
-  const runServerImport = useCallback(
-    async (name: string, untilCursor?: number | null) => {
-      const ctx: ImportCtx = { parsedGames: 0, totalPuzzles: 0 };
-      const res = await fetch(apiUrl('/api/lichess/import'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: name,
-          max: BATCH_SIZE,
-          ...(untilCursor ? { until: untilCursor } : {}),
-        }),
-      });
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        setStatus({ kind: 'error', message: data.error ?? `HTTP ${res.status}` });
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      // Read NDJSON line-by-line. Each non-empty line is one JSON event.
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          let evt: ImportEvent;
-          try {
-            evt = JSON.parse(trimmed);
-          } catch {
-            continue;
-          }
-          if (processEvent(evt, ctx) !== 'continue') return;
-        }
-      }
-
-      // Fallback if the server ended without a final `done` event.
-      setFetchedCount((prev) => {
-        const next = prev + ctx.parsedGames;
-        saveFetchedGameCount(next);
-        return next;
-      });
-      setStatus({ kind: 'ok', message: `${ctx.parsedGames} games → ${ctx.totalPuzzles} puzzles` });
-    },
-    [processEvent]
-  );
-
-  /* ── Web path: fetch PGN, analyze locally with WASM Stockfish ──
+  /* ── Import path: fetch PGN, analyze locally with WASM Stockfish ──
      For chess.com (and any eval-less PGN) each game is first run through the
      engine to *find* the blunders — Lichess games already ship evals, so that
      pass is a no-op and the flow is identical. */
@@ -336,19 +286,43 @@ export function useImporter({
       const ctx: ImportCtx = { parsedGames: 0, totalPuzzles: 0 };
 
       processEvent({ type: 'status', message: `fetching up to ${BATCH_SIZE} games...` }, ctx);
-      const url = new URL(apiUrl(PGN_PROXY[src]), window.location.origin);
-      url.searchParams.set('username', name);
-      url.searchParams.set('max', String(BATCH_SIZE));
-      if (untilCursor) url.searchParams.set('until', String(untilCursor));
 
-      const res = await fetch(url.toString());
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        processEvent({ type: 'error', message: data.error ?? `HTTP ${res.status}` }, ctx);
+      // Where the PGN comes from is the only web/native difference. On web we go
+      // through our same-origin proxy; on native there's no server, so we call
+      // Lichess / chess.com directly (Capacitor's native HTTP bypasses the CORS
+      // that would otherwise block a cross-origin fetch from the WebView).
+      let pgn: string;
+      try {
+        if (isNativeApp()) {
+          pgn =
+            src === 'chesscom'
+              ? await fetchChessComGamesPgn({
+                  username: name,
+                  max: BATCH_SIZE,
+                  untilMillis: untilCursor ?? undefined,
+                })
+              : await fetchLichessGamesPgn({
+                  username: name,
+                  max: BATCH_SIZE,
+                  untilMillis: untilCursor ?? undefined,
+                });
+        } else {
+          const url = new URL(apiUrl(PGN_PROXY[src]), window.location.origin);
+          url.searchParams.set('username', name);
+          url.searchParams.set('max', String(BATCH_SIZE));
+          if (untilCursor) url.searchParams.set('until', String(untilCursor));
+          const res = await fetch(url.toString());
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+            throw new Error(data.error ?? `HTTP ${res.status}`);
+          }
+          pgn = await res.text();
+        }
+      } catch (err) {
+        processEvent({ type: 'error', message: (err as Error).message }, ctx);
         return;
       }
 
-      const pgn = await res.text();
       processEvent({ type: 'status', message: 'parsing PGN...' }, ctx);
       const games = parsePgn(pgn);
       processEvent({ type: 'parsed', total: games.length }, ctx);
@@ -434,13 +408,9 @@ export function useImporter({
       setStatus({ kind: 'working', message: `importing up to ${BATCH_SIZE} ${label}games...` });
 
       try {
-        // The native server path runs Stockfish on the Lichess backend; chess.com
-        // (no server route) always uses the local WASM pipeline.
-        if (isNativeApp() && source === 'lichess') {
-          await runServerImport(name, untilCursor);
-        } else {
-          await runWasmImport(name, source, untilCursor);
-        }
+        // One pipeline for every platform: fetch PGN, then analyze on-device
+        // with WASM Stockfish. (Native fetches the PGN directly; web via proxy.)
+        await runWasmImport(name, source, untilCursor);
       } catch (err) {
         setStatus({ kind: 'error', message: (err as Error).message });
       } finally {
@@ -450,7 +420,7 @@ export function useImporter({
         if (cancelRef.current) setStatus({ kind: 'ok', message: 'cache cleared' });
       }
     },
-    [username, source, runServerImport, runWasmImport]
+    [username, source, runWasmImport]
   );
 
   /* ── PGN file upload fallback ──
@@ -479,30 +449,10 @@ export function useImporter({
       try {
         const pgn = await file.text();
 
-        if (isNativeApp()) {
-          setStatus({ kind: 'working', message: 'analyzing with stockfish...' });
-          const res = await fetch(apiUrl('/api/import-pgn'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pgn, username: name }),
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            setStatus({ kind: 'error', message: data.error ?? `HTTP ${res.status}` });
-            return;
-          }
-          const puzzles = (data.puzzles ?? []) as Puzzle[];
-          onImport(puzzles);
-          setStatus({
-            kind: 'ok',
-            message: `imported ${data.parsedGames} games → ${data.generated} puzzles`,
-          });
-          return;
-        }
-
-        // Web: parse + analyze locally with WASM. Eval-less PGNs (chess.com
-        // exports and the like) are annotated by the engine first. Cap the game
-        // count so an enormous PGN can't run the analysis loop for hours.
+        // Parse + analyze locally with WASM on every platform. Eval-less PGNs
+        // (chess.com exports and the like) are annotated by the engine first.
+        // Cap the game count so an enormous PGN can't run the analysis loop for
+        // hours.
         const games = parsePgn(pgn).slice(0, MAX_UPLOAD_GAMES);
         if (games.length === 0) {
           setStatus({ kind: 'error', message: 'No games found in that PGN file.' });

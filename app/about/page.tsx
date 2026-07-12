@@ -54,8 +54,9 @@ export default function AboutPage() {
                 <div>
                   <h4>Analyze</h4>
                   <p>
-                    Stockfish reviews each move to find the blunders. On the web that runs right
-                    in your browser, so your games are analysed on your own device.
+                    Stockfish reviews each move to find the blunders. It runs right on your own
+                    device — in your browser on the web, and in the app on iOS — so your games are
+                    never analysed on someone else&apos;s server.
                   </p>
                 </div>
               </div>
@@ -83,10 +84,11 @@ export default function AboutPage() {
               <div className="about-note">
                 <span className="tick" aria-hidden="true">✓</span>
                 <p>
-                  <strong>We don&apos;t keep your games.</strong> They&apos;re fetched through a thin
-                  relay (browsers can&apos;t call Lichess and Chess.com directly) and handed straight
-                  back to you — nothing is stored on our servers. On the web, Stockfish runs in your
-                  browser, so the analysis happens on your device too.
+                  <strong>We don&apos;t keep your games.</strong> On the web they&apos;re fetched
+                  through a thin relay (browsers can&apos;t call Lichess and Chess.com directly) and
+                  handed straight back to you; the iOS app talks to Lichess and Chess.com directly,
+                  with no server of ours in between. Either way nothing is stored on our side, and
+                  Stockfish runs on your own device.
                 </p>
               </div>
               <div className="about-note">
@@ -134,10 +136,39 @@ export default function AboutPage() {
             </div>
           </div>
 
+          <div className="about-section">
+            <div className="about-h">Licenses &amp; source</div>
+            <div className="about-notes">
+              <div className="about-note">
+                <span className="tick" aria-hidden="true">✓</span>
+                <p>
+                  Analysis is powered by the{' '}
+                  <a className="about-link" href="https://stockfishchess.org" target="_blank" rel="noopener noreferrer">Stockfish</a>{' '}
+                  chess engine, compiled to WebAssembly and licensed under the{' '}
+                  <a className="about-link" href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener noreferrer">GNU GPL v3</a>.
+                  The iOS app includes an unmodified copy of this engine.
+                </p>
+              </div>
+              <div className="about-note">
+                <span className="tick" aria-hidden="true">✓</span>
+                <p>
+                  <strong>Source offer.</strong> In accordance with the GPL, the complete
+                  corresponding source for the bundled engine is available from the official
+                  Stockfish repository at{' '}
+                  <a className="about-link" href="https://github.com/official-stockfish/Stockfish" target="_blank" rel="noopener noreferrer">github.com/official-stockfish/Stockfish</a>,
+                  and the WebAssembly build we ship (with its full license text) from{' '}
+                  <a className="about-link" href="https://github.com/official-stockfish/fishnet" target="_blank" rel="noopener noreferrer">the Stockfish.js / lila-stockfish-web project</a>.
+                  This app&apos;s own source is at{' '}
+                  <a className="about-link" href="https://github.com/samiabdulnour/my-blunders" target="_blank" rel="noopener noreferrer">github.com/samiabdulnour/my-blunders</a>.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="about-foot">
             Game data from <a className="about-link" href="https://lichess.org" target="_blank" rel="noopener noreferrer">Lichess</a> and{' '}
             <a className="about-link" href="https://www.chess.com" target="_blank" rel="noopener noreferrer">Chess.com</a>.
-            Analysis by the <a className="about-link" href="https://stockfishchess.org" target="_blank" rel="noopener noreferrer">Stockfish</a> engine,
+            Analysis by <a className="about-link" href="https://stockfishchess.org" target="_blank" rel="noopener noreferrer">Stockfish</a>,
             used under the GPL-3.0 license.
           </div>
         </div>
