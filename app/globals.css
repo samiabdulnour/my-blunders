@@ -1975,6 +1975,71 @@ body.panning * {
   font-size: var(--fs-micro);
 }
 
+/* Contact form (components/ContactForm.tsx) — mailto-based "ask a question". */
+.contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.contact-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.contact-label {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--txt-dim);
+}
+.contact-input,
+.contact-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: var(--fs-base);
+  border: 1px solid var(--contour);
+  border-radius: 2px;
+  background: var(--bg2);
+  color: var(--txt);
+  outline: none;
+}
+.contact-textarea {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.5;
+}
+.contact-input:focus,
+.contact-textarea:focus {
+  border-color: var(--coral);
+}
+.contact-send {
+  align-self: flex-start;
+  background: var(--coral);
+  color: #16140f;
+  border: 1px solid var(--contour);
+  padding: 12px 24px;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  border-radius: 2px;
+  transition: all 0.12s var(--ease-snap);
+}
+.contact-send:hover:not(:disabled) {
+  background: var(--contour);
+  color: var(--bg2);
+}
+.contact-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.contact-note {
+  font-size: var(--fs-micro);
+  color: var(--txt-faint);
+  line-height: 1.6;
+}
+
 /* ════════════════════════════════════════════════════════════════
    Opening mini-board (OpeningBoard) + Opening Clinic ("Opening" mode).
    Styled with the main app tokens so it matches the trainer and inherits

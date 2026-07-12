@@ -138,7 +138,9 @@ export default function PrivacyPage() {
             <div className="about-h">Contact</div>
             <div className="about-author">
               <div className="who">
-                Questions about privacy? Reach the author, <strong>Sami Abdulnour</strong>.
+                Questions about privacy? Reach the author, <strong>Sami Abdulnour</strong>, via the{' '}
+                <Link className="about-link" href="/contact">contact page</Link> or at{' '}
+                <a className="about-link" href="mailto:hi@samiabdulnour.com">hi@samiabdulnour.com</a>.
               </div>
               <div className="about-links">
                 <a

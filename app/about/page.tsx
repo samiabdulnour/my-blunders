@@ -169,7 +169,9 @@ export default function AboutPage() {
             Game data from <a className="about-link" href="https://lichess.org" target="_blank" rel="noopener noreferrer">Lichess</a> and{' '}
             <a className="about-link" href="https://www.chess.com" target="_blank" rel="noopener noreferrer">Chess.com</a>.
             Analysis by <a className="about-link" href="https://stockfishchess.org" target="_blank" rel="noopener noreferrer">Stockfish</a>,
-            used under the GPL-3.0 license. <Link className="about-link" href="/privacy">Privacy policy</Link>.
+            used under the GPL-3.0 license.{' '}
+            <Link className="about-link" href="/contact">Contact</Link> ·{' '}
+            <Link className="about-link" href="/privacy">Privacy policy</Link>.
           </div>
         </div>
       </div>
