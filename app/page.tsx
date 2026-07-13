@@ -66,6 +66,23 @@ function loadSeedPuzzles(): Promise<{ puzzles: Puzzle[] }> {
   return fetch(apiUrl('/api/puzzles')).then((r) => r.json());
 }
 
+/**
+ * Which puzzle to open when the app first loads. We pick a *random* puzzle the
+ * user hasn't solved yet, so every launch surfaces a different blunder and a
+ * puzzle you already solved doesn't greet you again on reload. If everything in
+ * the pool is solved we fall back to a random solved one (better than always
+ * the same first entry); returns null only when the pool is empty.
+ */
+function pickInitialPuzzle(
+  pool: Puzzle[],
+  solved: Record<string, SolveStatus>
+): Puzzle | null {
+  if (pool.length === 0) return null;
+  const unsolved = pool.filter((p) => !solved[p.id]);
+  const from = unsolved.length > 0 ? unsolved : pool;
+  return from[Math.floor(Math.random() * from.length)];
+}
+
 export default function Page() {
   const [all, setAll] = useState<Puzzle[]>([]);
   // Puzzle solver · Opening Clinic · Assisted Play — the modes of the trainer.
@@ -164,7 +181,8 @@ export default function Page() {
     // placeholders must never show for them — including on a reload where their
     // saved puzzles happen to be empty (a zero-blunder import, or after a clear).
     if (loadUsername().trim()) ownGamesRef.current = true;
-    setSolved(loadSolved());
+    const initialSolved = loadSolved();
+    setSolved(initialSolved);
     setRandomOrder(loadRandomOrder());
     setTheme(loadTheme());
     setStats(loadStats());
@@ -179,7 +197,8 @@ export default function Page() {
         if (real.length > 0) {
           // The user has games of their own — drop any famous placeholders.
           setAll((prev) => mergePuzzles(real, prev.filter((p) => !isFamous(p))));
-          if (!currentRef.current) loadPuzzle(real[0]);
+          const first = pickInitialPuzzle(real, initialSolved);
+          if (!currentRef.current && first) loadPuzzle(first);
         } else {
           // No games yet: show the famous-blunders library as a placeholder.
           // Merge against current state so a late response can't clobber a
@@ -187,7 +206,8 @@ export default function Page() {
           // never re-add it once a real import is already underway.
           if (!ownGamesRef.current) {
             setAll((prev) => (prev.some((p) => !isFamous(p)) ? prev : mergePuzzles(prev, FAMOUS_PUZZLES)));
-            if (!currentRef.current) loadPuzzle(FAMOUS_PUZZLES[0]);
+            const first = pickInitialPuzzle(FAMOUS_PUZZLES, initialSolved);
+            if (!currentRef.current && first) loadPuzzle(first);
           }
         }
       })
@@ -195,10 +215,12 @@ export default function Page() {
         console.error('Failed to load seed puzzles:', err);
         if (saved.length > 0) {
           setAll((prev) => mergePuzzles(saved, prev.filter((p) => !isFamous(p))));
-          if (!currentRef.current) loadPuzzle(saved[0]);
+          const first = pickInitialPuzzle(saved, initialSolved);
+          if (!currentRef.current && first) loadPuzzle(first);
         } else if (!ownGamesRef.current) {
           setAll((prev) => (prev.some((p) => !isFamous(p)) ? prev : mergePuzzles(prev, FAMOUS_PUZZLES)));
-          if (!currentRef.current) loadPuzzle(FAMOUS_PUZZLES[0]);
+          const first = pickInitialPuzzle(FAMOUS_PUZZLES, initialSolved);
+          if (!currentRef.current && first) loadPuzzle(first);
         }
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -741,11 +763,14 @@ export default function Page() {
         const seeds = data.puzzles ?? [];
         const base = seeds.length > 0 ? seeds : FAMOUS_PUZZLES;
         setAll(base);
-        if (base.length > 0) loadPuzzle(base[0]);
+        // solved was just wiped, so this is a random pick across the whole set.
+        const first = pickInitialPuzzle(base, {});
+        if (first) loadPuzzle(first);
       })
       .catch(() => {
         setAll(FAMOUS_PUZZLES);
-        loadPuzzle(FAMOUS_PUZZLES[0]);
+        const first = pickInitialPuzzle(FAMOUS_PUZZLES, {});
+        if (first) loadPuzzle(first);
       });
   }, [loadPuzzle]);
 
