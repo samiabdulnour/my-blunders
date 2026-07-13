@@ -126,17 +126,28 @@ select {
 /* ─── Frame ─── */
 .app-root {
   height: 100vh;
+  box-sizing: border-box;
+  /* Keep content clear of the home-indicator at the bottom (the top inset is
+     handled by .topbar). No-op where there's no safe area. */
+  padding-bottom: env(safe-area-inset-bottom);
   display: flex;
   flex-direction: column;
 }
 
 .topbar {
-  height: 48px;
+  /* Reserve the iOS status-bar / Dynamic Island height on top of the normal
+     48px header, and pad by that inset so the row sits *below* the clock/notch
+     while the header background still fills the area behind it. `env(...)` is
+     0 on devices without a safe area (and on the web), so this is a no-op
+     there. Left/right insets keep the row clear of a landscape notch. */
+  height: calc(48px + env(safe-area-inset-top));
+  box-sizing: border-box;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 0 16px;
+  padding: env(safe-area-inset-top) calc(16px + env(safe-area-inset-right)) 0
+    calc(16px + env(safe-area-inset-left));
   border-bottom: 1px solid var(--contour);
   background: var(--bg);
 }
@@ -1242,7 +1253,10 @@ html[data-theme='dark'] .sq.cap-ring {
   width: 100%;
   max-width: 520px;
   margin: auto;
-  padding: 32px 24px;
+  /* Add the safe-area insets so the first-run screen clears the notch and
+     home indicator too. No-op on the web / non-notched devices. */
+  padding: calc(32px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right))
+    calc(32px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   gap: 28px;
