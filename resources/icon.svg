@@ -4,7 +4,7 @@
   A 2×2 chessboard quadrant: two sage squares on the diagonal, one light
   square, and a coral square carrying "??" — the chess symbol for a blunder,
   which is the whole point of the app. Colors are the app's own board/brand
-  tokens (sq-d #8fae86, sq-l #f8f7f5, coral #f44e48).
+  tokens (sq-d #86c69a, sq-l #f2ede9, coral #e8493f).
 
   Apple enforces an opaque icon (no transparency; iOS applies the rounded-corner
   mask itself), and the four quadrants fill the canvas edge-to-edge, so it's
@@ -17,14 +17,14 @@
   the exact type matters. `npx capacitor-assets generate --ios` uses icon.png.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <rect x="0" y="0" width="512" height="512" fill="#8fae86"/>
-  <rect x="512" y="0" width="512" height="512" fill="#f8f7f5"/>
-  <rect x="0" y="512" width="512" height="512" fill="#f44e48"/>
-  <rect x="512" y="512" width="512" height="512" fill="#8fae86"/>
+  <rect x="0" y="0" width="512" height="512" fill="#86c69a"/>
+  <rect x="512" y="0" width="512" height="512" fill="#f2ede9"/>
+  <rect x="0" y="512" width="512" height="512" fill="#e8493f"/>
+  <rect x="512" y="512" width="512" height="512" fill="#86c69a"/>
   <!-- Vertically stretched (scale 1×1.32) so the marks are tall, per the
        reference. icon.png is the authoritative, ink-centred master. -->
   <g transform="translate(256 768) scale(1 1.32)">
-    <text x="0" y="0" fill="#f8f7f5"
+    <text x="0" y="0" fill="#f2ede9"
           font-family="Gruezi, 'Helvetica Neue', Arial, sans-serif"
           font-weight="700" font-size="430" letter-spacing="-70"
           text-anchor="middle" dominant-baseline="central">??</text>
