@@ -9,8 +9,11 @@ interface Option {
 
 interface FilterChipProps {
   /** The dimension this chip filters, e.g. "Time format". Shown as the
-   *  add-affordance label and the popover header. */
+   *  popover header, and on the chip itself unless `chipLabel` overrides it. */
   label: string;
+  /** Optional shorter label for the (inactive) chip, so a long dimension name
+   *  can still fit the chips onto one row without changing the popover header. */
+  chipLabel?: string;
   /** Label for the reset/"all" option at the top of the popover. */
   allLabel: string;
   /** Current value; `'all'` means inactive (renders the dashed add-chip). */
@@ -24,7 +27,7 @@ interface FilterChipProps {
  * renders as a dashed "+ Label" add-affordance; active it fills coral and
  * shows the chosen option with an × to clear. Closes on outside click.
  */
-export function FilterChip({ label, allLabel, value, options, onChange }: FilterChipProps) {
+export function FilterChip({ label, chipLabel, allLabel, value, options, onChange }: FilterChipProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -38,17 +41,20 @@ export function FilterChip({ label, allLabel, value, options, onChange }: Filter
   }, [open]);
 
   const isActive = value !== 'all';
-  const display = isActive ? (options.find((o) => o.value === value)?.label ?? value) : label;
+  const display = isActive
+    ? (options.find((o) => o.value === value)?.label ?? value)
+    : (chipLabel ?? label);
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={ref} style={{ position: 'relative', minWidth: 0 }}>
       <button
         type="button"
         className={'chip ' + (isActive ? 'on' : 'add')}
         onClick={() => setOpen((o) => !o)}
+        title={isActive ? `${label}: ${display}` : label}
       >
-        {!isActive && '+ '}
-        {display}
+        {!isActive && <span className="chip-plus" aria-hidden="true">+</span>}
+        <span className="chip-label">{display}</span>
         {isActive && (
           <span
             className="x"

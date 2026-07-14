@@ -114,6 +114,7 @@ export function Sidebar({
         <div className="chip-row">
           <FilterChip
             label="Time format"
+            chipLabel="Time"
             allLabel="Any time"
             value={speedFilter}
             onChange={(v) => onSpeedFilterChange(v as SpeedFilter)}

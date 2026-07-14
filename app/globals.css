@@ -524,8 +524,32 @@ select {
 /* Filter chips */
 .chip-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
+  align-items: stretch;
+}
+/* Keep the three filter chips on one row: each shares the width and shrinks
+   (min-width:0) rather than wrapping; a too-long active value ellipsizes. */
+.chip-row > div {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.chip-row .chip {
+  width: 100%;
+  justify-content: center;
+  padding: 7px 8px;
+  gap: 4px;
+  letter-spacing: 0.02em;
+  min-width: 0;
+}
+.chip-plus {
+  flex-shrink: 0;
+}
+.chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .chip {
   padding: 7px 11px;
@@ -1171,6 +1195,14 @@ html[data-theme='dark'] .sq.cap-ring {
   font-variant-numeric: tabular-nums;
 }
 .el-tok { display: inline-flex; align-items: baseline; gap: 3px; }
+/* One full move (number + white + black) as a single non-breaking unit, so a
+   move never splits across a line-wrap; the row wraps between pairs only. */
+.el-move-pair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  white-space: nowrap;
+}
 .el-no { color: var(--txt-faint); }
 .el-move {
   background: none; border: 0; padding: 1px 5px; border-radius: 3px;
