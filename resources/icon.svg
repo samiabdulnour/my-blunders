@@ -23,6 +23,6 @@
   <rect x="512" y="512" width="512" height="512" fill="#8fae86"/>
   <text x="256" y="768" fill="#f8f7f5"
         font-family="Gruezi, 'Helvetica Neue', Arial, sans-serif"
-        font-weight="700" font-size="395" letter-spacing="-24"
+        font-weight="700" font-size="430" letter-spacing="-70"
         text-anchor="middle" dominant-baseline="central">??</text>
 </svg>
