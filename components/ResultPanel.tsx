@@ -65,7 +65,9 @@ export function ResultPanel({
     ? 'Lichess'
     : puzzle.site.includes('lichess.org')
       ? 'Analyse'
-      : 'View game';
+      : puzzle.site.includes('chess.com')
+        ? 'Chess.com'
+        : 'View game';
   // Defence-in-depth: only ever open an http(s) URL. A malicious [Site] (e.g.
   // "javascript:…" / "data:…") from an imported PGN would otherwise run script
   // via window.open — including puzzles stored before the parser was hardened.
@@ -117,24 +119,49 @@ export function ResultPanel({
         <div className="engine-line">
           <div className="engine-line-h">{puzzle.combination ? 'Winning line' : 'Engine line'}</div>
           <div className="engine-line-moves">
-            {engineLine.map((san, i) => {
-              const ply = puzzle.setupMoves.length + i;
-              const whiteToMove = ply % 2 === 0;
-              const showNo = whiteToMove || i === 0;
-              return (
-                <span key={i} className="el-tok">
-                  {showNo && <span className="el-no num">{Math.floor(ply / 2) + 1}{whiteToMove ? '.' : '…'}</span>}
-                  <button
-                    type="button"
-                    className={'el-move' + (seekPly === i ? ' cur' : '')}
-                    onClick={() => onSeek?.(i)}
-                    title="Show this position"
-                  >
-                    {san}
-                  </button>
-                </span>
+            {(() => {
+              // Group plies into full moves (number + white + black) so a move
+              // never splits across a line-wrap: each `.el-move-pair` is one
+              // non-breaking unit, and the row wraps between pairs only.
+              type Ply = { san: string; i: number };
+              type Move = { no: number; dots: string; white: Ply | null; black: Ply | null };
+              const start = puzzle.setupMoves.length;
+              const moves: Move[] = [];
+              engineLine.forEach((san, i) => {
+                const ply = start + i;
+                const whiteToMove = ply % 2 === 0;
+                if (whiteToMove || i === 0) {
+                  moves.push({
+                    no: Math.floor(ply / 2) + 1,
+                    dots: whiteToMove ? '.' : '…',
+                    white: whiteToMove ? { san, i } : null,
+                    black: whiteToMove ? null : { san, i },
+                  });
+                } else {
+                  moves[moves.length - 1].black = { san, i };
+                }
+              });
+              const moveBtn = (p: Ply) => (
+                <button
+                  type="button"
+                  className={'el-move' + (seekPly === p.i ? ' cur' : '')}
+                  onClick={() => onSeek?.(p.i)}
+                  title="Show this position"
+                >
+                  {p.san}
+                </button>
               );
-            })}
+              return moves.map((m, idx) => (
+                <span key={idx} className="el-move-pair">
+                  <span className="el-no num">
+                    {m.no}
+                    {m.dots}
+                  </span>
+                  {m.white && moveBtn(m.white)}
+                  {m.black && moveBtn(m.black)}
+                </span>
+              ));
+            })()}
           </div>
         </div>
       )}
