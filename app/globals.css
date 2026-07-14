@@ -527,6 +527,9 @@ select {
   flex-wrap: nowrap;
   gap: 6px;
   align-items: stretch;
+  /* Anchor the filter popovers to the whole row (see .filter-popover) so they
+     span the sidebar width and never overflow its clipped right edge. */
+  position: relative;
 }
 /* Keep the three filter chips on one row: each shares the width and shrinks
    (min-width:0) rather than wrapping; a too-long active value ellipsizes. */
@@ -588,12 +591,15 @@ select {
   position: absolute;
   z-index: 50;
   top: calc(100% + 4px);
+  /* Span the full filter row (anchored to .chip-row, not the narrow chip), so
+     the dropdown always fits inside the sidebar's clipped width and long
+     opening names have room to wrap instead of being cut off. */
   left: 0;
+  right: 0;
   background: var(--bg2);
   border: 1px solid var(--contour);
   border-radius: 2px;
   padding: 4px;
-  min-width: 200px;
   box-shadow: 2px 2px 0 0 var(--contour);
   display: flex;
   flex-direction: column;
@@ -610,6 +616,11 @@ select {
   border: 0;
   text-align: left;
   cursor: pointer;
+  /* Long "A48 · King's Indian Defense" names wrap within the popover width
+     instead of being clipped. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
 }
 .filter-popover .opt:hover {
   background: var(--contour);
