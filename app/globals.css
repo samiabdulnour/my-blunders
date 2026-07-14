@@ -157,22 +157,28 @@ select {
   gap: 9px;
   color: var(--txt);
 }
-.brand-mark {
-  width: 20px;
-  height: 20px;
-  display: block;
-  flex-shrink: 0;
-}
 .brand-word {
   font-family: var(--font);
   font-weight: var(--fw-bold);
   font-size: var(--fs-title);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   line-height: 1;
   text-transform: lowercase;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: baseline;
+}
+/* Weight/colour hierarchy carries the mark instead of an icon: "my" recedes,
+   "blunders" leads, the middot is the single coral accent. */
+.brand-word .brand-my {
+  color: var(--txt-dim);
+}
+.brand-word .brand-bl {
+  color: var(--txt);
 }
 .brand-word .dot {
   color: var(--coral);
+  padding: 0 0.5px;
 }
 .topbar-toggle {
   background: none;
