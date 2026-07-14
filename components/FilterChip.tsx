@@ -46,7 +46,7 @@ export function FilterChip({ label, chipLabel, allLabel, value, options, onChang
     : (chipLabel ?? label);
 
   return (
-    <div ref={ref} style={{ position: 'relative', minWidth: 0 }}>
+    <div ref={ref} style={{ minWidth: 0 }}>
       <button
         type="button"
         className={'chip ' + (isActive ? 'on' : 'add')}
