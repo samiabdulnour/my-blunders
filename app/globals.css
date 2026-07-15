@@ -1326,6 +1326,13 @@ html[data-theme='dark'] .sq.cap-ring {
   line-height: 1.55;
   max-width: 440px;
 }
+.onb-trust {
+  margin-top: 10px;
+  font-size: var(--fs-micro);
+  color: var(--txt-faint);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+}
 .onb-steps {
   display: flex;
   flex-direction: column;

@@ -20,6 +20,8 @@
  * Docs: https://www.chess.com/news/view/published-data-api
  */
 
+import { fetchWithRetry } from './fetch-retry';
+
 export interface FetchChessComPgnOpts {
   /** Chess.com username (case-insensitive). */
   username: string;
@@ -67,7 +69,7 @@ export async function fetchChessComGamesPgn(opts: FetchChessComPgnOpts): Promise
   const headers = { 'User-Agent': UA, Accept: 'application/json' };
 
   // 1) List the user's monthly archives (returned oldest→newest).
-  const archRes = await fetch(
+  const archRes = await fetchWithRetry(
     `https://api.chess.com/pub/player/${encodeURIComponent(username)}/games/archives`,
     { headers }
   );
@@ -97,7 +99,7 @@ export async function fetchChessComGamesPgn(opts: FetchChessComPgnOpts): Promise
     if (pgns.length >= max) break;
     let games: ChessComGame[] = [];
     try {
-      const r = await fetch(monthUrl, { headers });
+      const r = await fetchWithRetry(monthUrl, { headers });
       if (!r.ok) continue;
       ({ games = [] } = (await r.json()) as { games?: ChessComGame[] });
     } catch {

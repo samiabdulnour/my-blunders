@@ -134,6 +134,7 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
           We&apos;ll pull your recent Lichess or chess.com games, run Stockfish on each move, and
           turn your mistakes into puzzles.
         </div>
+        <div className="onb-trust">Free · no sign-up · your games stay in your browser</div>
       </div>
 
       <div className="onb-steps">

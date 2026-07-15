@@ -916,8 +916,8 @@ export default function Page() {
           <div className="main" ref={mainRef} onMouseDown={handlePanStart}>
             {!current ? (
           <div className="empty">
-            <div>No puzzles loaded.</div>
-            <div>Import games from Lichess in the sidebar to begin.</div>
+            <div>No puzzles yet.</div>
+            <div>Import your Lichess or chess.com games from the sidebar — we run Stockfish on every move and turn your blunders into puzzles.</div>
           </div>
         ) : (
           <div className="board-col">

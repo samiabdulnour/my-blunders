@@ -20,6 +20,8 @@
  * Docs: https://lichess.org/api#tag/Games/operation/apiGamesUser
  */
 
+import { fetchWithRetry } from './fetch-retry';
+
 export interface FetchLichessPgnOpts {
   /** Lichess username (case-insensitive). */
   username: string;
@@ -64,12 +66,17 @@ export async function fetchLichessGamesPgn(opts: FetchLichessPgnOpts): Promise<s
 
   const headers: Record<string, string> = {
     Accept: 'application/x-chess-pgn',
-    'User-Agent': 'blunder-trainer/0.1',
+    // Lichess asks apps to send a descriptive User-Agent so they can identify
+    // (and reach) us before rate-limiting rather than after.
+    'User-Agent': 'my-blunders/0.1 (https://github.com/samiabdulnour/my-blunders)',
   };
   const token = process.env.LICHESS_TOKEN;
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(url, { headers });
+  // Retry 429/5xx with backoff: under a traffic spike every import egresses
+  // from our shared server IP, so Lichess throttling is the most likely thing
+  // to break a launch. See lib/fetch-retry.ts.
+  const res = await fetchWithRetry(url, { headers });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     if (res.status === 404) {
