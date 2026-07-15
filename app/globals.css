@@ -157,22 +157,14 @@ select {
   gap: 9px;
   color: var(--txt);
 }
-.brand-mark {
-  width: 20px;
-  height: 20px;
-  display: block;
-  flex-shrink: 0;
-}
 .brand-word {
   font-family: var(--font);
   font-weight: var(--fw-bold);
-  font-size: var(--fs-title);
+  font-size: 22px;
   letter-spacing: -0.01em;
   line-height: 1;
-  text-transform: lowercase;
-}
-.brand-word .dot {
-  color: var(--coral);
+  white-space: nowrap;
+  color: var(--txt);
 }
 .topbar-toggle {
   background: none;
