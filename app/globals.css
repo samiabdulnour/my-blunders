@@ -2590,6 +2590,8 @@ body.panning * {
 
 /* Game info (replay) in the left panel */
 .ct-game-select { width: 100%; margin-top: 8px; padding: 7px 9px; border: 1px solid var(--border2); border-radius: 4px; background: var(--bg); color: var(--txt); font: inherit; font-size: var(--fs-base); cursor: pointer; }
+.ct-game-select optgroup { background: var(--bg); color: var(--txt-dim); font-style: normal; font-weight: var(--fw-bold); }
+.ct-game-select option { background: var(--bg); color: var(--txt); font-weight: var(--fw-reg); }
 .ct-game-players { margin-top: 6px; font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
 .ct-game-context { margin: 4px 0 0; font-size: var(--fs-micro); color: var(--txt-faint); line-height: 1.55; }
 
