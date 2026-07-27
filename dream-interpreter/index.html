@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dreamweaver — Jungian Dream Interpreter</title>
+  <meta name="description" content="A Jungian dream interpreter: write down a dream and discover its motifs, archetypes, and mythological parallels." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌙</text></svg>" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="stars" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <h1 class="wordmark"><span class="moon">☾</span> Dreamweaver</h1>
+    <p class="tagline">a Jungian dream interpreter — motifs, archetypes &amp; the old myths</p>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="interpret" role="tab" aria-selected="true">Interpret a Dream</button>
+      <button class="tab" data-tab="dictionary" role="tab" aria-selected="false">Symbol Dictionary</button>
+      <button class="tab" data-tab="archetypes" role="tab" aria-selected="false">Archetypes</button>
+      <button class="tab" data-tab="about" role="tab" aria-selected="false">About</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ── Interpret ─────────────────────────────────────────────── -->
+    <section id="tab-interpret" class="tab-panel active">
+      <div class="panel">
+        <label for="dream-input" class="input-label">Tell your dream</label>
+        <p class="input-hint">Write it in the present tense, with as much sensory detail as you remember. Nothing leaves your browser unless you choose the AI deep&#8209;dive.</p>
+        <textarea id="dream-input" rows="8" placeholder="I am standing at the edge of a dark forest. Behind me, the sea is rising. A black dog appears on the path and looks at me as if it knows me…"></textarea>
+        <div class="actions">
+          <button id="analyze-btn" class="btn primary">Interpret the dream</button>
+          <button id="sample-btn" class="btn ghost">Try a sample dream</button>
+        </div>
+      </div>
+
+      <div id="results" class="results hidden">
+        <div id="narrative" class="panel narrative"></div>
+        <h2 class="section-title">Archetypal currents</h2>
+        <div id="archetype-results" class="archetype-grid"></div>
+        <h2 class="section-title">Motifs &amp; symbols found</h2>
+        <div id="symbol-results" class="symbol-list"></div>
+        <h2 class="section-title">Questions to sit with</h2>
+        <ul id="questions" class="questions"></ul>
+
+        <div class="panel ai-panel">
+          <h2>✦ AI deep-dive <span class="badge">optional</span></h2>
+          <p>Get a full interpretive reading of <em>this specific dream</em> — its drama, compensations, and mythological amplifications — written by Claude. Bring your own <a href="https://platform.claude.com/" target="_blank" rel="noopener">Anthropic API key</a>; it is stored only in your browser.</p>
+          <div class="ai-controls">
+            <input type="password" id="api-key" placeholder="sk-ant-…" autocomplete="off" />
+            <button id="ai-btn" class="btn primary">Ask Claude</button>
+          </div>
+          <div id="ai-status" class="ai-status hidden"></div>
+          <div id="ai-output" class="ai-output hidden"></div>
+        </div>
+      </div>
+
+      <div id="no-results" class="panel hidden">
+        <p>No known motifs surfaced from the dictionary — which happens, and means nothing bad. Try adding more concrete detail (places, creatures, actions, objects), or use the AI deep&#8209;dive for a free-form reading.</p>
+      </div>
+    </section>
+
+    <!-- ── Dictionary ────────────────────────────────────────────── -->
+    <section id="tab-dictionary" class="tab-panel">
+      <div class="dict-controls">
+        <input type="search" id="dict-search" placeholder="Search symbols… (snake, falling, teeth)" />
+        <div id="dict-categories" class="chip-row"></div>
+      </div>
+      <div id="dict-grid" class="dict-grid"></div>
+    </section>
+
+    <!-- ── Archetypes ────────────────────────────────────────────── -->
+    <section id="tab-archetypes" class="tab-panel">
+      <div id="archetype-catalog" class="archetype-catalog"></div>
+    </section>
+
+    <!-- ── About ─────────────────────────────────────────────────── -->
+    <section id="tab-about" class="tab-panel">
+      <div class="panel prose">
+        <h2>About Dreamweaver</h2>
+        <p>Dreamweaver is an open-source dream interpreter built on the analytical psychology of <strong>C.&nbsp;G.&nbsp;Jung</strong>. Write down a dream and it detects recurring <em>motifs</em>, maps them to <em>archetypes</em> — the deep structural patterns of the psyche — and <em>amplifies</em> them with parallels from ancient mythology, exactly as Jung recommended: understanding a dream image by holding it next to the myths where the same image has always lived.</p>
+        <h3>How to use it well</h3>
+        <ul>
+          <li><strong>You are the authority.</strong> Jung insisted the dreamer's own felt sense is the final test of any interpretation. Everything here is a hypothesis to try on.</li>
+          <li><strong>Dreams compensate.</strong> Ask what one-sided attitude of your waking life the dream might be balancing.</li>
+          <li><strong>Context matters.</strong> Your mother in a dream is first of all <em>your</em> mother-image, and only then the Great Mother. Personal associations come before the dictionary.</li>
+          <li><strong>No fortune telling.</strong> This is a tool for reflection, not prediction, and not a substitute for therapy or medical advice.</li>
+        </ul>
+        <h3>Privacy</h3>
+        <p>Dreams are analyzed entirely in your browser. Nothing is sent anywhere unless you explicitly use the AI deep-dive, which calls the Anthropic API directly with your own key.</p>
+        <h3>Open source</h3>
+        <p>The symbol dictionary wants to grow. Contributions — new symbols, better mythological parallels, corrections — are warmly welcome on GitHub.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>“Who looks outside, dreams; who looks inside, awakes.” — C. G. Jung</p>
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
