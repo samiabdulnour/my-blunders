@@ -26,8 +26,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts.bak
 
-# local data (puzzle DB, cached games)
-data/
+# local data (puzzle DB, cached games) — root only, so nested data/ dirs stay tracked
+/data/
 *.sqlite
 *.db
 
