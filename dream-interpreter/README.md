@@ -42,6 +42,37 @@ python3 -m http.server 8080
 
 Deploying is equally boring: GitHub Pages, Netlify, anything that serves files.
 
+## The scholarship scaffolding
+
+This project is grounded in the primary literature, not in pop dream
+dictionaries — Jung: *"It is plain foolishness to believe in ready-made
+systematic guides to dream interpretation."* The `docs/` directory is the
+foundation everything else is being rebuilt on:
+
+- **[docs/METHODOLOGY.md](docs/METHODOLOGY.md)** — how Jung actually read
+  dreams, with CW paragraph citations and verified quotations: amplification
+  (not free association), compensation, the dream's dramatic structure,
+  objective vs subjective level, series over single dreams, active
+  imagination — and why fixed symbol meanings are explicitly rejected.
+- **[docs/TAXONOMY.md](docs/TAXONOMY.md)** — the primordial-motif taxonomy:
+  13 overlapping motif families (typical dream situations, the Great Mother,
+  the night sea journey, katabasis, the alchemical operations, trickster,
+  threshold & guardian…) with cross-cultural instantiations as parallels
+  for amplification.
+- **[docs/SCHEMA.md](docs/SCHEMA.md)** — the v1 entry data model, designed
+  so a singular "meaning" field cannot exist: mandatory opposed valences,
+  context modulators, amplifications with divergence notes, questions
+  instead of conclusions.
+- **[docs/SOURCES.md](docs/SOURCES.md)** — the tiered source corpus with
+  links and licensing: public-domain Jung (Gutenberg), the Collected Works
+  by CW ¶, the post-Jungians (von Franz, Neumann, Edinger, Hillman, Hall),
+  ARAS & The Book of Symbols, Thompson's Motif-Index / MOMFER, ETCSL,
+  Perseus, sacred-texts, DreamBank.
+
+The current `js/data/symbols.js` is the v0 retrieval layer; entries are
+being migrated to the v1 schema. Contributions should follow
+`SCHEMA.md` + `SOURCES.md` (citation discipline, licensing red lines).
+
 ## Project shape
 
 ```
