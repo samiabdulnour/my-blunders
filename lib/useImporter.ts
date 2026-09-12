@@ -51,19 +51,10 @@ export interface ImportStatus {
 }
 
 /** Games imported per batch. Small enough to feel responsive, large enough
- *  that the user usually gets several puzzles per click. */
+ *  that the user usually gets several puzzles per click. With auto-import on,
+ *  batches chain back-to-back in the background until the user's history runs
+ *  out — there is no game cap, on any platform. */
 export const BATCH_SIZE = 20;
-
-/** With auto-import on, keep pulling + analysing batches in the background until
- *  this many games have been imported (or the user's history runs out) — the
- *  "pre-prepared library" target, matching the clinic's corpus. Tunable. */
-export const PUZZLE_TARGET_GAMES = 500;
-
-/** Phones grind the battery analysing many games — and opening-study data comes
- *  from a separate engine-free fetch — so auto-analysis stops at this smaller
- *  count on mobile; the user pulls more on demand with "Import more". Desktop
- *  keeps the full target. */
-export const MOBILE_PUZZLE_TARGET = 40;
 
 /**
  * One import event. Both the native NDJSON stream and the web WASM pipeline
@@ -135,16 +126,6 @@ export function useImporter({
    */
   const [fetchedCount, setFetchedCount] = useState(0);
   /**
-   * Auto-analysis target. Smaller on phones (battery); the full corpus on
-   * desktop. Detected after mount to avoid an SSR/CSR mismatch.
-   */
-  const [autoTarget, setAutoTarget] = useState(PUZZLE_TARGET_GAMES);
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches) {
-      setAutoTarget(MOBILE_PUZZLE_TARGET);
-    }
-  }, []);
-  /**
    * True once we've hydrated `oldestMs`, `fetchedCount`, and `username`
    * from localStorage. Gating the auto-import effect on this prevents
    * it from firing a stale import on first render.
@@ -163,7 +144,7 @@ export function useImporter({
    */
   const [exhausted, setExhausted] = useState(false);
   /** User toggle (shared store, set from the top-bar button): on → auto-import
-   *  keeps building toward PUZZLE_TARGET_GAMES; off → manual "Import more". */
+   *  keeps pulling batches until history runs out; off → manual "Import more". */
   const autoImportEnabled = useAutoImport();
   /** Synchronous mirror of the toggle so a batch finishing mid-toggle (which
    *  re-runs the chain effect before React commits the render) sees the new
@@ -504,21 +485,20 @@ export function useImporter({
 
   /* ── Auto-import loop ──
      When auto-import is on, keep pulling + analysing batches in the background
-     until the library reaches PUZZLE_TARGET_GAMES (or the user runs out of
-     history). Each finished batch advances oldestMs / fetchedCount, which
-     re-triggers this effect for the next batch. Only fires once a first import
-     has established a cursor (kicked off manually or by onboarding). */
+     until the user runs out of history — there's no game cap. Each finished
+     batch advances oldestMs / fetchedCount, which re-triggers this effect for
+     the next batch. Only fires once a first import has established a cursor
+     (kicked off manually or by onboarding). */
   useEffect(() => {
     if (!autoImport) return; // context gate (suppressed during onboarding)
     if (!autoImportEnabled || !autoImportEnabledRef.current) return; // user toggle
     if (!hydrated) return;
     if (workingRef.current) return;
-    if (exhausted) return;
+    if (exhausted) return; // paginated to the start of history — nothing left
     if (oldestMs == null) return; // need a first import to set the cursor
-    if (fetchedCount >= autoTarget) return; // auto target reached (more on demand)
     if (!username.trim()) return;
     runImport(oldestMs);
-  }, [autoImport, autoImportEnabled, hydrated, oldestMs, fetchedCount, autoTarget, username, exhausted, runImport]);
+  }, [autoImport, autoImportEnabled, hydrated, oldestMs, fetchedCount, username, exhausted, runImport]);
 
   /** Reset the pagination cursor + counters after a cache clear, and abort any
    *  in-flight import so it doesn't write puzzles/openings back post-clear. */
@@ -539,9 +519,6 @@ export function useImporter({
     oldestMs,
     fetchedCount,
     exhausted,
-    target: autoTarget,
-    /** Auto-analysis hit the target; more is available via "Import more". */
-    capped: fetchedCount >= autoTarget && !exhausted,
     working: status.kind === 'working',
     runImport,
     importFile,

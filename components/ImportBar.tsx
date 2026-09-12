@@ -35,8 +35,6 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
     oldestMs,
     fetchedCount,
     exhausted,
-    target,
-    capped,
     working,
     runImport,
     importFile,
@@ -63,25 +61,20 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
     setConfirmClear(false);
   };
 
-  // Progress reflects the *analysis* — how many games we've turned into puzzles,
-  // toward the auto target (which is smaller on phones to save battery). The
-  // opening-study corpus fills separately and cheaply, so it isn't counted here.
-  const analysed = Math.min(target, fetchedCount);
-  const pct = target > 0 ? Math.round((analysed / target) * 100) : 0;
-
-  // Status caption: the live action + count while working, then a clear resting
-  // summary that points to "Import more" once the auto target is reached.
+  // Status caption: the live action + running count while working, then a clear
+  // resting summary. Auto-import keeps pulling in the background with no cap, so
+  // there's no "target" — just how many games have been turned into puzzles.
   let caption: React.ReactNode = null;
   if (working) {
-    caption = `${status.message ?? 'analysing your games…'} · ${analysed}/${target}`;
+    caption = `${status.message ?? 'analysing your games…'} · ${fetchedCount} games`;
   } else if (status.kind === 'error') {
     caption = status.message;
-  } else if (capped) {
-    caption = `${fetchedCount} games analysed — “Import more” for the next ${BATCH_SIZE}`;
   } else if (exhausted) {
     caption = `${fetchedCount} games · all your history imported`;
   } else if (fetchedCount > 0) {
-    caption = `${fetchedCount} games analysed`;
+    caption = autoImportEnabled
+      ? `${fetchedCount} games analysed · importing more in the background`
+      : `${fetchedCount} games analysed — “Import more” for the next ${BATCH_SIZE}`;
   } else if (status.kind === 'ok' && status.message) {
     caption = status.message;
   }
@@ -152,16 +145,16 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
         onClick={() => setAutoImport(!autoImportEnabled)}
         title={
           autoImportEnabled
-            ? `Auto-import on — building toward ${target} games in the background`
+            ? 'Auto-import on — pulling your whole history in the background, no limit'
             : 'Auto-import off — pull each batch with “Import more”'
         }
       >
-        Auto-import: {autoImportEnabled ? <>on<span className="auto-btn-sub"> · to {target}</span></> : 'off'}
+        Auto-import: {autoImportEnabled ? <>on<span className="auto-btn-sub"> · no limit</span></> : 'off'}
       </button>
 
       {working && (
         <div className="imp-progress">
-          <div className="bar" style={{ width: pct + '%' }} />
+          <div className="bar indeterminate" />
         </div>
       )}
 

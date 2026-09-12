@@ -26,11 +26,13 @@ const PERF = { green: 52, amber: 44 };
 /** A node becomes a "hotspot" at this many blundered visits. */
 const HOTSPOT_BLUNDERS = 3;
 /** Pruning / collapsing knobs that keep the tree legible. */
-const MAX_CHILDREN = 3; // siblings rendered per node; the rest fold into +N
+const MAX_CHILDREN = 8; // siblings kept per node in the data; the rest fold into +N
+// (the poster shows up to this many variations per position for a dense, busy
+//  map; the on-screen clinic caps display lower via its own layout maxChildren)
 const MIN_NODE_GAMES = 2; // drop branches seen fewer times than this
 /** Rows (plies) drawn at once before deeper lines fold into a drill badge.
  *  20 plies ≈ move 10 for both colours; the trie holds OPENING_PLIES total. */
-const RENDER_ROWS = 20;
+export const RENDER_ROWS = 20;
 /** A sibling played less than this fraction of the main line is a "gap". */
 const GAP_RATIO = 0.5;
 
@@ -198,7 +200,12 @@ const emptyRaw = (san: string, ply: number): RawNode => ({
  * positions with per-node tallies, then pruned/collapsed and laid out as
  * `TreeNode`s (FENs + move labels resolved with chess.js).
  */
-export function buildOpeningTree(games: OpeningGame[], color: 'w' | 'b'): TreeNode {
+export function buildOpeningTree(
+  games: OpeningGame[],
+  color: 'w' | 'b',
+  minNodeGames: number = MIN_NODE_GAMES,
+  maxNodes?: number,
+): TreeNode {
   const root = emptyRaw('', 0);
   for (const g of games) {
     if (g.color !== color) continue;
@@ -218,9 +225,68 @@ export function buildOpeningTree(games: OpeningGame[], color: 'w' | 'b'): TreeNo
       node = child;
     }
   }
+  // Optional poster budget. A tidy tree gives every LEAF its own column, so
+  // what fits an A1 at a readable board size is a LINE budget (~two dozen
+  // columns), not a node count — and an unbounded once-played trie also runs to
+  // thousands of nodes (each resolve() below spins up a chess.js instance,
+  // which blew the WebView's memory). So spend the budget on LONG lines,
+  // best-first: always extend the most-played branch point next, and when a
+  // line is opened follow its principal continuation to the very end — the
+  // once-played tail included, so main lines run to move 6, 7, 8, 9 … A couple
+  // of dozen long parallel lines, breadth only where they part: dense and
+  // readable. `maxNodes` stays as a hard memory cap.
+  let keep: Set<RawNode> | undefined;
+  if (maxNodes && maxNodes > 0) {
+    const kept = new Set<RawNode>([root]);
+    keep = kept;
+    const kidsOf = (n: RawNode) =>
+      [...n.children.values()]
+        .filter((k) => k.games >= minNodeGames)
+        .sort((a, b) => b.games - a.games)
+        .slice(0, MAX_CHILDREN);
+    // First moves follow the poster's own trivia rule (≥2% of games), so a
+    // line is never spent on an oddity the layout would drop anyway.
+    const topFloor = Math.max(minNodeGames, Math.round(root.games * 0.02));
+    const nextIdx = new Map<RawNode, number>(); // per branch point: next child to open
+    const frontier: RawNode[] = [root];
+    let lines = 0;
+    const openLine = (start: RawNode) => {
+      let n = start;
+      for (;;) {
+        kept.add(n);
+        frontier.push(n);
+        const ks = kidsOf(n);
+        if (!ks.length) break;
+        nextIdx.set(n, 1); // this walk takes the principal child
+        n = ks[0];
+      }
+      lines++;
+    };
+    while (lines < POSTER_MAX_LINES && kept.size < maxNodes) {
+      let best: RawNode | null = null;
+      let bestKids: RawNode[] = [];
+      for (const f of frontier) {
+        const ks = f === root ? kidsOf(f).filter((k) => k.games >= topFloor) : kidsOf(f);
+        const i = nextIdx.get(f) ?? 0;
+        if (i < ks.length && (!best || f.games > best.games)) { best = f; bestKids = ks; }
+      }
+      if (!best) break;
+      const i = nextIdx.get(best) ?? 0;
+      nextIdx.set(best, i + 1);
+      openLine(bestKids[i]);
+    }
+  }
   // Resolve to TreeNodes with FEN/highlight, pruning + collapsing as we go.
-  return resolve(root, new Chess());
+  return resolve(root, new Chess(), '', minNodeGames, keep);
 }
+
+/** Node budget for the poster tree: the most an A1 can meaningfully show at a
+ *  readable board size, and a safe bound on resolve() memory. */
+export const POSTER_MAX_NODES = 1400;
+
+/** Line (leaf-column) budget for the poster tree: about as many long lines as
+ *  an A1 sheet fits side by side at a readable board size. */
+const POSTER_MAX_LINES = 24;
 
 function bump(n: RawNode, r: 'win' | 'loss' | 'draw') {
   if (r === 'win') n.wins++;
@@ -228,7 +294,7 @@ function bump(n: RawNode, r: 'win' | 'loss' | 'draw') {
   else n.draws++;
 }
 
-function resolve(raw: RawNode, chess: Chess, parentName = ''): TreeNode {
+function resolve(raw: RawNode, chess: Chess, parentName = '', minNodeGames: number = MIN_NODE_GAMES, keep?: Set<RawNode>): TreeNode {
   const score = raw.games ? ((raw.wins + raw.draws / 2) / raw.games) * 100 : 0;
   let hl: [string, string] | null = null;
   if (raw.san) {
@@ -271,13 +337,13 @@ function resolve(raw: RawNode, chess: Chess, parentName = ''): TreeNode {
   // Build the full trie to OPENING_PLIES; the render-depth limit lives in
   // layoutTree, so deeper lines stay in the data and are revealed by drilling.
   const kids = [...raw.children.values()].sort((a, b) => b.games - a.games);
-  const kept = kids.filter((k) => k.games >= MIN_NODE_GAMES).slice(0, MAX_CHILDREN);
+  const kept = kids.filter((k) => (keep ? keep.has(k) : k.games >= minNodeGames)).slice(0, MAX_CHILDREN);
   node.collapsed = kids.length - kept.length;
   const mainGames = kept.length ? kept[0].games : 0; // kept is sorted desc
   for (const k of kept) {
     // Children inherit this node's effective opening, so a name only re-appears
     // when the line enters a genuinely different variation.
-    const child = resolve(k, new Chess(chess.fen()), effName);
+    const child = resolve(k, new Chess(chess.fen()), effName, minNodeGames, keep);
     // Gap = a side branch played far less than the main line from this
     // position (a repertoire hole): leaky if it also scores poorly, else
     // just unmapped. The main line itself is never a gap.
@@ -304,8 +370,8 @@ function resolve(raw: RawNode, chess: Chess, parentName = ''): TreeNode {
 /* ── Tidy top-down layout: depth = row, leaves packed left→right, parents
  *    centered over their children. Connectors are parent-bottom → child-top. ── */
 export const CARD_W = 120;
-const COL_GAP = 22;
-const ROW_H = 188;
+export const COL_GAP = 22;
+export const ROW_H = 188;
 
 /** `more` = lines hidden below this node (pruned siblings + plies past the
  *  render limit) — drill into the node (re-root) to reveal them. pathId is the
@@ -322,6 +388,23 @@ export interface LayoutOpts {
   basePath?: string;
   /** Plies to draw before deeper lines fold into a drill badge. */
   maxRows?: number;
+  /** Spacing overrides (the PDF poster packs tighter than the on-screen clinic).
+   *  Default to the module constants, so the clinic layout is unchanged. */
+  cardW?: number;
+  colGap?: number;
+  rowH?: number;
+  /** Drop children played fewer than this many games (the poster prunes
+   *  insignificant lines; the clinic passes 0 = keep all). */
+  minGames?: number;
+  /** Cap the siblings drawn per node (most-played first). The poster narrows
+   *  this for portrait ("longer lines, fewer branches"); the clinic leaves it
+   *  unset = show all kept children. */
+  maxChildren?: number;
+  /** Past this depth (ply), follow only the single most-played child, so main
+   *  lines keep running deep (move 6, 7, 8 …) instead of fanning out. The poster
+   *  lowers this to make a tall, narrow tree that fills a PORTRAIT sheet without
+   *  dropping depth; unset = branch at every level (landscape / clinic). */
+  branchDepth?: number;
 }
 
 /**
@@ -333,6 +416,12 @@ export function layoutTree(root: TreeNode, opts: LayoutOpts = {}): Layout {
   const topNodes = opts.topNodes ?? root.children;
   const basePath = opts.basePath ?? '';
   const maxRows = opts.maxRows ?? RENDER_ROWS;
+  const cardW = opts.cardW ?? CARD_W;
+  const colGap = opts.colGap ?? COL_GAP;
+  const rowH = opts.rowH ?? ROW_H;
+  const minGames = opts.minGames ?? 0;
+  const maxChildren = opts.maxChildren ?? Infinity;
+  const branchDepth = opts.branchDepth ?? Infinity;
   const nodes: LaidNode[] = [];
   const edges: LaidEdge[] = [];
   let cursor = 0; // next free leaf column (in card+gap units)
@@ -341,17 +430,25 @@ export function layoutTree(root: TreeNode, opts: LayoutOpts = {}): Layout {
   const place = (node: TreeNode, depth: number, path: string): number => {
     const pathId = path ? `${path}/${node.san}` : node.san || 'root';
     maxDepth = Math.max(maxDepth, depth);
-    const renderKids = depth + 1 < maxRows ? node.children : [];
+    // Branch (up to maxChildren) only while shallow; past branchDepth follow just
+    // the single main line, so long continuations run on without widening the
+    // tree. Lines only include moves played ≥ minGames (once-played moves aren't
+    // significant enough for the poster).
+    const cap = depth < branchDepth ? maxChildren : 1;
+    const renderKids =
+      depth + 1 < maxRows
+        ? node.children.filter((c) => c.games >= minGames).slice(0, cap)
+        : [];
     let x: number;
     if (renderKids.length === 0) {
-      x = cursor * (CARD_W + COL_GAP);
+      x = cursor * (cardW + colGap);
       cursor++;
     } else {
       const xs = renderKids.map((c) => place(c, depth + 1, pathId));
       x = (xs[0] + xs[xs.length - 1]) / 2;
     }
     const more = node.collapsed + (node.children.length - renderKids.length);
-    const laid: LaidNode = { ...node, x, y: depth * ROW_H, pathId, more, children: node.children };
+    const laid: LaidNode = { ...node, x, y: depth * rowH, pathId, more, children: node.children };
     nodes.push(laid);
     for (const c of renderKids) edges.push({ from: pathId, to: `${pathId}/${c.san}` });
     return x;
@@ -359,8 +456,8 @@ export function layoutTree(root: TreeNode, opts: LayoutOpts = {}): Layout {
 
   for (const c of topNodes) place(c, 0, basePath);
 
-  const width = Math.max(CARD_W, cursor * (CARD_W + COL_GAP) - COL_GAP) + CARD_W;
-  const height = (maxDepth + 1) * ROW_H;
+  const width = Math.max(cardW, cursor * (cardW + colGap) - colGap) + cardW;
+  const height = (maxDepth + 1) * rowH;
   return { nodes, edges, width, height, maxDepth };
 }
 

@@ -561,6 +561,16 @@ select {
   background: var(--bg2);
   color: var(--txt);
   font-size: var(--fs-micro);
+/* No fixed target while auto-import runs — a travelling stripe shows "working". */
+.imp-progress .bar.indeterminate {
+  width: 34%;
+  transition: none;
+  animation: imp-slide 1.1s ease-in-out infinite;
+}
+@keyframes imp-slide {
+  0% { left: -34%; }
+  100% { left: 100%; }
+}
   font-weight: var(--fw-bold);
   letter-spacing: var(--track-caps);
   text-transform: uppercase;
@@ -2487,7 +2497,79 @@ body.panning * {
 .ps-book b { color: var(--txt); font-weight: var(--fw-bold); }
 .ps-book.b-main { color: var(--green); }
 .ps-book.b-offbook { color: var(--yellow); }
-.ps-book-name { margin-top: 3px; font-size: var(--fs-micro); color: var(--txt-faint); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.ps-book-name { margin-top: 3px; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
+
+/* The best move in the verdict is a button that opens the line popup. It keeps
+   the exact type of the <b> it replaced (title: base/bold/--txt) — only an
+   underline marks it as tappable, so hovering never changes the text colour. */
+.ps-best-link {
+  background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
+  font: inherit; font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt);
+  border-bottom: 1px dashed var(--border2);
+  font-variant-numeric: tabular-nums;
+}
+.ps-best-link:hover:not(:disabled) { border-bottom-color: var(--coral); }
+.ps-best-link:disabled { cursor: default; border-bottom-color: transparent; }
+
+/* ── "Where the best move leads" popup (portalled to <body>) ───────────── */
+.pv-backdrop {
+  position: fixed; inset: 0; z-index: 120;
+  display: flex; align-items: center; justify-content: center;
+  padding: 12px;
+  padding-top: calc(12px + env(safe-area-inset-top));
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.45);
+  animation: pv-fade 140ms var(--ease-snap);
+}
+@keyframes pv-fade { from { opacity: 0; } to { opacity: 1; } }
+/* Width is set inline from the board size (8 squares + this padding), so the
+   panel is exactly as wide as its board on any screen. */
+.pv-modal {
+  max-width: 100%;
+  max-height: 100%; overflow-y: auto;
+  box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 14px;
+  background: var(--bg2);
+  border: 1px solid var(--contour);
+  border-radius: 6px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: sheet-in 160ms var(--ease-snap);
+}
+.pv-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.pv-title { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
+/* Icon glyph only — exempt from the three text styles. */
+.pv-x {
+  flex-shrink: 0; width: 26px; height: 26px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid transparent; border-radius: 3px;
+  color: var(--txt-dim); font-size: 14px; cursor: pointer;
+}
+.pv-x:hover { color: var(--txt); border-color: var(--border); }
+.pv-board { line-height: 0; }
+/* Engine eval bar to the left of the popup board — its height matches the board
+   via the stretched flex row; the fill is bottom-anchored and animates. */
+.pv-board-wrap { display: flex; align-items: stretch; gap: 8px; }
+.pv-evalbar {
+  flex: 0 0 12px; width: 12px;
+  border: 1px solid var(--contour); border-radius: 2px;
+  overflow: hidden; position: relative;
+}
+.pv-evalbar-fill {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  transition: height 400ms var(--ease-snap);
+}
+/* Each move lands with a soft highlight rather than a bare jump. */
+.pv-board .ob-hl::after { animation: pv-hl 260ms var(--ease-snap); }
+@keyframes pv-hl { from { opacity: 0; } to { opacity: 0.6; } }
+/* Reads like the game score below the board: left-aligned, wrapping. */
+.pv-line {
+  display: flex; flex-wrap: wrap; gap: 2px;
+  margin: 0; padding: 0; list-style: none; width: 100%;
+}
+.pv-note { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.5; width: 100%; }
+.pv-actions { display: flex; gap: 10px; width: 100%; }
+.pv-actions .ps-btn { flex: 1; }
 
 .ps-controls { display: flex; flex-direction: column; gap: 10px; }
 .ps-btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -2615,3 +2697,43 @@ body.panning * {
   .ct-color-area { width: min(480px, 92vw); min-height: 0; }
   .ct-coord-big { font-size: clamp(60px, 18vw, 120px); }
 }
+
+/* Print-poster dialog — live preview + orientation / coverage options. */
+.print-dialog {
+  width: 100%;
+  max-width: 460px;
+  max-height: 100%;
+  box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 14px;
+  background: var(--bg2);
+  border: 1px solid var(--contour);
+  border-radius: 6px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: sheet-in 160ms var(--ease-snap);
+}
+.pd-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pd-title { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-preview {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 320px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
+  border: 1px solid var(--contour);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.pd-frame { width: 100%; height: 100%; object-fit: contain; display: block; background: #fff; }
+.pd-msg { font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); font-weight: var(--fw-bold); }
+.pd-badge {
+  position: absolute; top: 8px; right: 8px;
+  padding: 3px 8px; border-radius: 2px;
+  background: rgba(0, 0, 0, 0.6); color: #fff;
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
+  text-transform: uppercase; letter-spacing: var(--track-caps);
+}
+.pd-controls { display: flex; flex-direction: column; gap: 10px; }
+.pd-row { display: flex; flex-direction: column; gap: 6px; }
+.pd-lbl { font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.pd-note { font-size: var(--fs-micro); color: var(--txt-dim); line-height: 1.4; }
