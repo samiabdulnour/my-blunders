@@ -774,9 +774,15 @@ export default function Page() {
       });
   }, [loadPuzzle]);
 
-  /* ── Keyboard shortcuts ── */
+  /* ── Keyboard shortcuts ──
+     Bound on the document, so they must ignore keys aimed at a field: the
+     import panel's username input shares the screen with the board, and
+     without this guard typing a name containing "r" resets the current puzzle
+     and Enter both starts the import and skips to the next puzzle. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       if ((e.key === 'ArrowRight' || e.key === 'Enter') && revealed) next();
       if (e.key === 'r' && revealed) retry();
       if (e.key === 'Escape' && !revealed) setSelected(null);

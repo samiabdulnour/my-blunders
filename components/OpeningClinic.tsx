@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { layoutTree, findByPath, hotspots, weakSpots, lineString, formatEval, CARD_W, type LaidNode, type DrillItem } from '@/lib/opening-tree';
 import { useClinic } from '@/lib/clinic-context';
 import { fetchTheory, type Theory } from '@/lib/opening-explorer';
@@ -48,6 +48,29 @@ const LEFT_PAD = 24;
 // line sits in the gap between rows and never crosses the move/eval text. The
 // node name is truncated to one line so node height stays bounded.
 const CARD_BOTTOM = 156;
+/** Board size inside a node card — OpeningBoard at sqSize 12 → 96px. The
+ *  compact (low-zoom) block matches it exactly, so a card's footprint, and with
+ *  it every connector endpoint, is identical in both render modes. */
+const NODE_BOX = 96;
+
+/* ── Zoom ──
+   The range spans 16×, so the buttons step *geometrically*: a fixed ±0.2 would
+   be a nudge at the top of the range and a jump straight to the floor at the
+   bottom. MIN_ZOOM is low enough to fit a whole repertoire — 20 rows is ~3.8k px
+   tall and a 40-leaf spread ~5.8k px wide, against a desktop tree pane of very
+   roughly 1260 × 800 once the sidebar and detail panel take their share. */
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 1.6;
+const ZOOM_STEP = 1.25;
+/** Below this a 120px card paints under ~42px: the 8×8 board is a smudge, and
+ *  64 squares plus piece images per node cost far more than they convey. Nodes
+ *  drop to a flat block there, which is what makes the overview both legible
+ *  and affordable — a 150-node tree is ~9,600 divs in full detail. */
+const DETAIL_ZOOM = 0.35;
+/** Breathing room left around the tree by "Fit". */
+const FIT_PAD = 24;
+
+const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
 function connectorPath(parent: LaidNode, child: LaidNode): string {
   const px = LEFT_PAD + parent.x + CARD_W / 2;
@@ -69,15 +92,33 @@ export function OpeningClinic() {
   const [drillItems, setDrillItems] = useState<DrillItem[] | null>(null);
   const [detailOpen, setDetailOpen] = useState(true);
   const [zoom, setZoom] = useState(1);
-  const zoomBy = (d: number) => setZoom((z) => Math.min(1.6, Math.max(0.4, Math.round((z + d) * 10) / 10)));
   // The scrolling tree pane + a live mirror of the zoom (so the centering
   // effect can read the current zoom without re-running on every zoom change).
   const treeRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
-  // Pending scroll position to apply after a pinch-zoom re-render (useLayoutEffect
+  // Pending scroll position to apply after a zoom re-render (useLayoutEffect
   // reads it once the DOM has updated its new scrollable dimensions).
   const pendingScrollRef = useRef<{ x: number; y: number } | null>(null);
+
+  /**
+   * Zoom to `next`, holding the layout point under the anchor still — anchor in
+   * pane-relative pixels, defaulting to the pane centre. Both button and wheel
+   * zoom go through this, so the tree never slides out from under the cursor.
+   * Identity is stable (it reads live zoom from `zoomRef`), so the listener
+   * effect below can safely depend on it.
+   */
+  const zoomTo = useCallback((next: number, anchorX?: number, anchorY?: number) => {
+    const el = treeRef.current;
+    const z = clampZoom(next);
+    if (!el) { setZoom(z); return; }
+    const ax = anchorX ?? el.clientWidth / 2;
+    const ay = anchorY ?? el.clientHeight / 2;
+    const layoutX = (el.scrollLeft + ax) / zoomRef.current;
+    const layoutY = (el.scrollTop + ay) / zoomRef.current;
+    pendingScrollRef.current = { x: layoutX * z - ax, y: layoutY * z - ay };
+    setZoom(z);
+  }, []);
   // What view we last auto-centred (colour|focus). Re-centre only when the view
   // changes — not on every incremental fetch, which would yank the canvas back.
   const centeredKeyRef = useRef<string | null>(null);
@@ -126,7 +167,7 @@ export function OpeningClinic() {
       if (!pinching || e.touches.length < 2) return;
       e.preventDefault();
       const d = pinchDist(e.touches);
-      const newZ = Math.min(1.6, Math.max(0.4, startZoom * (d / startDist)));
+      const newZ = clampZoom(startZoom * (d / startDist));
       // Keep the canvas point under the pinch midpoint stationary.
       const layoutX = (startScrollX + midX) / startZoom;
       const layoutY = (startScrollY + midY) / startZoom;
@@ -139,6 +180,26 @@ export function OpeningClinic() {
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd, { passive: true });
+
+    // ── ⌘/Ctrl + wheel zoom ─────────────────────────────────────────────────
+    // A plain wheel keeps scrolling the pane; only the modified gesture zooms,
+    // which is also how browsers deliver a trackpad pinch (ctrlKey set). Needs
+    // passive:false so we can preventDefault and stop the browser zooming the
+    // whole page instead.
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      // deltaY is ~±100 per mouse notch but single digits per trackpad tick;
+      // going through exp() keeps both feeling proportional rather than making
+      // the mouse leap a whole range per click.
+      zoomTo(
+        zoomRef.current * Math.exp(-e.deltaY / 320),
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+      );
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
 
     // ── Mouse drag-to-pan ───────────────────────────────────────────────────
     let panStart: { x: number; y: number; scrollLeft: number; scrollTop: number } | null = null;
@@ -173,12 +234,13 @@ export function OpeningClinic() {
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('wheel', onWheel);
       el.removeEventListener('mousedown', onMouseDown);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       document.body.classList.remove('panning');
     };
-  }, []);
+  }, [zoomTo]);
 
   // Focus re-roots the tree at one node (an opening, or any clicked node) so you
   // can drill in; otherwise the whole tree. Path ids are absolute, so a focus
@@ -194,6 +256,27 @@ export function OpeningClinic() {
     return layoutTree(tree);
   }, [tree, focus]);
   const hasGames = tree.games > 0;
+  /** Nodes stop drawing their board below DETAIL_ZOOM — see the constant. */
+  const compact = zoom < DETAIL_ZOOM;
+
+  /** Zoom so the whole tree fits the pane, and scroll back to its top-left.
+   *  Scroll is zeroed directly as well as through `pendingScrollRef` because a
+   *  fit that lands on the current zoom re-renders nothing, and then the layout
+   *  effect that drains the ref would never run. */
+  const fitToScreen = () => {
+    const el = treeRef.current;
+    if (!el) return;
+    const cw = LEFT_PAD + layout.width;
+    const ch = TOP_PAD + layout.height;
+    if (cw <= 0 || ch <= 0) return;
+    const z = clampZoom(
+      Math.min((el.clientWidth - FIT_PAD * 2) / cw, (el.clientHeight - FIT_PAD * 2) / ch)
+    );
+    pendingScrollRef.current = { x: 0, y: 0 };
+    el.scrollLeft = 0;
+    el.scrollTop = 0;
+    setZoom(z);
+  };
 
   const byId = useMemo(() => {
     const m: Record<string, LaidNode> = {};
@@ -323,10 +406,11 @@ export function OpeningClinic() {
               Drill {weak.length} weak spot{weak.length === 1 ? '' : 's'} →
             </button>
           )}
-          <div className="clinic-zoom">
-            <button onClick={() => zoomBy(-0.2)} aria-label="Zoom out" disabled={zoom <= 0.4}>−</button>
+          <div className="clinic-zoom" title="⌘/Ctrl + scroll to zoom, drag to pan">
+            <button onClick={() => zoomTo(zoom / ZOOM_STEP)} aria-label="Zoom out" disabled={zoom <= MIN_ZOOM}>−</button>
             <span className="num">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => zoomBy(0.2)} aria-label="Zoom in" disabled={zoom >= 1.6}>+</button>
+            <button onClick={() => zoomTo(zoom * ZOOM_STEP)} aria-label="Zoom in" disabled={zoom >= MAX_ZOOM}>+</button>
+            <button className="zfit" onClick={fitToScreen} aria-label="Fit the whole tree in view">Fit</button>
           </div>
         </div>
 
@@ -357,7 +441,7 @@ export function OpeningClinic() {
                 })}
               </svg>
               {layout.nodes.map((n) => (
-                <ClinicNode key={n.pathId} node={n} color={color} displayEval={evalOf(n)} selected={selected?.pathId === n.pathId} onSelect={() => { setSelectedId(n.pathId); setDetailOpen(true); }} />
+                <ClinicNode key={n.pathId} node={n} color={color} displayEval={evalOf(n)} compact={compact} selected={selected?.pathId === n.pathId} onSelect={() => { setSelectedId(n.pathId); setDetailOpen(true); }} />
               ))}
             </div>
           </div>
@@ -383,7 +467,7 @@ export function OpeningClinic() {
   );
 }
 
-function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: LaidNode; color: 'w' | 'b'; displayEval: number | null | undefined; selected: boolean; onSelect: () => void }) {
+function ClinicNode({ node, color, displayEval, compact, selected, onSelect }: { node: LaidNode; color: 'w' | 'b'; displayEval: number | null | undefined; compact: boolean; selected: boolean; onSelect: () => void }) {
   // Frame is neutral now; move-quality lives on the connecting lines. Only gap
   // (rarely played), hotspot (blunder spot), and selection still tint the frame.
   const cls =
@@ -392,6 +476,25 @@ function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: La
     (node.deviation ? ' dev' : '') +
     (node.hotspot ? ' hotspot' : '') +
     (selected ? ' sel' : '');
+
+  // ── Overview mode ──
+  // Too small to read, so drop the board, the labels and the badges and keep
+  // only what still carries at this size: the frame's state colour, filled in
+  // so a hotspot reads as a red square from across the whole tree. The block
+  // matches the board's footprint exactly, so connectors land where they do at
+  // full detail. Title gives back the move name on hover.
+  if (compact) {
+    return (
+      <div className="cnode" style={{ left: LEFT_PAD + node.x, top: TOP_PAD + node.y, width: CARD_W }}>
+        <button className="cnode-btn" onClick={onSelect} title={`${node.label}${node.name ? ` — ${node.name}` : ''}`}>
+          <div className={cls + ' compact'}>
+            <div className="cnode-block" style={{ width: NODE_BOX, height: NODE_BOX }} />
+          </div>
+        </button>
+      </div>
+    );
+  }
+
   const evalLabel = displayEval === undefined ? '…' : formatEval(displayEval) || '·';
   return (
     <div className="cnode" style={{ left: LEFT_PAD + node.x, top: TOP_PAD + node.y, width: CARD_W }}>

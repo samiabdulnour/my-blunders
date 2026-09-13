@@ -17,6 +17,10 @@ import type { Puzzle } from '@/lib/types';
  * Stockfish must be installed on the host running this Next.js server:
  *   macOS:  brew install stockfish
  *   Linux:  apt install stockfish
+ *
+ * Unused by every client: both the web app and the iOS app upload-and-analyze
+ * on-device with the WASM engine (`lib/useImporter.ts` → `importFile`). Kept
+ * for local experimentation.
  */
 export const runtime = 'nodejs'; // child_process is not available on edge
 export const maxDuration = 60;

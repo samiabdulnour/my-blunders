@@ -2148,6 +2148,15 @@ body.panning * {
 .cnode-frame.dev { border-color: var(--coral); } /* off-book: left theory here */
 .cnode-frame.hotspot { box-shadow: 0 0 0 1px var(--red), 0 4px 14px -5px var(--red); }
 .cnode-frame.sel { outline: 2px solid var(--contour); outline-offset: 2px; }
+/* Overview (low-zoom) node: a flat block in place of the board. Same footprint
+   as the 96px board so connectors line up, filled by state so the shape of the
+   repertoire — and where the trouble is — reads at a glance. */
+.cnode-block { background: var(--border2); border-radius: 2px; }
+.cnode-frame.compact { transition: none; }
+.cnode-frame.compact.gap .cnode-block { background: var(--txt-faint); }
+.cnode-frame.compact.dev .cnode-block { background: var(--coral); }
+.cnode-frame.compact.hotspot .cnode-block { background: var(--red); }
+.cnode-frame.compact.sel .cnode-block { background: var(--contour); }
 .cnode-warn {
   position: absolute; top: -9px; left: -9px; z-index: 3; display: inline-flex; align-items: center; gap: 2px;
   height: 17px; padding: 0 5px; border-radius: 9px; background: var(--red); color: #fff;
@@ -2298,6 +2307,10 @@ body.panning * {
 .clinic-zoom button:hover:not(:disabled) { color: var(--txt); background: var(--bg3); }
 .clinic-zoom button:disabled { opacity: 0.35; cursor: default; }
 .clinic-zoom .num { min-width: 40px; text-align: center; font-size: var(--fs-micro); color: var(--txt-dim); border-left: 1px solid var(--border); border-right: 1px solid var(--border); padding: 0 2px; }
+.clinic-zoom .zfit {
+  width: auto; padding: 0 8px; font-size: var(--fs-micro); font-weight: var(--fw-bold);
+  text-transform: uppercase; letter-spacing: var(--track-caps); border-left: 1px solid var(--border);
+}
 
 /* Fixed-width topbar lead (toggle + brand) ≈ sidebar width, so the Puzzles/
    Opening tabs line up with the tree content ("All openings"). */
