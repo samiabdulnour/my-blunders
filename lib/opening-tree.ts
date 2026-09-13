@@ -284,9 +284,12 @@ export function buildOpeningTree(
  *  readable board size, and a safe bound on resolve() memory. */
 export const POSTER_MAX_NODES = 1400;
 
-/** Line (leaf-column) budget for the poster tree: about as many long lines as
- *  an A1 sheet fits side by side at a readable board size. */
-const POSTER_MAX_LINES = 24;
+/** Line (leaf-column) budget for the poster tree. A tidy layout gives every leaf
+ *  its own column, so this is what actually sets the board size: an A1 portrait
+ *  sheet is 1577pt wide inside its margins, and a column is (CARD_W + COL_GAP)
+ *  = 116 layout units, so N lines render boards at 1577 / (116N + 108) * 96 pt.
+ *  19 lines → ~65pt boards (24 lines gave ~52pt). Fewer, larger boards. */
+const POSTER_MAX_LINES = 19;
 
 function bump(n: RawNode, r: 'win' | 'loss' | 'draw') {
   if (r === 'win') n.wins++;

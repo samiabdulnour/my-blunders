@@ -13,7 +13,7 @@
  * what surfaces "Save to Files" / Print inside the iOS app), falling back to a
  * plain download on desktop web.
  */
-import { layoutTree, findByPath, RENDER_ROWS, type TreeNode, type LaidNode } from './opening-tree';
+import { layoutTree, findByPath, formatEval, RENDER_ROWS, type TreeNode, type LaidNode } from './opening-tree';
 import { loadUsername } from './storage';
 
 // The poster packs far tighter than the on-screen clinic — small boards nearly
@@ -271,7 +271,11 @@ async function renderPoster(
   // a readable floor below which we prune the least-played lines instead.
   const DEEP = RENDER_ROWS + 4;
   const MIN_BOARD_PT = 26; // allow a dense, busy map (small boards) before pruning
-  const maxRows = portrait ? DEEP : 14;
+  // Portrait row budget: the tallest line sets the height, so cap it just under
+  // what the sheet fits at the target board size — otherwise height binds first
+  // and the boards come out smaller than the line budget allows. 23 rows ×
+  // ROW_H 140 + TOP_PAD fits 2192pt of sheet at ~65pt boards.
+  const maxRows = portrait ? DEEP - 1 : 14;
   const branchDepth = DEEP;
   let minGames = 1; // show every line you've played (the poster tree keeps ≥1)
   const build = () => layoutAt({ mg: minGames, maxRows, maxChildren: 8, branchDepth });
@@ -365,7 +369,7 @@ async function renderPoster(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
   doc.text(
-    'Under each board: the move, then your score in that line — (wins + ½ draws) as a percentage. Games played is top-left. Green strong · amber even · red weak.    Connector colour grades the move: green good · amber risky · red blunder.',
+    'Under each board: the move, your score in that line — (wins + ½ draws) as a percentage — then the engine eval in pawns (+ favours White) where the game was analysed. Games played is top-left. Green strong · amber even · red weak.    Connector colour grades the move: green good · amber risky · red blunder.',
     MARGIN,
     pageH - 26,
     { baseline: 'top' }
@@ -478,11 +482,16 @@ async function renderPoster(
     // line (perf-coloured), centred as a unit.
     const move = n.san;
     const scoreStr = `${Math.round(n.score)}%`;
+    // Engine eval for the position, where it exists. Only games the server
+    // actually analysed carry evals, so most boards have none — hence the
+    // graceful blank rather than a placeholder.
+    const evalStr = formatEval(n.eval);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(Math.max(3.5, L(9)));
     const mw = move ? doc.getTextWidth(move + ' ') : 0;
     const sw = doc.getTextWidth(scoreStr);
-    const lx = cxc - (mw + sw) / 2;
+    const ew = evalStr ? doc.getTextWidth(' ' + evalStr) : 0;
+    const lx = cxc - (mw + sw + ew) / 2;
     const ly = Y(boardLY + BOARD + 3);
     if (move) {
       text(C_DIM);
@@ -490,6 +499,10 @@ async function renderPoster(
     }
     text(n.perf === 'green' ? C_GREEN : n.perf === 'amber' ? C_YELLOW : C_RED);
     doc.text(scoreStr, lx + mw, ly, { align: 'left', baseline: 'top' });
+    if (evalStr) {
+      text(C_TEXT);
+      doc.text(' ' + evalStr, lx + mw + sw, ly, { align: 'left', baseline: 'top' });
+    }
   }
   }; // end drawContent
 
