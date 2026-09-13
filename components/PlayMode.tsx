@@ -392,6 +392,7 @@ export function PlayMode() {
           flashFail={null}
           bounceBack={null}
           introMove={null}
+          autoAnimate
           revealed={!canMove}
           onSquareClick={onSquareClick}
           onDragMove={(mv) => applyUserMove(mv)}

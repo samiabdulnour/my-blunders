@@ -61,6 +61,11 @@
   --track-caps: 0.14em; /* the single uppercase tracking */
   /* Motion — snap, not bounce. */
   --ease-snap: cubic-bezier(0.2, 0.9, 0.2, 1);
+  /* Piece movement. Slower and smoother than --ease-snap, which overshoots
+     into its target so hard that a sliding piece reads as a jump. Duration is
+     shared with MOVE_ANIM_MS in components/Board.tsx. */
+  --ease-move: cubic-bezier(0.2, 0, 0.15, 1);
+  --move-anim: 180ms;
 }
 
 html[data-theme='dark'] {
@@ -860,6 +865,15 @@ select {
   user-select: none;
   font-size: 0;
   line-height: 0;
+  /* The board claims every touch that starts on it (touch-action applies to
+     descendants too). A board never needs to pan or zoom, and leaving those
+     gestures to the browser is what makes taps feel unreliable on iOS: a
+     thumb that rolls a couple of pixels hands the gesture to the scroller,
+     the press is cancelled, and the move you meant to play never lands. The
+     page still scrolls from anywhere outside the board. */
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 .files {
   display: flex;
@@ -881,6 +895,7 @@ select {
   justify-content: center;
   position: relative;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 .sq-l {
   background: var(--sq-l);
@@ -946,12 +961,13 @@ html[data-theme='dark'] .sq.cap-ring {
   pointer-events: none;
   position: relative;
   z-index: 2;
+  -webkit-user-drag: none;
 }
 
-/* Wrapper around each piece — picks up the drag and hosts the bounce
-   animation. `touch-action: none` is critical: it tells mobile Safari
-   that touches starting on a piece are for the chess-drag pipeline,
-   not for scrolling/zooming the page. */
+/* Wrapper around each piece — what a drag moves and what the move
+   animation runs on. Pointer events are handled by the grid, not here;
+   `touch-action: none` is restated anyway so a press on a piece is
+   unmistakably the chess pipeline's, never the scroller's. */
 .piece-wrap {
   position: absolute;
   inset: 0;
@@ -971,23 +987,27 @@ html[data-theme='dark'] .sq.cap-ring {
 
 /* Shared move animation: the piece sits in its DOM square and slides from a
    translated starting position (--bx/--by in square units) back to (0,0).
-   Used for both the wrong-move bounce-back and the puzzle-load intro that
-   replays the opponent's move. Snap easing keeps it crisp, not springy. */
+   Used for every move the user didn't drag into place by hand — their own
+   taps, the engine's replies, and the wrong-move bounce-back. */
 @keyframes piece-slide-in {
   from {
-    transform: translate(
+    transform: translate3d(
       calc(var(--bx) * var(--sq-size, 60px)),
-      calc(var(--by) * var(--sq-size, 60px))
+      calc(var(--by) * var(--sq-size, 60px)),
+      0
     );
   }
   to {
-    transform: translate(0, 0);
+    transform: translate3d(0, 0, 0);
   }
 }
+/* Note: no `pointer-events: none` here. The wrap sits in its destination
+   square for the whole slide, so it is already the right hit target, and
+   blanking it just created a window after every move where the board
+   ignored you. */
 .piece-wrap.animating {
-  animation: piece-slide-in 220ms var(--ease-snap);
-  cursor: default;
-  pointer-events: none;
+  animation: piece-slide-in var(--move-anim) var(--ease-move) both;
+  will-change: transform;
 }
 
 /* While dragging the wrap escapes its square via inline transform (from JS)
@@ -1000,6 +1020,15 @@ html[data-theme='dark'] .sq.cap-ring {
   transition: none;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
   pointer-events: none;
+  will-change: transform;
+}
+
+/* Anyone who has asked the system for less motion gets the position, not the
+   journey — the piece simply appears on its new square. */
+@media (prefers-reduced-motion: reduce) {
+  .piece-wrap.animating {
+    animation-duration: 1ms;
+  }
 }
 
 /* ─── Verdict-first result panel ─── */

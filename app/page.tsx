@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Chess, type Move } from 'chess.js';
 
 import { AppShell } from '@/components/AppShell';
-import { Board } from '@/components/Board';
+import { Board, MOVE_ANIM_MS } from '@/components/Board';
 import { OpeningClinic } from '@/components/OpeningClinic';
 import { OpeningSidebar } from '@/components/OpeningSidebar';
 import { PlayMode } from '@/components/PlayMode';
@@ -53,6 +53,11 @@ import {
 } from '@/lib/storage';
 
 const DEFAULT_STATS: SessionStats = { correct: 0, wrong: 0, streak: 0, bestStreak: 0 };
+
+/** How long `introMove` stays set. It only keeps the slide-in class on the
+ *  piece, so it has to outlive the animation itself and nothing more — the
+ *  small margin covers a frame or two of scheduling slop. */
+const ANIM_CLEAR_MS = MOVE_ANIM_MS + 60;
 
 /**
  * The starter puzzle set. On the web this comes from the `/api/puzzles` route;
@@ -337,7 +342,7 @@ export default function Page() {
       setTimeout(() => {
         if (currentRef.current?.id !== id) return;
         setIntroMove(null);
-      }, 400);
+      }, ANIM_CLEAR_MS);
     } else {
       setIntroMove(null);
     }
@@ -403,7 +408,7 @@ export default function Page() {
       setIntroMove({ from: applied.from, to: applied.to });
       setTimeout(() => {
         if (currentRef.current?.id === id) setIntroMove(null);
-      }, 450);
+      }, ANIM_CLEAR_MS);
       step += 1;
       // Calm, readable cadence — one move roughly every second.
       setTimeout(playNext, 1000);
@@ -493,7 +498,7 @@ export default function Page() {
         const id = current.id;
         setTimeout(() => {
           if (currentRef.current?.id === id) setIntroMove(null);
-        }, 250);
+        }, ANIM_CLEAR_MS);
       }
       return;
     }
@@ -512,7 +517,7 @@ export default function Page() {
         const okId = current.id;
         setTimeout(() => {
           if (currentRef.current?.id === okId) setIntroMove(null);
-        }, 350);
+        }, ANIM_CLEAR_MS);
       }
 
       // Normal puzzles are scored on the KEY move — you found the best move —
@@ -567,7 +572,7 @@ export default function Page() {
           setIntroMove({ from: rep.from, to: rep.to });
           setTimeout(() => {
             if (currentRef.current?.id === id) setIntroMove(null);
-          }, 350);
+          }, ANIM_CLEAR_MS);
           setLineStep(replyStep + 1);
           setLegalFrom(groupLegal(c2));
         }, 500);
