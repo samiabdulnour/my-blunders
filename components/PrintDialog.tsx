@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { TreeNode } from '@/lib/opening-tree';
 import { buildOpeningTreePdf, renderOpeningTreePreview, savePdf, type OpeningPdfOpts } from '@/lib/opening-pdf';
+import { fillPosterEvals } from '@/lib/opening-engine';
 
 /**
  * Print dialog for the opening-tree poster. Shows a fit-to-page preview image
@@ -36,9 +37,19 @@ export function PrintDialog({ tree, color, focusPath, focusName, onClose }: Prin
   const [saving, setSaving] = useState(false);
   // Bumps to invalidate an in-flight render when options change or we unmount.
   const runRef = useRef(0);
+  // Engine evals by FEN, filled in the background so every board shows one (only
+  // ~1 in 5 positions comes from a server-analysed game). Held in a ref because
+  // the render effect must not re-fire on every position analysed — `evalsReady`
+  // bumps once, when a pass finishes and actually added something.
+  const evalsRef = useRef<Map<string, number>>(new Map());
+  // Positions we've already searched — including ones the engine gave nothing
+  // for, which would otherwise be retried on every redraw.
+  const triedRef = useRef<Set<string>>(new Set());
+  const [evalsReady, setEvalsReady] = useState(0);
+  const [analysing, setAnalysing] = useState<{ done: number; total: number } | null>(null);
 
   const opts = useCallback(
-    (): OpeningPdfOpts => ({ focusPath, focusName, orientation }),
+    (): OpeningPdfOpts => ({ focusPath, focusName, orientation, evals: evalsRef.current }),
     [focusPath, focusName, orientation]
   );
 
@@ -59,12 +70,33 @@ export function PrintDialog({ tree, color, focusPath, focusName, onClose }: Prin
     setBuilding(true);
     setErr(false);
     renderOpeningTreePreview(tree, color, opts())
-      .then(({ dataUrl, pages: n, branches: br }) => {
+      .then(({ dataUrl, pages: n, branches: br, fens }) => {
         if (run !== runRef.current) return; // superseded
         setImg(dataUrl);
         setPages(n);
         setBranches(br);
         setBuilding(false);
+        // Preview is up; now fill in the missing evals. Cached per position, so
+        // this is instant on a re-render and only searches what's genuinely new.
+        const missing = fens.filter((f) => !evalsRef.current.has(f) && !triedRef.current.has(f));
+        if (!missing.length) return;
+        setAnalysing({ done: 0, total: missing.length });
+        fillPosterEvals(
+          missing,
+          (done, total) => { if (run === runRef.current) setAnalysing({ done, total }); },
+          () => run !== runRef.current,
+        )
+          .then((found) => {
+            if (run !== runRef.current) return;
+            setAnalysing(null);
+            for (const f of missing) triedRef.current.add(f);
+            let added = 0;
+            for (const [fen, cp] of found) {
+              if (!evalsRef.current.has(fen)) { evalsRef.current.set(fen, cp); added++; }
+            }
+            if (added) setEvalsReady((v) => v + 1); // redraw with the evals in
+          })
+          .catch(() => { if (run === runRef.current) setAnalysing(null); });
       })
       .catch(() => {
         if (run !== runRef.current) return;
@@ -74,7 +106,7 @@ export function PrintDialog({ tree, color, focusPath, focusName, onClose }: Prin
     return () => {
       runRef.current++;
     };
-  }, [tree, color, opts]);
+  }, [tree, color, opts, evalsReady]);
 
   const onSave = useCallback(async () => {
     if (saving) return;
@@ -139,6 +171,12 @@ export function PrintDialog({ tree, color, focusPath, focusName, onClose }: Prin
               ))}
             </div>
           </div>
+          {analysing && (
+            <div className="pd-note">
+              Analysing positions with Stockfish… {analysing.done}/{analysing.total}
+              {' '}— you can save now and the evals will be missing, or wait a moment.
+            </div>
+          )}
           <div className="pd-note">
             One A1 sheet. If your repertoire is too large to fit, the least-played lines are
             dropped so your main lines stay readable.

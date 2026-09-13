@@ -170,6 +170,9 @@ export interface OpeningPdfOpts {
   maxPlies?: number | 'auto';
   /** Sheet orientation (default 'portrait'). */
   orientation?: 'portrait' | 'landscape';
+  /** Engine evals by FEN (white-relative cp), overriding the sparse per-game
+   *  evals so every board can show one. See fillPosterEvals(). */
+  evals?: Map<string, number>;
 }
 
 /** What a build produced: the PDF blob plus how to name/announce it. */
@@ -194,7 +197,7 @@ async function renderPoster(
   tree: TreeNode,
   color: 'w' | 'b',
   opts: OpeningPdfOpts
-): Promise<{ doc: any; filename: string; title: string; pages: number; branches: string[] }> { // eslint-disable-line @typescript-eslint/no-explicit-any
+): Promise<{ doc: any; filename: string; title: string; pages: number; branches: string[]; fens: string[] }> { // eslint-disable-line @typescript-eslint/no-explicit-any
   const focusNode = opts.focusPath ? findByPath(tree, opts.focusPath) : null;
 
   // Player nickname + a small account snapshot for the header. Totals are summed
@@ -311,11 +314,17 @@ async function renderPoster(
   const sub = `My Blunders · opening tree${minGames > 2 ? ` · most-played lines (≥ ${minGames} games)` : ''} · ${named} named lines`;
   const branches: string[] = [];
 
+  // layout.width carries a trailing card of padding and LEFT_PAD leads it, so
+  // centring on it leaves visibly different margins. Centre the BOARDS' own
+  // bounding box on the page instead, for equal borders left and right.
+  const nodeMinX = layout.nodes.reduce((m, n) => Math.min(m, n.x), Infinity);
+  const nodeMaxX = layout.nodes.reduce((m, n) => Math.max(m, n.x), -Infinity);
+  const contentW = Number.isFinite(nodeMinX) ? nodeMaxX - nodeMinX + CARD_W : layout.width;
   const treeW = LEFT_PAD + layout.width;
   const treeH = TOP_PAD + layout.height;
   // Scale-to-fit fills the binding axis; centre the slack on the other so the
   // tree sits balanced on the sheet.
-  const offX = MARGIN + LEFT_GUTTER + Math.max(0, (avail.w - treeW * S) / 2);
+  const offX = (pageW - contentW * S) / 2 - (LEFT_PAD + nodeMinX) * S;
   const offY = MARGIN + HEADER + Math.max(0, (avail.h - treeH * S) / 2);
   const X = (lx: number) => offX + lx * S;
   const Y = (ly: number) => offY + ly * S;
@@ -324,6 +333,11 @@ async function renderPoster(
   const fill = (hex: string) => { const [r, g, b] = hexToRgb(hex); doc.setFillColor(r, g, b); };
   const stroke = (hex: string) => { const [r, g, b] = hexToRgb(hex); doc.setDrawColor(r, g, b); };
   const text = (hex: string) => { const [r, g, b] = hexToRgb(hex); doc.setTextColor(r, g, b); };
+
+  // Engine evals (when the caller has run a pass) win over the per-game average:
+  // they cover every position, not just the ~1 in 5 from an analysed game.
+  const evalOf = (n: { fen: string; eval: number | null }): number | null =>
+    opts.evals?.get(n.fen) ?? n.eval;
 
   const byId: Record<string, LaidNode> = {};
   for (const n of layout.nodes) byId[n.pathId] = n;
@@ -369,7 +383,7 @@ async function renderPoster(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
   doc.text(
-    'Under each board: the move, your score in that line — (wins + ½ draws) as a percentage — then the engine eval in pawns (+ favours White) where the game was analysed. Games played is top-left. Green strong · amber even · red weak.    Connector colour grades the move: green good · amber risky · red blunder.',
+    'Under each board: the move, the engine eval in pawns (+ favours White), then your record from that position as wins/draws/losses. Games played is top-left. Green strong · amber even · red weak.    Connector colour grades the move: green good · amber risky · red blunder.',
     MARGIN,
     pageH - 26,
     { baseline: 'top' }
@@ -383,7 +397,7 @@ async function renderPoster(
     const a = byId[e.from];
     const b = byId[e.to];
     if (!a || !b) continue;
-    const col = edgeColor(a.fen, a.eval, b.eval);
+    const col = edgeColor(a.fen, evalOf(a), evalOf(b));
     const px = X(LEFT_PAD + a.x + CARD_W / 2);
     const py = Y(TOP_PAD + a.y + CARD_BOTTOM);
     const cx = X(LEFT_PAD + b.x + CARD_W / 2);
@@ -480,29 +494,41 @@ async function renderPoster(
 
     // One compact line under the board: the move (dim) then your score in that
     // line (perf-coloured), centred as a unit.
+    // One line under the board: the move, the engine eval, then the raw
+    // win/draw/loss split (perf-coloured). Counts rather than a percentage, so
+    // "2/0/1" can't read as confidently as "67%".
     const move = n.san;
-    const scoreStr = `${Math.round(n.score)}%`;
-    // Engine eval for the position, where it exists. Only games the server
-    // actually analysed carry evals, so most boards have none — hence the
-    // graceful blank rather than a placeholder.
-    const evalStr = formatEval(n.eval);
+    const evalStr = formatEval(evalOf(n));
+    const wdl = `${n.wins}/${n.draws}/${n.losses}`;
+    // A popular first move carries counts like "252/20/304", which would run
+    // past the card and collide with its neighbour — so shrink to fit.
+    let fs = L(9);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(Math.max(3.5, L(9)));
+    const widthAt = (size: number) => {
+      doc.setFontSize(size);
+      return (
+        (move ? doc.getTextWidth(move + ' ') : 0) +
+        (evalStr ? doc.getTextWidth(evalStr + ' ') : 0) +
+        doc.getTextWidth(wdl)
+      );
+    };
+    while (fs > L(5) && widthAt(fs) > L(CARD_W)) fs *= 0.92;
+    doc.setFontSize(Math.max(3.5, fs));
     const mw = move ? doc.getTextWidth(move + ' ') : 0;
-    const sw = doc.getTextWidth(scoreStr);
-    const ew = evalStr ? doc.getTextWidth(' ' + evalStr) : 0;
-    const lx = cxc - (mw + sw + ew) / 2;
+    const ew = evalStr ? doc.getTextWidth(evalStr + ' ') : 0;
+    const ww = doc.getTextWidth(wdl);
+    const lx = cxc - (mw + ew + ww) / 2;
     const ly = Y(boardLY + BOARD + 3);
     if (move) {
       text(C_DIM);
       doc.text(move + ' ', lx, ly, { align: 'left', baseline: 'top' });
     }
-    text(n.perf === 'green' ? C_GREEN : n.perf === 'amber' ? C_YELLOW : C_RED);
-    doc.text(scoreStr, lx + mw, ly, { align: 'left', baseline: 'top' });
     if (evalStr) {
       text(C_TEXT);
-      doc.text(' ' + evalStr, lx + mw + sw, ly, { align: 'left', baseline: 'top' });
+      doc.text(evalStr + ' ', lx + mw, ly, { align: 'left', baseline: 'top' });
     }
+    text(n.perf === 'green' ? C_GREEN : n.perf === 'amber' ? C_YELLOW : C_RED);
+    doc.text(wdl, lx + mw + ew, ly, { align: 'left', baseline: 'top' });
   }
   }; // end drawContent
 
@@ -519,6 +545,7 @@ async function renderPoster(
     title: `${title} — My Blunders`,
     pages: 1,
     branches,
+    fens: layout.nodes.map((nd) => nd.fen),
   };
 }
 
@@ -554,16 +581,16 @@ export async function renderOpeningTreePreview(
   color: 'w' | 'b',
   opts: OpeningPdfOpts = {},
   targetPx = 1400
-): Promise<{ dataUrl: string; pages: number; branches: string[] }> {
+): Promise<{ dataUrl: string; pages: number; branches: string[]; fens: string[] }> {
   const { CanvasPdf } = await import('./pdf-canvas');
-  const { doc, pages, branches } = await renderPoster(
+  const { doc, pages, branches, fens } = await renderPoster(
     (orient) => new CanvasPdf(orient, targetPx),
     tree,
     color,
     opts
   );
   await doc.flushImages();
-  return { dataUrl: doc.toDataURL(), pages, branches };
+  return { dataUrl: doc.toDataURL(), pages, branches, fens };
 }
 
 /** Build the poster and hand it off — share sheet on iOS, download on web. */
