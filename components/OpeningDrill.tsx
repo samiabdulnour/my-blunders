@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Chess, type Move } from 'chess.js';
 import { Board } from '@/components/Board';
-import { play as playCue } from '@/lib/sound';
 import { evalPosition, candidateMoves, type EngineEval, type EngineMove } from '@/lib/opening-engine';
 import { fetchTheory } from '@/lib/opening-explorer';
 import { formatEval, type DrillItem } from '@/lib/opening-tree';
@@ -165,7 +164,6 @@ export function OpeningDrill({ items, onExit }: { items: DrillItem[]; onExit: ()
     if (!applied) return;
 
     if (ok) {
-      playCue('correct');
       setChess(new Chess(c.fen())); setSelected(null); setLegalFrom({});
       setLastFrom(mv.from); setLastTo(mv.to); setFlashOk(mv.to); setFlashFail(null);
       setPlayed((s) => [...s, applied!.san]);

@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { HistoryEntry, Puzzle, SessionStats } from '@/lib/types';
 import type { ThemeMode } from '@/lib/storage';
-import { loadSoundOn, saveSoundOn } from '@/lib/storage';
-import { installUnlock, setSoundEnabled } from '@/lib/sound';
 import { BrandMark } from './BrandMark';
 import { StatsSheet } from './StatsSheet';
 import { ImportBar } from './ImportBar';
@@ -58,7 +56,6 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const [sideOpen, setSideOpen] = useState(true);
-  const [soundOn, setSoundOn] = useState(true);
   const [statsOpen, setStatsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement | null>(null);
@@ -102,20 +99,6 @@ export function AppShell({
       mqlNarrow.removeEventListener('change', sync);
     };
   }, []);
-
-  useEffect(() => {
-    const on = loadSoundOn();
-    setSoundOn(on);
-    setSoundEnabled(on);
-    installUnlock();
-  }, []);
-
-  const toggleSound = () => {
-    const next = !soundOn;
-    setSoundOn(next);
-    setSoundEnabled(next);
-    saveSoundOn(next);
-  };
 
   // Click-away + Escape for the stats sheet (ignore clicks on the toggle).
   useEffect(() => {
@@ -293,29 +276,6 @@ export function AppShell({
               <polyline points="21 16 21 21 16 21" />
               <line x1="15" y1="15" x2="21" y2="21" />
               <line x1="4" y1="4" x2="9" y2="9" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className={'icon-btn' + (soundOn ? ' on' : '')}
-            onClick={toggleSound}
-            title={soundOn ? 'Sound on' : 'Sound off'}
-            aria-label="Board sounds"
-            aria-pressed={soundOn}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-              {soundOn ? (
-                <>
-                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                  <path d="M18.36 5.64a9 9 0 0 1 0 12.73" />
-                </>
-              ) : (
-                <>
-                  <line x1="22" y1="9" x2="16" y2="15" />
-                  <line x1="16" y1="9" x2="22" y2="15" />
-                </>
-              )}
             </svg>
           </button>
           <button

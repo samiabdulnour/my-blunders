@@ -1,5 +1,4 @@
 import UIKit
-import AVFoundation
 import Capacitor
 
 @UIApplicationMain
@@ -8,19 +7,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // The board makes its own sounds, and a WebView's audio is "ambient" by
-        // default — which the ringer switch silences. A phone lives on silent,
-        // so that would mean the sounds are effectively off for most people and
-        // nothing in the app would explain why. `.playback` makes them audible
-        // regardless of the switch, the way a chess app is expected to behave;
-        // `.mixWithOthers` keeps it from stopping whatever is already playing,
-        // since this is a few short knocks and not a reason to interrupt
-        // somebody's music. Sound is still switchable off in the app itself,
-        // which is where that choice belongs.
-        //
-        // To respect the ringer switch instead, use `.ambient` here.
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // Override point for customization after application launch.
         return true
     }
 

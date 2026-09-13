@@ -30,7 +30,6 @@ const KEY_ONBOARDED = 'bt.onboarded';
 const KEY_STATS = 'bt.stats';
 const KEY_HISTORY = 'bt.history';
 const KEY_OPENING_GAMES = 'bt.openingGames';
-const KEY_SOUND = 'bt.sound';
 
 /** A stored puzzle is only usable if it has the fields the app dereferences
  *  unconditionally (id, and a setupMoves array it iterates on load/render).
@@ -207,20 +206,6 @@ export function saveRandomOrder(on: boolean): void {
   if (typeof window === 'undefined') return;
   if (on) window.localStorage.setItem(KEY_RANDOM, '1');
   else window.localStorage.removeItem(KEY_RANDOM);
-}
-
-/** Board sounds. On by default — a chess app that makes no noise when you move
- *  a piece feels broken — but stored inverted (only the "off" choice is
- *  written) so the default survives a schema the key predates. */
-export function loadSoundOn(): boolean {
-  if (typeof window === 'undefined') return true;
-  return window.localStorage.getItem(KEY_SOUND) !== '0';
-}
-
-export function saveSoundOn(on: boolean): void {
-  if (typeof window === 'undefined') return;
-  if (on) window.localStorage.removeItem(KEY_SOUND);
-  else window.localStorage.setItem(KEY_SOUND, '0');
 }
 
 export type ThemeMode = 'light' | 'dark';
