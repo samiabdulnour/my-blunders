@@ -56,12 +56,12 @@ function computeOldestMs(games: ParsedGame[]): number | null {
  * which is why this route opts into the Node.js runtime.
  */
 export const runtime = 'nodejs';
-// This server-side-Stockfish route is used only by the native/iOS build (which
-// points at an always-on Node host like Render); the web app analyzes in the
-// browser and never calls it. We cap maxDuration at 60s so the route doesn't
-// trip Vercel's Hobby function limit when the same repo is deployed there for
-// the web — on a long-running `next start` host this value isn't enforced, so
-// iOS imports can still take as long as they need.
+// This server-side-Stockfish route is called by no client any more: the web app
+// and the iOS app both analyze on-device with the WASM engine. It is kept for
+// local experimentation, and needs an always-on Node host with `stockfish` on
+// PATH to work at all. We cap maxDuration at 60s so it doesn't trip Vercel's
+// Hobby function limit when the repo is deployed there for the web — where the
+// binary is absent and the route would fail regardless.
 export const maxDuration = 60;
 
 export async function POST(req: Request) {

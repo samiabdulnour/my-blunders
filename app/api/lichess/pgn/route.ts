@@ -17,7 +17,8 @@ import { fetchLichessGamesPgn, LICHESS_MAX_GAMES } from '@/lib/lichess';
  * `LICHESS_TOKEN` can be applied server-side for higher rate limits.
  *
  * The legacy `/api/lichess/import` route (which *does* run Stockfish and
- * streams puzzles) is kept for the iOS build, which still analyzes server-side.
+ * streams puzzles) is now called by no client at all — the iOS app analyzes
+ * on-device too. It is kept only for local experimentation.
  */
 export const runtime = 'nodejs';
 

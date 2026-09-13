@@ -425,7 +425,7 @@ export function useImporter({
 
   /* ── PGN file upload fallback ──
      For users who have a PGN exported from somewhere and don't want to wait
-     on the Lichess API. Analyzed locally on web, server-side on native. */
+     on the Lichess API. Analyzed on-device with WASM on every platform. */
   const importFile = useCallback(
     async (file: File) => {
       // Bound the upload so a huge PGN can't OOM the tab (file.text loads it all

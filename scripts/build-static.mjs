@@ -8,12 +8,13 @@
  * handlers are genuinely dynamic (they run stockfish, stream Lichess
  * games, etc.) and refuse to be force-static, so the build errors out.
  *
- * The iOS bundle doesn't need the API routes anyway — those stay on
- * Render and are called via `NEXT_PUBLIC_API_BASE`. So the simplest fix
- * is to temporarily rename `app/api` out of the way for the duration of
- * the export, then put it back. We register exit + SIGINT handlers so
- * the directory is always restored even if the build crashes or the
- * user hits Ctrl-C.
+ * The iOS bundle doesn't need the API routes anyway — the app is
+ * self-contained: it fetches PGN straight from Lichess / chess.com over
+ * Capacitor's native HTTP and analyzes on-device with the bundled WASM
+ * engine (see `docs/ios.md`). So the simplest fix is to temporarily
+ * rename `app/api` out of the way for the duration of the export, then
+ * put it back. We register exit + SIGINT handlers so the directory is
+ * always restored even if the build crashes or the user hits Ctrl-C.
  */
 
 import { existsSync, renameSync, rmSync } from 'node:fs';

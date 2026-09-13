@@ -18,6 +18,9 @@ export const maxDuration = 30;
  *
  * Stockfish placement: see `lib/stockfish.ts` for the choice between
  * a local Node binary, the Lichess cloud-eval API, or client-side WASM.
+ *
+ * Unused by every client: both surfaces analyze on-device with the WASM
+ * engine. Kept for local experimentation and ad-hoc position checks.
  */
 export async function POST(req: Request) {
   let body: { fen?: string; depth?: number; multiPv?: number };
