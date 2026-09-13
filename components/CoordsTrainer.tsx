@@ -460,7 +460,6 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
               flashFail={wrong?.to ?? null}
               bounceBack={wrong}
               introMove={null}
-              autoAnimate
               revealed={done}
               onSquareClick={onSquareClick}
               onDragMove={(mv) => tryMove(mv)}

@@ -1,15 +1,9 @@
 'use client';
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Chess, Move } from 'chess.js';
 import { Piece } from './Piece';
+import { play as playCue } from '@/lib/sound';
 
 interface BoardProps {
   chess: Chess;
@@ -27,22 +21,13 @@ interface BoardProps {
   flashOk: string | null;
   /** Square persistently painted red (user's wrong move). */
   flashFail: string | null;
-  /** If set, the piece at `.from` gets a CSS bounce-back animation
-   *  starting from the `.to` square — used to rewind a wrong move. */
+  /** Rewind a wrong move: the piece now on `.from` came back from `.to`. */
   bounceBack: { from: string; to: string } | null;
-  /** If set, the piece at `.to` gets a slide-in animation starting
-   *  from `.from` — used on puzzle load to replay the opponent's move
-   *  and on the user's correct move / show-solution to animate the
-   *  piece forward into place. */
+  /** Replay a move the board can't infer — the puzzle-load intro, where the
+   *  position jumps by several plies and the opponent's last move should still
+   *  be shown arriving. Ignored when the piece was already carried across
+   *  (then it's gliding under its own steam). */
   introMove: { from: string; to: string } | null;
-  /** Animate moves without the caller choreographing anything: whenever the
-   *  position advances by exactly one half-move, the piece slides from
-   *  `lastFrom` to `lastTo`. Jumps of any other size (new game, take-back,
-   *  scrubbing a move list, loading a position) are left un-animated, and a
-   *  move the user dragged into place is skipped — the piece is already where
-   *  they dropped it. Callers that choreograph their own sequences drive
-   *  `introMove` instead and leave this off. */
-  autoAnimate?: boolean;
   /** If true, input is disabled (puzzle already answered, or the board
    *  is mid-bounce from a wrong move). */
   revealed: boolean;
@@ -62,26 +47,120 @@ const DRAG_THRESHOLD_PX = 5;
  *  tap, and swallowing those is what makes a board feel like it ignores you. */
 const TAP_SLOP_PX = 12;
 
-/** Duration of the piece-slide animation. Keep in sync with `--move-anim`
- *  in globals.css — CSS owns the real timing, this is the fallback used to
- *  clear the animation state if `animationend` never arrives (interrupted
- *  render, backgrounded webview). */
-export const MOVE_ANIM_MS = 180;
+/** Duration of a piece's travel. Keep in sync with `--move-anim` in
+ *  globals.css; CSS owns the real timing, this is the fallback that clears
+ *  leftover animation state if `animationend` never arrives. */
+export const MOVE_ANIM_MS = 200;
 
-/** `useLayoutEffect` in the browser, `useEffect` when prerendering (where it
- *  warns and does nothing anyway). Auto-animation has to be decided before
- *  the browser paints: a plain effect would show the piece at its destination
- *  for one frame and only then start sliding it in from the origin. */
-const useIsomorphicLayoutEffect =
-  typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+type Board2D = ReturnType<Chess['board']>;
 
 /** Half-move index of a position, read off the FEN. The board is handed a
  *  position, not a history, so this is how it tells "one move was just played"
  *  apart from "the board jumped somewhere else entirely". */
-function plyOf(chess: Chess): number {
-  const [, turn, , , , fullmove] = chess.fen().split(' ');
+function plyOf(fen: string): number {
+  const [, turn, , , , fullmove] = fen.split(' ');
   const full = parseInt(fullmove, 10);
   return ((Number.isNaN(full) ? 1 : full) - 1) * 2 + (turn === 'b' ? 1 : 0);
+}
+
+const fileOf = (sq: string) => sq.charCodeAt(0) - 97;
+const sqName = (row: number, col: number) =>
+  String.fromCharCode(97 + col) + (8 - row);
+
+/** Which element belongs to which piece.
+ *
+ *  `ids` maps a square to the DOM element standing on it. Keeping that mapping
+ *  stable across a move is the whole point: React then updates one element's
+ *  coordinates instead of destroying it on one square and building it again on
+ *  another, and the browser can animate it without first laying out, painting
+ *  and compositing a brand-new image. */
+interface PieceIds {
+  fen: string;
+  ply: number;
+  /** square → element id */
+  ids: Record<string, string>;
+  /** ids that changed square in this step, and so should travel rather than
+   *  simply appear. */
+  moved: Record<string, true>;
+  /** What the step was, for the sound. `none` covers every jump — a new game,
+   *  a take-back, scrubbing a list — which should be silent as well as still.
+   *  A rewound wrong move is silent too: the buzz already said it. */
+  kind: 'none' | 'move' | 'capture' | 'castle';
+  seq: number;
+}
+
+const EMPTY_IDS: PieceIds = { fen: '', ply: -1, ids: {}, moved: {}, kind: 'none', seq: 0 };
+
+/**
+ * Carry element ids from one position to the next.
+ *
+ * Only two things move an id between squares: a single half-move forward
+ * (with the rook brought along on a castle), and a bounce-back rewinding one.
+ * Everything else — a new game, a take-back, scrubbing a move list, loading a
+ * puzzle — leaves ids attached to their own square, so pieces that ended up
+ * somewhere else get fresh elements and simply appear there. That is what
+ * keeps a jump from animating like a move.
+ */
+function carryIds(
+  prev: PieceIds,
+  board: Board2D,
+  fen: string,
+  lastFrom: string | null,
+  lastTo: string | null,
+  bounceBack: { from: string; to: string } | null
+): PieceIds {
+  const ply = plyOf(fen);
+  const carried: Record<string, string> = { ...prev.ids };
+  const crossed: Record<string, string> = {}; // id → square it came from
+  let kind: PieceIds['kind'] = 'none';
+
+  const hop = (from: string, to: string) => {
+    const id = carried[from];
+    if (!id) return;
+    delete carried[from];
+    carried[to] = id;
+    crossed[id] = from;
+  };
+
+  if (bounceBack && carried[bounceBack.to]) {
+    // The position rewound: walk the piece back the way it came.
+    hop(bounceBack.to, bounceBack.from);
+  } else if (ply === prev.ply + 1 && lastFrom && lastTo && carried[lastFrom]) {
+    hop(lastFrom, lastTo);
+    kind = 'move';
+    // A castling king drags its rook along; nothing else in the move tells us
+    // the rook moved, since `lastFrom`/`lastTo` only describe the king.
+    const landed = board[8 - Number(lastTo[1])]?.[fileOf(lastTo)];
+    if (landed?.type === 'k' && Math.abs(fileOf(lastTo) - fileOf(lastFrom)) === 2) {
+      const rank = lastTo[1];
+      const kingside = fileOf(lastTo) === 6;
+      hop((kingside ? 'h' : 'a') + rank, (kingside ? 'f' : 'd') + rank);
+      kind = 'castle';
+    }
+  }
+
+  // Walk the new position and settle every occupied square on an id. Squares
+  // that emptied drop out here, which is how a captured piece's element goes
+  // away; ids carried onto an occupied square simply outrank whatever stood
+  // there, which is the capture itself.
+  const ids: Record<string, string> = {};
+  const moved: Record<string, true> = {};
+  let seq = prev.seq;
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      if (!board[row][col]) continue;
+      const sq = sqName(row, col);
+      const id = carried[sq] ?? `p${++seq}`;
+      ids[sq] = id;
+      if (crossed[id] !== undefined && crossed[id] !== sq) moved[id] = true;
+    }
+  }
+  // A piece fewer than before means one was taken — including en passant,
+  // where the pawn that disappears is on neither of the move's squares.
+  if (kind === 'move' && Object.keys(ids).length < Object.keys(prev.ids).length) {
+    kind = 'capture';
+  }
+  return { fen, ply, ids, moved, kind, seq };
 }
 
 /** A press in flight. Everything here is sampled on every pointer event, so it
@@ -105,8 +184,9 @@ interface PressState {
   active: boolean;
   /** Square currently under the pointer (drives the drop-target ring). */
   over: string | null;
-  /** The `.piece-wrap` being dragged. Its transform is written straight to the
-   *  DOM: re-rendering 64 cells per pointer sample is what makes a drag stutter. */
+  /** The piece element being dragged. Its offset is written straight to the
+   *  DOM: re-rendering the board on every pointer sample is what makes a drag
+   *  stutter. */
   node: HTMLElement | null;
   /** Pending animation-frame handle for that write. */
   raf: number;
@@ -121,6 +201,65 @@ interface DragView {
   active: boolean;
 }
 
+/** One square: its colour and whatever rings, dots or flashes it is wearing.
+ *  Pieces live in a layer of their own above these, so a move never touches a
+ *  square's markup. Memoized on primitives, so the two squares a move
+ *  highlights are the only ones that re-render. */
+const Square = memo(function Square({
+  sqn,
+  cls,
+  showDot,
+}: {
+  sqn: string;
+  cls: string;
+  showDot: boolean;
+}) {
+  return (
+    <div className={cls} data-sq={sqn}>
+      {showDot && <div className="sq-dot-hint" />}
+    </div>
+  );
+});
+
+/** One piece, positioned by board coordinates rather than by DOM parentage.
+ *
+ *  `--x`/`--y` are the square it stands on; CSS turns those into a transform
+ *  and transitions between them, so a move is a single animated property
+ *  change on an element that never leaves the document. `--dx`/`--dy` are the
+ *  drag offset, written imperatively — kept separate precisely so the pointer
+ *  handlers and React can each own part of the same transform without
+ *  overwriting one another. */
+const PieceEl = memo(function PieceEl({
+  sq,
+  pc,
+  x,
+  y,
+  cls,
+  bx,
+  by,
+  onAnimEnd,
+}: {
+  sq: string;
+  pc: string;
+  x: number;
+  y: number;
+  cls: string;
+  bx: number | null;
+  by: number | null;
+  onAnimEnd: (() => void) | undefined;
+}) {
+  const style: React.CSSProperties = { '--x': `${x}`, '--y': `${y}` } as React.CSSProperties;
+  if (bx !== null) {
+    (style as Record<string, string>)['--bx'] = `${bx}`;
+    (style as Record<string, string>)['--by'] = `${by}`;
+  }
+  return (
+    <div className={cls} style={style} data-pc={sq} onAnimationEnd={onAnimEnd}>
+      <Piece color={pc[0] as 'w' | 'b'} type={pc[1] as 'p' | 'n' | 'b' | 'r' | 'q' | 'k'} />
+    </div>
+  );
+});
+
 /**
  * 8x8 board, tap-to-move AND drag-to-move through one Pointer Events
  * pipeline — mouse, touch, and pen all take the same path, and no HTML5
@@ -132,6 +271,12 @@ interface DragView {
  * press and release landed on different elements — which is exactly the
  * "I tapped the square and nothing happened" feel. Reading the release
  * directly makes a tap land the moment the finger lifts.
+ *
+ * Pieces are not children of their squares. They sit in one layer above the
+ * board, each holding its own coordinates, because a piece that stays in the
+ * document can start moving on the very next frame — whereas one rebuilt on
+ * its destination square has to be laid out, painted and composited first,
+ * and stands still for about three frames while that happens.
  */
 export function Board({
   chess,
@@ -144,12 +289,12 @@ export function Board({
   flashFail,
   bounceBack,
   introMove,
-  autoAnimate = false,
   revealed,
   onSquareClick,
   onDragMove,
 }: BoardProps) {
   const flipped = orientation === 'black';
+  const fen = chess.fen();
   const pos = useMemo(() => chess.board(), [chess]);
   const myColor = chess.turn();
 
@@ -157,84 +302,95 @@ export function Board({
   const pressRef = useRef<PressState | null>(null);
   const [dragView, setDragView] = useState<DragView | null>(null);
 
-  /* ── Self-driven move animation (opt-in via `autoAnimate`) ── */
-  const [autoMove, setAutoMove] = useState<{ from: string; to: string } | null>(null);
-  const prevPlyRef = useRef<number | null>(null);
-  /** The move this board just dropped into place, as `fromto`. The piece is
-   *  already under the user's finger at the destination, so sliding it in
-   *  would mean yanking it back to the origin first. Matched against the move
-   *  that actually lands (and cleared on the next press) so a drop the parent
-   *  rejects can't swallow a later animation. */
-  const droppedRef = useRef<string | null>(null);
-  const ply = useMemo(() => plyOf(chess), [chess]);
+  // Element identity, recomputed once per position. Guarded on the FEN so a
+  // repeated render (or React's development double-render) is a no-op.
+  const idsRef = useRef<PieceIds>(EMPTY_IDS);
+  if (idsRef.current.fen !== fen) {
+    idsRef.current = carryIds(idsRef.current, pos, fen, lastFrom, lastTo, bounceBack);
+  }
+  const { ids, moved } = idsRef.current;
 
-  useIsomorphicLayoutEffect(() => {
-    if (!autoAnimate) return;
-    const prev = prevPlyRef.current;
-    prevPlyRef.current = ply;
-    const dropped = droppedRef.current === `${lastFrom}${lastTo}`;
-    droppedRef.current = null;
-    if (prev === null || ply !== prev + 1 || dropped || !lastFrom || !lastTo) {
-      setAutoMove(null);
-      return;
-    }
-    setAutoMove({ from: lastFrom, to: lastTo });
-  }, [autoAnimate, ply, lastFrom, lastTo]);
-
-  // Belt-and-braces clear: `animationend` on the piece normally ends the
-  // animation exactly on time, but it never fires if the piece is unmounted
-  // mid-slide or the webview was backgrounded.
+  // Sound. The board already knows what just happened — which piece travelled,
+  // whether one came off, whether it was a castle — so the cue is derived here
+  // rather than wired through every caller, and engine replies and replays are
+  // audible for free.
   useEffect(() => {
-    if (!autoMove) return;
-    const t = setTimeout(() => setAutoMove(null), MOVE_ANIM_MS + 60);
+    const { kind } = idsRef.current;
+    if (kind === 'none') return;
+    // Deferred past the next paint on purpose. Working out *which* cue this is
+    // means asking chess.js whether the game is over, and that generates every
+    // legal move — tens of milliseconds on a phone. Run inline it lands
+    // squarely between the move committing and the piece starting to travel,
+    // and the animation visibly hesitates. A cue one frame late is inaudible;
+    // a move that stutters is not.
+    let timer = 0;
+    const frame = requestAnimationFrame(() => {
+      timer = window.setTimeout(() => {
+        if (chess.isGameOver()) playCue('end');
+        else if (chess.inCheck()) playCue('check');
+        else playCue(kind);
+      }, 0);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer) clearTimeout(timer);
+    };
+    // Keyed on the position: one cue per move, whatever else re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fen]);
+
+  // A wrong answer, in every mode that has one.
+  useEffect(() => {
+    if (flashFail) playCue('wrong');
+  }, [flashFail]);
+
+  /** Keyframe replay for a move the board couldn't carry an element through —
+   *  currently just the puzzle-load intro, which jumps several plies at once. */
+  const [replay, setReplay] = useState<{ to: string; dx: number; dy: number } | null>(null);
+  useEffect(() => {
+    if (!replay) return;
+    const t = setTimeout(() => setReplay(null), MOVE_ANIM_MS + 60);
     return () => clearTimeout(t);
-  }, [autoMove]);
+  }, [replay]);
+  const clearReplay = useCallback(() => setReplay(null), []);
 
-  /** The move being animated. An explicit `introMove` from the caller wins —
-   *  it's choreographing a sequence and knows better than the ply heuristic. */
-  const slideMove = introMove ?? autoMove;
-
-  // During a drag OR a regular selection, both kinds of "source" contribute
-  // to the target-hint set. The drag source takes precedence since the user
-  // is actively holding a piece.
   const hintSource = dragView?.from ?? selected;
   const legalTargets = useMemo(() => {
     if (!hintSource) return new Set<string>();
-    const moves = legalFrom[hintSource] ?? [];
-    return new Set(moves.map((m) => m.to));
+    return new Set((legalFrom[hintSource] ?? []).map((m) => m.to));
   }, [hintSource, legalFrom]);
 
-  // Shared visual-coord helper used by both animation paths.
-  const visual = useMemo(
-    () => (sqn: string) => {
-      const col = sqn.charCodeAt(0) - 97;
-      const row = 8 - parseInt(sqn[1], 10);
-      return {
-        vc: flipped ? 7 - col : col,
-        vr: flipped ? 7 - row : row,
-      };
+  /** Board coordinates of a square, from the viewer's side. */
+  const visual = useCallback(
+    (sqn: string) => {
+      const col = fileOf(sqn);
+      const row = 8 - Number(sqn[1]);
+      return { vc: flipped ? 7 - col : col, vr: flipped ? 7 - row : row };
     },
     [flipped]
   );
 
-  // Bounce-back offset (square units). Piece sits at `from` in the DOM
-  // and animates from translate(to-from) back to (0,0).
-  const bounceDelta = useMemo(() => {
-    if (!bounceBack) return null;
-    const f = visual(bounceBack.from);
-    const t = visual(bounceBack.to);
-    return { dx: t.vc - f.vc, dy: t.vr - f.vr };
-  }, [bounceBack, visual]);
-
-  // Slide-in / forward-move offset (square units). Piece sits at `to` in
-  // the DOM and animates from translate(from-to) back to (0,0) so it
-  // appears to slide in from its origin.
-  const slideDelta = useMemo(() => {
-    if (!slideMove) return null;
-    const f = visual(slideMove.from);
-    const t = visual(slideMove.to);
-    return { dx: f.vc - t.vc, dy: f.vr - t.vr };
-  }, [slideMove, visual]);
+  // A replayed move is only meaningful while its destination holds a piece
+  // that did NOT travel there on its own. Recomputed whenever the intro
+  // changes; carried pieces glide instead and need no keyframe.
+  const introKey = introMove ? `${introMove.from}${introMove.to}` : '';
+  useEffect(() => {
+    if (!introMove) {
+      setReplay(null);
+      return;
+    }
+    const id = idsRef.current.ids[introMove.to];
+    if (!id || idsRef.current.moved[id]) {
+      setReplay(null);
+      return;
+    }
+    const f = visual(introMove.from);
+    const t = visual(introMove.to);
+    setReplay({ to: introMove.to, dx: f.vc - t.vc, dy: f.vr - t.vr });
+    // `introKey` stands in for introMove so a re-render with an equal object
+    // doesn't restart the keyframe mid-flight.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [introKey, fen, visual]);
 
   const ranks = [];
   for (let r = 0; r < 8; r++) ranks.push(flipped ? r + 1 : 8 - r);
@@ -263,28 +419,30 @@ export function Board({
     [flipped]
   );
 
-  /** Write the dragged piece's transform for this frame. Imperative on
-   *  purpose — this runs at pointer rate and must not go through React. */
+  /** Write the dragged piece's offset for this frame. Imperative on purpose —
+   *  this runs at pointer rate and must not go through React. It touches only
+   *  `--dx`/`--dy`, which React never sets, so the two can't fight. */
   const paintDrag = useCallback(() => {
     const p = pressRef.current;
     if (!p) return;
     p.raf = 0;
     if (!p.node || !p.active) return;
-    p.node.style.transform = `translate3d(${p.curX - p.startX}px, ${
-      p.curY - p.startY
-    }px, 0) scale(1.08)`;
+    p.node.style.setProperty('--dx', `${p.curX - p.startX}px`);
+    p.node.style.setProperty('--dy', `${p.curY - p.startY}px`);
   }, []);
 
-  /** Tear down a press: cancel any pending frame and put the piece back in
-   *  its square. The inline transform has to be cleared by hand — React never
-   *  set it, so React won't remove it either, and the node is reused for
-   *  whatever piece occupies that square next. */
+  /** Tear down a press: cancel any pending frame and hand the piece back to
+   *  its coordinates. The offset has to be cleared by hand — React never set
+   *  it, so React won't remove it either. */
   const endPress = useCallback(() => {
     const p = pressRef.current;
     pressRef.current = null;
     if (!p) return;
     if (p.raf) cancelAnimationFrame(p.raf);
-    if (p.node) p.node.style.transform = '';
+    if (p.node) {
+      p.node.style.removeProperty('--dx');
+      p.node.style.removeProperty('--dy');
+    }
     setDragView(null);
   }, []);
 
@@ -303,13 +461,9 @@ export function Board({
     // A press already in flight (second finger) is abandoned rather than
     // interleaved — two fingers on a chessboard is never a real move.
     if (pressRef.current) endPress();
-    droppedRef.current = null;
 
-    const col = sqn.charCodeAt(0) - 97;
-    const row = 8 - parseInt(sqn[1], 10);
-    const piece = pos[row][col];
-    const draggable =
-      !revealed && piece !== null && piece.color === myColor;
+    const piece = pos[8 - Number(sqn[1])][fileOf(sqn)];
+    const draggable = !revealed && piece !== null && piece.color === myColor;
 
     // Note: we deliberately do NOT call e.preventDefault() here — on touch it
     // suppresses the events we still want. Page-scroll suppression is handled
@@ -337,7 +491,7 @@ export function Board({
       active: false,
       over: sqn,
       node: draggable
-        ? ((e.target as HTMLElement).closest?.('.piece-wrap') as HTMLElement | null)
+        ? grid.querySelector<HTMLElement>(`[data-pc="${sqn}"]`)
         : null,
       raf: 0,
     };
@@ -376,14 +530,13 @@ export function Board({
 
     if (p.active) {
       const target = squareFromPoint(e.clientX, e.clientY, p.rect);
-      // Put the piece back if it left the board or landed somewhere illegal.
+      // Let the piece settle back if it left the board or landed somewhere
+      // illegal — dropping the offset above already sends it home.
       if (!target) return;
       if (target !== p.from) {
         const cands = (legalFrom[p.from] ?? []).filter((m) => m.to === target);
         if (cands.length === 0) return;
-        const mv = cands.find((m) => m.promotion === 'q') ?? cands[0];
-        droppedRef.current = mv.from + mv.to;
-        onDragMove(mv);
+        onDragMove(cands.find((m) => m.promotion === 'q') ?? cands[0]);
         return;
       }
       // Picked the piece up and set it down again. Almost always this is a
@@ -407,83 +560,72 @@ export function Board({
     endPress();
   };
 
+  /* ── Squares ── */
   const cells: React.ReactNode[] = [];
   for (let row = 0; row < 8; row++) {
     for (let col = 0; col < 8; col++) {
       const br = flipped ? 7 - row : row;
       const bc = flipped ? 7 - col : col;
-      const light = (br + bc) % 2 === 0;
-      const sqn = String.fromCharCode(97 + bc) + (8 - br);
+      const sqn = sqName(br, bc);
       const piece = pos[br][bc];
 
-      const classes = ['sq', light ? 'sq-l' : 'sq-d'];
+      const classes = ['sq', (br + bc) % 2 === 0 ? 'sq-l' : 'sq-d'];
       if (sqn === lastFrom || sqn === lastTo) classes.push('lm');
       if (sqn === selected || sqn === dragView?.from) classes.push('sel');
-      if (!revealed && legalTargets.has(sqn)) {
-        if (piece) classes.push('cap-ring');
-      }
+      if (!revealed && piece && legalTargets.has(sqn)) classes.push('cap-ring');
       // Drop-target ring follows the dragged piece so the user can see
       // where it would land.
-      if (dragView?.active && dragView.over === sqn && sqn !== dragView.from) {
-        if (legalTargets.has(sqn)) classes.push('drop-target');
+      if (
+        dragView?.active &&
+        dragView.over === sqn &&
+        sqn !== dragView.from &&
+        legalTargets.has(sqn)
+      ) {
+        classes.push('drop-target');
       }
-      // The cell holding the piece being dragged must outrank every other cell.
-      // `.sel` (applied to the drag source) and `.drop-target` set z-index:2,
-      // making those cells stacking contexts — which traps the dragged piece's
-      // z-index inside this cell and lets squares/pieces later in DOM order
-      // paint over it. Lifting the whole source cell keeps the piece on top.
-      if (dragView?.active && dragView.from === sqn) classes.push('drag-origin');
       if (sqn === flashOk) classes.push('flash-ok');
       if (sqn === flashFail) classes.push('flash-fail');
 
-      const isBouncing =
-        bounceBack !== null && sqn === bounceBack.from && piece !== null;
-      const isSliding = slideMove !== null && sqn === slideMove.to && piece !== null;
-      const isDragActive = dragView?.active === true && dragView.from === sqn && piece !== null;
-
-      // Compose the piece-wrap class + inline CSS vars.
-      // Three states share the wrap:
-      //   · animating (bounce-back OR slide-in) → CSS keyframe
-      //   · drag-active → the wrap floats above the board and its transform
-      //     is written imperatively from the pointer handlers, so nothing
-      //     transform-related is passed through React here
-      //   · drag-source (pre-threshold) → stays put, opacity unchanged
-      let wrapClass = 'piece-wrap';
-      let wrapStyle: React.CSSProperties | undefined;
-      const activeDelta =
-        isBouncing && bounceDelta
-          ? bounceDelta
-          : isSliding && slideDelta
-            ? slideDelta
-            : null;
-      if (activeDelta && !isDragActive) {
-        wrapClass += ' animating';
-        wrapStyle = {
-          '--bx': `${activeDelta.dx}`,
-          '--by': `${activeDelta.dy}`,
-        } as React.CSSProperties;
-      }
-      if (isDragActive) wrapClass += ' dragging';
-
       cells.push(
-        <div key={sqn} className={classes.join(' ')} data-sq={sqn}>
-          {!revealed && legalTargets.has(sqn) && !piece && (
-            <div className="sq-dot-hint" />
-          )}
-          {piece && (
-            <div
-              className={wrapClass}
-              style={wrapStyle}
-              onAnimationEnd={
-                isSliding && autoMove ? () => setAutoMove(null) : undefined
-              }
-            >
-              <Piece color={piece.color} type={piece.type} />
-            </div>
-          )}
-        </div>
+        <Square
+          key={sqn}
+          sqn={sqn}
+          cls={classes.join(' ')}
+          showDot={!revealed && !piece && legalTargets.has(sqn)}
+        />
       );
     }
+  }
+
+  /* ── Pieces ──
+     Emitted in id order so the DOM order of the layer stays put as pieces move
+     around; React then only ever updates attributes, never reshuffles nodes. */
+  const pieces: React.ReactNode[] = [];
+  const entries: { sq: string; id: string }[] = [];
+  for (const sq of Object.keys(ids)) entries.push({ sq, id: ids[sq] });
+  entries.sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+  for (const { sq, id } of entries) {
+    const piece = pos[8 - Number(sq[1])][fileOf(sq)];
+    if (!piece) continue;
+    const { vc, vr } = visual(sq);
+    const isDragging = dragView?.active === true && dragView.from === sq;
+    const isReplaying = replay !== null && replay.to === sq && !moved[id];
+    let cls = 'pc';
+    if (isDragging) cls += ' dragging';
+    else if (isReplaying) cls += ' replaying';
+    pieces.push(
+      <PieceEl
+        key={id}
+        sq={sq}
+        pc={piece.color + piece.type}
+        x={vc}
+        y={vr}
+        cls={cls}
+        bx={isReplaying ? replay.dx : null}
+        by={isReplaying ? replay.dy : null}
+        onAnimEnd={isReplaying ? clearReplay : undefined}
+      />
+    );
   }
 
   return (
@@ -503,6 +645,7 @@ export function Board({
           onPointerCancel={handlePointerCancel}
         >
           {cells}
+          <div className="piece-layer">{pieces}</div>
         </div>
         <div className="files">
           {files.map((f) => (

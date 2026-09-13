@@ -61,11 +61,13 @@
   --track-caps: 0.14em; /* the single uppercase tracking */
   /* Motion — snap, not bounce. */
   --ease-snap: cubic-bezier(0.2, 0.9, 0.2, 1);
-  /* Piece movement. Slower and smoother than --ease-snap, which overshoots
-     into its target so hard that a sliding piece reads as a jump. Duration is
-     shared with MOVE_ANIM_MS in components/Board.tsx. */
-  --ease-move: cubic-bezier(0.2, 0, 0.15, 1);
-  --move-anim: 180ms;
+  /* Piece movement. easeInOutCubic over 200ms — the curve and duration
+     chessground (lichess) animates with. It leaves gently, carries speed
+     through the middle and settles rather than arriving, which is what reads
+     as weight; --ease-snap overshoots so hard a travelling piece looks like it
+     jumped. Duration is shared with MOVE_ANIM_MS in components/Board.tsx. */
+  --ease-move: cubic-bezier(0.65, 0, 0.35, 1);
+  --move-anim: 200ms;
 }
 
 html[data-theme='dark'] {
@@ -858,6 +860,7 @@ select {
 }
 .board-grid {
   display: grid;
+  position: relative;
   grid-template-columns: repeat(8, var(--sq-size));
   grid-template-rows: repeat(8, var(--sq-size));
   border: 1px solid var(--contour);
@@ -940,14 +943,6 @@ html[data-theme='dark'] .sq.cap-ring {
   box-shadow: inset 0 0 0 4px var(--coral);
   z-index: 2;
 }
-/* The square holding the piece currently being dragged floats above all other
-   cells. Without this, the dragged piece's z-index is trapped inside this
-   cell's own stacking context (`.sel` puts the drag source at z-index:2), so
-   squares and pieces later in DOM order paint over the piece you're dragging.
-   Must come after `.sel`/`.drop-target` to win the cascade. */
-.sq.drag-origin {
-  z-index: 50;
-}
 .sq.flash-ok {
   background: var(--mint) !important;
 }
@@ -964,69 +959,87 @@ html[data-theme='dark'] .sq.cap-ring {
   -webkit-user-drag: none;
 }
 
-/* Wrapper around each piece — what a drag moves and what the move
-   animation runs on. Pointer events are handled by the grid, not here;
-   `touch-action: none` is restated anyway so a press on a piece is
-   unmistakably the chess pipeline's, never the scroller's. */
-.piece-wrap {
+/* Pieces live in one layer above the squares rather than inside them.
+   A piece that stays in the document can start moving on the very next frame;
+   one rebuilt on its destination square has to be laid out, painted and
+   composited first, and stands still for about three frames while that
+   happens — which is most of what made a move feel like it hesitated. The
+   layer is transparent to hit-testing: the grid handles every pointer event
+   and works out the square arithmetically. */
+.piece-layer {
   position: absolute;
   inset: 0;
+  pointer-events: none;
+}
+
+/* A piece knows its own board coordinates. `--x`/`--y` are the square, set by
+   React; `--dx`/`--dy` are the drag offset, written straight to the node by
+   the pointer handlers. Splitting them keeps React and the drag from
+   overwriting one another's half of the same transform. */
+.pc {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--sq-size);
+  height: var(--sq-size);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2;
-  cursor: grab;
-  touch-action: none;
+  transform: translate3d(
+      calc(var(--x) * var(--sq-size) + var(--dx, 0px)),
+      calc(var(--y) * var(--sq-size) + var(--dy, 0px)),
+      0
+    )
+    scale(var(--s, 1));
+  transition: transform var(--move-anim) var(--ease-move);
+  /* Held on a layer of its own so a move is a compositor job from the first
+     frame, with no promotion to pay for once it has already started. */
+  will-change: transform;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
-}
-.piece-wrap:active {
-  cursor: grabbing;
+  /* The layer above is pointer-transparent; a piece opts back in purely to
+     carry the cursor. Events still bubble to the grid, which locates the
+     square from the board rect rather than from what was hit, so nothing
+     about input depends on this. */
+  pointer-events: auto;
+  cursor: grab;
 }
 
-/* Shared move animation: the piece sits in its DOM square and slides from a
-   translated starting position (--bx/--by in square units) back to (0,0).
-   Used for every move the user didn't drag into place by hand — their own
-   taps, the engine's replies, and the wrong-move bounce-back. */
+/* Under the finger: follow it exactly, with no easing lagging behind, and
+   ride above every other piece. */
+.pc.dragging {
+  --s: 1.08;
+  cursor: grabbing;
+  transition: none;
+  z-index: 50;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
+}
+
+/* Replaying a move the board couldn't carry an element through — the
+   puzzle-load intro, where the position jumps several plies at once. The
+   piece is new, so there is nothing to transition from; it slides in from
+   --bx/--by (in squares) under a keyframe instead. */
 @keyframes piece-slide-in {
   from {
     transform: translate3d(
-      calc(var(--bx) * var(--sq-size, 60px)),
-      calc(var(--by) * var(--sq-size, 60px)),
+      calc(var(--x) * var(--sq-size) + var(--bx) * var(--sq-size)),
+      calc(var(--y) * var(--sq-size) + var(--by) * var(--sq-size)),
       0
     );
   }
-  to {
-    transform: translate3d(0, 0, 0);
-  }
 }
-/* Note: no `pointer-events: none` here. The wrap sits in its destination
-   square for the whole slide, so it is already the right hit target, and
-   blanking it just created a window after every move where the board
-   ignored you. */
-.piece-wrap.animating {
+.pc.replaying {
   animation: piece-slide-in var(--move-anim) var(--ease-move) both;
-  will-change: transform;
-}
-
-/* While dragging the wrap escapes its square via inline transform (from JS)
-   and floats above the board. `pointer-events: none` is critical: without
-   it, elementFromPoint at drop time hits the floating wrap itself and the
-   drop is rejected as "released on the source". */
-.piece-wrap.dragging {
-  z-index: 50;
-  cursor: grabbing;
-  transition: none;
-  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
-  pointer-events: none;
-  will-change: transform;
 }
 
 /* Anyone who has asked the system for less motion gets the position, not the
-   journey — the piece simply appears on its new square. */
+   journey — pieces simply appear on their new square. */
 @media (prefers-reduced-motion: reduce) {
-  .piece-wrap.animating {
+  .pc {
+    transition: none;
+  }
+  .pc.replaying {
     animation-duration: 1ms;
   }
 }

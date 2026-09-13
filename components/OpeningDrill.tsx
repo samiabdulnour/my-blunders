@@ -267,7 +267,6 @@ export function OpeningDrill({ items, onExit }: { items: DrillItem[]; onExit: ()
                 flashFail={flashFail}
                 bounceBack={null}
                 introMove={null}
-                autoAnimate
                 revealed={phase !== 'awaitUser'}
                 onSquareClick={onSquareClick}
                 onDragMove={attempt}
