@@ -79,13 +79,17 @@ const HEAD_TRACK = 0.02;
  *  on its row's board top. */
 const CAP_RATIO = 0.708;
 
-/** The app's own typeface, embedded so the sheet is set in it rather than
- *  Helvetica. jsPDF can only embed TrueType, so these are TTF conversions of the
- *  OTFs the UI loads; fetched at print time rather than bundled (~75KB each). */
-const FONT = 'Gruezi';
+/** The sheet's typeface, embedded so it isn't set in Helvetica: Gruezi Bold for
+ *  the headings and the move column, Medium for everything else — the two
+ *  weights the InDesign layout this poster follows uses. Note they're the
+ *  FULL-WIDTH cuts, not the condensed `-C-` pair the app UI is set in; the
+ *  poster follows the reference, the UI keeps its own look. jsPDF can only
+ *  embed TrueType, so these are the TTF builds `scripts/otf2ttf.py` makes (they
+ *  also carry the tabular figures below); fetched at print time, not bundled. */
+const FONT = 'GrueziPoster';
 const FONT_FILES: [string, string][] = [
-  ['RL-Gruezi-C-Bold.ttf', 'bold'],
-  ['RL-Gruezi-C-Regular.ttf', 'normal'],
+  ['RL-Gruezi-Bold.ttf', 'bold'],
+  ['RL-Gruezi-Medium.ttf', 'normal'],
 ];
 /** Where `scripts/otf2ttf.py` publishes the family's tabular figures — its
  *  `tnum` glyphs, all 600 units wide — in the embedded faces. PDF text can't
@@ -661,9 +665,10 @@ export async function renderOpeningTreePreview(
   targetPx = 1400
 ): Promise<{ dataUrl: string; pages: number; branches: string[]; fens: string[] }> {
   const { CanvasPdf } = await import('./pdf-canvas');
-  // Canvas draws with whatever is loaded at the time, so make sure the app's
+  // Canvas draws with whatever is loaded at the time, so make sure the poster's
   // face is in before the first stroke — otherwise the preview silently falls
-  // back to Helvetica and mismatches the PDF.
+  // back to Helvetica and mismatches the PDF. `GrueziPoster` is declared in
+  // globals.css purely for this, and only downloaded when the dialog opens.
   if (typeof document !== 'undefined' && document.fonts) {
     try {
       await Promise.all([document.fonts.load(`700 24px ${FONT}`), document.fonts.load(`400 24px ${FONT}`)]);

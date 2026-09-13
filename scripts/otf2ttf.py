@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-"""Build the TrueType faces the PDF poster embeds, from the OTFs the UI loads.
+"""Build the TrueType faces the PDF poster embeds, from Gruezi's OTFs.
 
 jsPDF can only embed TrueType outlines, so the CFF curves are converted to
 quadratics. The glyphs are otherwise left exactly as drawn.
 
 The one addition is a second, TABULAR set of figures. The poster's move-number
-column has to line up, and Gruezi's default figures are proportional (a "1" is
-440 units against a "0" at 660), so the column comes out ragged. The family
-ships tabular cuts as `.tf` glyphs behind the `tnum` feature, and they're drawn
-for exactly this: Bold's `one.tf` is 600 wide with a 120 left bearing, i.e. the
-narrow 1 already centred in the tabular box. PDF text can't ask for an OpenType
-feature at draw time, so the `.tf` glyphs are given their own cmap entries in
-the private use area (U+E030…U+E039 for 0…9) and the poster addresses them
-directly where a column needs them. Everything else keeps the proportional
-figures, which is what the InDesign layout this poster follows does too — its
-body text sets plain digits and only the move column sets `.tf`.
+column has to line up, and Gruezi's default figures are proportional (Bold's
+"1" is 462 units against its "0" at 676), so the column comes out ragged. The
+family ships tabular cuts as `.tf` glyphs behind the `tnum` feature, drawn for
+exactly this: Bold's `one.tf` is 600 wide with a foot serif filling the box.
+PDF text can't ask for an OpenType feature at draw time, so the `.tf` glyphs
+are given their own cmap entries in the private use area (U+E030…U+E039 for
+0…9) and the poster addresses them directly where a column needs them.
+Everything else keeps the proportional figures, which is what the InDesign
+layout this poster follows does too — decoding its embedded subsets shows plain
+digits in the body text and `.tf` only in the move column.
 
-A few `.tf` glyphs miss the family's 600-unit tabular width (Bold's `two`,
-`four` and `eight`; most of Regular's), so any stray is re-centred at 600 — the
-width the rest of the set, and that layout, use.
+One `.tf` glyph per face misses the family's 600-unit tabular width (`eight.tf`
+is 648 in Bold, 624 in Medium), so any stray is re-centred at 600 — the width
+the rest of the set, and that layout, use.
 
 Usage: python3 scripts/otf2ttf.py   (needs `pip3 install --user fonttools cu2qu`)
 """
@@ -27,9 +27,12 @@ from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.cu2quPen import Cu2QuPen
 from fontTools.pens.transformPen import TransformPen
 
+#: The poster's two faces — the weights the InDesign layout it follows is set
+#: in. Note these are the FULL-WIDTH cuts, not the condensed `-C-` pair the app
+#: UI uses: the poster follows the reference, the UI keeps its condensed look.
 FONTS = [
-    'public/fonts/RL-Gruezi-C-Bold.otf',
-    'public/fonts/RL-Gruezi-C-Regular.otf',
+    'public/fonts/RL-Gruezi-Bold.otf',
+    'public/fonts/RL-Gruezi-Medium.otf',
 ]
 
 DIGITS = '0123456789'
