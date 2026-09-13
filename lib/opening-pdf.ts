@@ -73,9 +73,6 @@ const RULE_W = 2;
  *  anchored to the margin whatever the sheet width. */
 const HEAD_R_TITLE = 912.75; // "<COLOUR> REPERTOIRE" + the legend below it
 const HEAD_R_MID = 541.41; // "OPENING TREE"
-/** Where "OPENING TREE" falls across the heading block, so the three spread the
- *  same way whatever width the block gets. */
-const HEAD_MID_FRAC = (HEAD_R_TITLE - HEAD_R_MID) / HEAD_R_TITLE;
 /** InDesign tracks the bold caps ~0.02em; jsPDF calls this char spacing. */
 const HEAD_TRACK = 0.02;
 /** Gruezi cap height as a fraction of font size — a move number's cap top sits
@@ -429,12 +426,11 @@ async function renderPoster(
   doc.setFont(FONT, 'bold');
   doc.setCharSpace(HEAD_TRACK * HEAD_SIZE);
   text(C_TEXT);
-  // Portrait keeps the measured block; landscape is far wider, so start it at the
-  // page middle and let the three headings spread instead of bunching right.
-  const blockLeft = portrait ? contentRight - HEAD_R_TITLE : pageW / 2;
-  const blockW = contentRight - blockLeft;
+  // The heading block keeps its spacing from the layout and hangs off the right
+  // margin, the same on both orientations.
+  const blockLeft = contentRight - HEAD_R_TITLE;
   doc.text(title.toUpperCase(), blockLeft, HEAD_TITLE_BASE);
-  doc.text('OPENING TREE', blockLeft + HEAD_MID_FRAC * blockW, HEAD_TITLE_BASE);
+  doc.text('OPENING TREE', contentRight - HEAD_R_MID, HEAD_TITLE_BASE);
   doc.text(`${named} NAMED LINES`, contentRight, HEAD_TITLE_BASE, { align: 'right' });
   doc.setCharSpace(0);
 
