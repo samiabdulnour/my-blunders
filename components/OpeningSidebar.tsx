@@ -1,8 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useClinic } from '@/lib/clinic-context';
-import { buildOpeningTree, POSTER_MAX_NODES } from '@/lib/opening-tree';
 import { PrintDialog } from '@/components/PrintDialog';
 
 /**
@@ -18,14 +17,6 @@ export function OpeningSidebar() {
   const { color, setColor, tree, games, openings, focus, setFocus, setSelectedId, loading, fetching } = useClinic();
   const [showPrint, setShowPrint] = useState(false);
 
-  // The poster rebuilds the tree with a lower games floor than the on-screen
-  // explorer (which keeps ≥2): it keeps every line you've played at all, so the
-  // poster is a dense, busy map of your whole repertoire — not just the ≥2 core.
-  // Built only when the dialog opens (heavier than the ≥2 tree).
-  const posterTree = useMemo(
-    () => (showPrint ? buildOpeningTree(games, color, 1, POSTER_MAX_NODES) : null),
-    [showPrint, games, color]
-  );
 
   // The named opening for the current focus, so Print can scope + title the
   // poster. Prefer an exact match; otherwise the most specific ancestor opening
@@ -69,7 +60,7 @@ export function OpeningSidebar() {
         </button>
         {showPrint && (
           <PrintDialog
-            tree={posterTree ?? tree}
+            games={games}
             color={color}
             focusPath={focus}
             focusName={focusOpening?.name ?? null}

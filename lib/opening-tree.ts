@@ -205,6 +205,7 @@ export function buildOpeningTree(
   color: 'w' | 'b',
   minNodeGames: number = MIN_NODE_GAMES,
   maxNodes?: number,
+  budget: { maxLines: number; maxPly: number } = POSTER_BUDGET.portrait,
 ): TreeNode {
   const root = emptyRaw('', 0);
   for (const g of games) {
@@ -255,6 +256,7 @@ export function buildOpeningTree(
       for (;;) {
         kept.add(n);
         frontier.push(n);
+        if (n.ply >= budget.maxPly) break; // past the last drawn row
         const ks = kidsOf(n);
         if (!ks.length) break;
         nextIdx.set(n, 1); // this walk takes the principal child
@@ -262,10 +264,11 @@ export function buildOpeningTree(
       }
       lines++;
     };
-    while (lines < POSTER_MAX_LINES && kept.size < maxNodes) {
+    while (lines < budget.maxLines && kept.size < maxNodes) {
       let best: RawNode | null = null;
       let bestKids: RawNode[] = [];
       for (const f of frontier) {
+        if (f.ply >= budget.maxPly) continue; // a split here would be invisible
         const ks = f === root ? kidsOf(f).filter((k) => k.games >= topFloor) : kidsOf(f);
         const i = nextIdx.get(f) ?? 0;
         if (i < ks.length && (!best || f.games > best.games)) { best = f; bestKids = ks; }
@@ -284,12 +287,23 @@ export function buildOpeningTree(
  *  readable board size, and a safe bound on resolve() memory. */
 export const POSTER_MAX_NODES = 1400;
 
-/** Line (leaf-column) budget for the poster tree. A tidy layout gives every leaf
- *  its own column, so this is what actually sets the board size: an A1 portrait
- *  sheet is 1577pt wide inside its margins, and a column is (CARD_W + COL_GAP)
- *  = 116 layout units, so N lines render boards at 1577 / (116N + 108) * 96 pt.
- *  19 lines → ~65pt boards (24 lines gave ~52pt). Fewer, larger boards. */
-const POSTER_MAX_LINES = 19;
+/** How much tree each A1 sheet shape can hold at the SAME board size (~65pt).
+ *  A tidy layout gives every leaf its own column, so lines set the width and
+ *  plies set the height: a sheet W pt wide inside its margins fits
+ *  (W / scale - 108) / 116 columns, and H pt tall fits (H / scale - 18) / 140
+ *  rows. Portrait (1578 x 2192) → 19 long lines; landscape (2278 x 1492) → 28
+ *  shorter ones. Same board size either way, each sheet filled — a landscape
+ *  poster is simply broader and shallower, which is the shape it wants.
+ *
+ *  `maxPly` must match the rows the poster actually draws: a line budget spent
+ *  on branches that diverge below the last drawn row buys columns you can't
+ *  see, which is what left landscape two-thirds empty. */
+export const POSTER_BUDGET = {
+  portrait: { maxLines: 19, maxPly: 23 },
+  landscape: { maxLines: 28, maxPly: 15 },
+} as const;
+
+export type PosterShape = keyof typeof POSTER_BUDGET;
 
 function bump(n: RawNode, r: 'win' | 'loss' | 'draw') {
   if (r === 'win') n.wins++;

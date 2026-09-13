@@ -13,7 +13,7 @@
  * what surfaces "Save to Files" / Print inside the iOS app), falling back to a
  * plain download on desktop web.
  */
-import { layoutTree, findByPath, formatEval, RENDER_ROWS, type TreeNode, type LaidNode } from './opening-tree';
+import { layoutTree, findByPath, formatEval, POSTER_BUDGET, RENDER_ROWS, type TreeNode, type LaidNode } from './opening-tree';
 import { loadUsername } from './storage';
 
 // The poster packs far tighter than the on-screen clinic — small boards nearly
@@ -274,11 +274,10 @@ async function renderPoster(
   // a readable floor below which we prune the least-played lines instead.
   const DEEP = RENDER_ROWS + 4;
   const MIN_BOARD_PT = 26; // allow a dense, busy map (small boards) before pruning
-  // Portrait row budget: the tallest line sets the height, so cap it just under
-  // what the sheet fits at the target board size — otherwise height binds first
-  // and the boards come out smaller than the line budget allows. 23 rows ×
-  // ROW_H 140 + TOP_PAD fits 2192pt of sheet at ~65pt boards.
-  const maxRows = portrait ? DEEP - 1 : 14;
+  // Rows come from the same budget the tree was built against, so the sheet
+  // never draws fewer plies than the lines were spent on (that mismatch left
+  // landscape two-thirds empty).
+  const maxRows = POSTER_BUDGET[orient].maxPly;
   const branchDepth = DEEP;
   let minGames = 1; // show every line you've played (the poster tree keeps ≥1)
   const build = () => layoutAt({ mg: minGames, maxRows, maxChildren: 8, branchDepth });

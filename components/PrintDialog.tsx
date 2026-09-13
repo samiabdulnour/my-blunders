@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { TreeNode } from '@/lib/opening-tree';
+import { buildOpeningTree, POSTER_BUDGET, POSTER_MAX_NODES, type OpeningGame } from '@/lib/opening-tree';
 import { buildOpeningTreePdf, renderOpeningTreePreview, savePdf, type OpeningPdfOpts } from '@/lib/opening-pdf';
 import { fillPosterEvals } from '@/lib/opening-engine';
 
@@ -19,14 +19,16 @@ import { fillPosterEvals } from '@/lib/opening-engine';
 type Orientation = 'landscape' | 'portrait';
 
 interface PrintDialogProps {
-  tree: TreeNode;
+  /** Raw games — the poster builds its own tree, denser than the clinic's and
+   *  shaped to the chosen sheet, so it can't take a prebuilt one. */
+  games: OpeningGame[];
   color: 'w' | 'b';
   focusPath: string | null;
   focusName: string | null;
   onClose: () => void;
 }
 
-export function PrintDialog({ tree, color, focusPath, focusName, onClose }: PrintDialogProps) {
+export function PrintDialog({ games, color, focusPath, focusName, onClose }: PrintDialogProps) {
   const [mounted, setMounted] = useState(false);
   const [orientation, setOrientation] = useState<Orientation>('portrait');
   const [building, setBuilding] = useState(true);
@@ -47,6 +49,15 @@ export function PrintDialog({ tree, color, focusPath, focusName, onClose }: Prin
   const triedRef = useRef<Set<string>>(new Set());
   const [evalsReady, setEvalsReady] = useState(0);
   const [analysing, setAnalysing] = useState<{ done: number; total: number } | null>(null);
+
+  // The poster's own tree: a lower games floor than the clinic (every line you
+  // played, not just the ≥2 core) and budgeted to the chosen sheet — portrait
+  // gets fewer, longer lines; landscape more, shorter ones. Rebuilt on an
+  // orientation switch, which is why it isn't built once by the sidebar.
+  const tree = useMemo(
+    () => buildOpeningTree(games, color, 1, POSTER_MAX_NODES, POSTER_BUDGET[orientation]),
+    [games, color, orientation]
+  );
 
   const opts = useCallback(
     (): OpeningPdfOpts => ({ focusPath, focusName, orientation, evals: evalsRef.current }),
