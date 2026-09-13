@@ -43,6 +43,67 @@ const C_YELLOW = '#d3a139';
 const C_RED = '#d5533f';
 const C_NEUTRAL = '#c7c0b2';
 const C_PAPER = '#ffffff'; // pure white — this gets printed
+const C_HEAD_DIM = '#929291'; // neutral grey for the header table, rules and move numbers
+
+/* ── Poster furniture ──────────────────────────────────────────────────────
+ * Measured from the InDesign layout this poster is set to (A1 portrait,
+ * 1683.78 x 2383.94pt). All y values are from the PAGE TOP, matching jsPDF.
+ * The header is a two-row stats table on the left, three headings plus the
+ * legend on the right, under one rule; move numbers run down a left gutter.  */
+const PAGE_MARGIN = 36;
+/** Move-number column; the tree starts at PAGE_MARGIN + this. */
+const GUTTER_W = 136;
+/** Layout origin for the tree — puts row 0's board top at ~176pt, clear of the
+ *  header rule at 129pt. */
+const TREE_TOP = 149.3;
+
+const HEAD_SIZE = 24;
+const LEG_SIZE = 12;
+const HEAD_TITLE_BASE = 55.2027; // bold headings
+const HEAD_STAT1_BASE = 59.2027; // nickname / games / overall
+const HEAD_STAT2_BASE = 105.191; // W / D / L
+const HEAD_LEG1_BASE = 101.3116;
+const HEAD_LEG2_BASE = 115.7115;
+const HEAD_COL_X = [40, 204.3596, 368.7191]; // left stats columns
+const HEAD_DIV_X = [195.1181, 359]; // rules between them
+const HEAD_DIV_TOP = 36.003;
+const HEAD_RULE_Y = 128.9796; // the rule under the whole header
+const RULE_W = 2;
+/** Right-hand block, held as offsets from the right content edge so it stays
+ *  anchored to the margin whatever the sheet width. */
+const HEAD_R_TITLE = 912.75; // "<COLOUR> REPERTOIRE" + the legend below it
+const HEAD_R_MID = 541.41; // "OPENING TREE"
+/** Where "OPENING TREE" falls across the heading block, so the three spread the
+ *  same way whatever width the block gets. */
+const HEAD_MID_FRAC = (HEAD_R_TITLE - HEAD_R_MID) / HEAD_R_TITLE;
+/** InDesign tracks the bold caps ~0.02em; jsPDF calls this char spacing. */
+const HEAD_TRACK = 0.02;
+/** Gruezi cap height as a fraction of font size — a move number's cap top sits
+ *  on its row's board top. */
+const CAP_RATIO = 0.708;
+
+/** The app's own typeface, embedded so the sheet is set in it rather than
+ *  Helvetica. jsPDF can only embed TrueType, so these are TTF conversions of the
+ *  OTFs the UI loads; fetched at print time rather than bundled (~75KB each). */
+const FONT = 'Gruezi';
+const FONT_FILES: [string, string][] = [
+  ['RL-Gruezi-C-Bold.ttf', 'bold'],
+  ['RL-Gruezi-C-Regular.ttf', 'normal'],
+];
+let fontData: { file: string; style: string; b64: string }[] | null = null;
+async function loadPosterFonts() {
+  if (fontData) return fontData;
+  const out: { file: string; style: string; b64: string }[] = [];
+  for (const [file, style] of FONT_FILES) {
+    const buf = await fetch(`/fonts/${file}`).then((r) => r.arrayBuffer());
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    out.push({ file, style, b64: btoa(bin) });
+  }
+  fontData = out;
+  return out;
+}
 
 function winProb(cp: number): number {
   return 1 / (1 + Math.pow(10, -cp / 400));
@@ -208,22 +269,13 @@ async function renderPoster(
   const acctD = tree.children.reduce((s, c) => s + c.draws, 0);
   const acctL = tree.children.reduce((s, c) => s + c.losses, 0);
   const acctScore = acctGames ? Math.round(((acctW + acctD / 2) / acctGames) * 100) : 0;
-  const statsLine = [
-    nickname || null,
-    acctGames ? `${acctGames} games` : null,
-    acctGames ? `${acctScore}% overall` : null,
-    acctGames ? `${acctW}W · ${acctD}D · ${acctL}L` : null,
-  ]
-    .filter(Boolean)
-    .join('     ·     ');
-
-  const MARGIN = 48;
-  const HEADER = 96;
-  const LEFT_GUTTER = 10; // slim left inset (the old move-number gutter is gone)
-  const availOf = (w: number, h: number) => ({
-    w: w - 2 * MARGIN - LEFT_GUTTER,
-    h: h - 2 * MARGIN - HEADER,
-  });
+  // The header table reads as two rows of three: who/how many/how well, then
+  // the W-D-L split beneath each.
+  const statCells: [string, string][] = [
+    [nickname || '—', `${acctW}W`],
+    [`${acctGames} games`, `${acctD}D`],
+    [`${acctScore}% overall`, `${acctL}L`],
+  ];
   // ── One sheet, standardised board size ────────────────────────────────────
   // The whole repertoire (or focused opening) on ONE A1 sheet. Boards are drawn
   // at a fixed size (below), the SAME on every poster so White and Black read as
@@ -260,7 +312,19 @@ async function renderPoster(
   const doc = await makeDoc(orient);
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const avail = availOf(pageW, pageH);
+  // Embed the app's typeface (real PDF only — the canvas preview uses the web
+  // font by family name). Falls back to the built-in face if the files 404.
+  if (typeof doc.addFileToVFS === 'function') {
+    try {
+      for (const f of await loadPosterFonts()) {
+        doc.addFileToVFS(f.file, f.b64);
+        doc.addFont(f.file, FONT, f.style);
+      }
+    } catch { /* keep the default face */ }
+  }
+  // The tree sits right of the move-number gutter and below the header rule.
+  const treeLeft = PAGE_MARGIN + GUTTER_W;
+  const avail = { w: pageW - PAGE_MARGIN - treeLeft, h: pageH - PAGE_MARGIN - TREE_TOP };
 
   const scaleFit = (lay: { width: number; height: number }) =>
     Math.min(avail.w / (LEFT_PAD + lay.width), avail.h / (TOP_PAD + lay.height));
@@ -310,7 +374,10 @@ async function renderPoster(
   const title = focusNode
     ? opts.focusName || focusNode.name || 'Opening line'
     : `${color === 'w' ? 'White' : 'Black'} repertoire`;
-  const sub = `My Blunders · opening tree${minGames > 2 ? ` · most-played lines (≥ ${minGames} games)` : ''} · ${named} named lines`;
+  const legendLine1 =
+    'Under each board: the move, the engine eval in pawns (+ favours White), then your record from that position as wins/draws/losses. Games played is top-left.';
+  const legendLine2 =
+    'Green strong · amber even · red weak. Connector colour grades the move: green good · amber risky · red blunder.';
   const branches: string[] = [];
 
   // layout.width carries a trailing card of padding and LEFT_PAD leads it, so
@@ -323,8 +390,8 @@ async function renderPoster(
   const treeH = TOP_PAD + layout.height;
   // Scale-to-fit fills the binding axis; centre the slack on the other so the
   // tree sits balanced on the sheet.
-  const offX = (pageW - contentW * S) / 2 - (LEFT_PAD + nodeMinX) * S;
-  const offY = MARGIN + HEADER + Math.max(0, (avail.h - treeH * S) / 2);
+  const offX = treeLeft + Math.max(0, (avail.w - contentW * S) / 2) - (LEFT_PAD + nodeMinX) * S;
+  const offY = TREE_TOP;
   const X = (lx: number) => offX + lx * S;
   const Y = (ly: number) => offY + ly * S;
   const L = (len: number) => len * S;
@@ -348,45 +415,50 @@ async function renderPoster(
   doc.rect(0, 0, pageW, pageH, 'F');
 
   // ── Header ────────────────────────────────────────────────────────────────
+  // Left: a two-row stats table, three columns divided by rules. Right: the
+  // headings, with the legend beneath. One rule closes the band.
+  const contentRight = pageW - PAGE_MARGIN;
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(HEAD_SIZE);
+  text(C_HEAD_DIM);
+  statCells.forEach(([top, bottom], i) => {
+    doc.text(top, HEAD_COL_X[i], HEAD_STAT1_BASE);
+    doc.text(bottom, HEAD_COL_X[i], HEAD_STAT2_BASE);
+  });
+
+  doc.setFont(FONT, 'bold');
+  doc.setCharSpace(HEAD_TRACK * HEAD_SIZE);
   text(C_TEXT);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(34);
-  doc.text(title, MARGIN, MARGIN + 30);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(15);
-  text(C_DIM);
-  doc.text(sub, MARGIN, MARGIN + 54);
-  // Nickname + account snapshot.
-  if (statsLine) {
-    doc.setFontSize(14);
-    doc.text(statsLine, MARGIN, MARGIN + 76);
+  // Portrait keeps the measured block; landscape is far wider, so start it at the
+  // page middle and let the three headings spread instead of bunching right.
+  const blockLeft = portrait ? contentRight - HEAD_R_TITLE : pageW / 2;
+  const blockW = contentRight - blockLeft;
+  doc.text(title.toUpperCase(), blockLeft, HEAD_TITLE_BASE);
+  doc.text('OPENING TREE', blockLeft + HEAD_MID_FRAC * blockW, HEAD_TITLE_BASE);
+  doc.text(`${named} NAMED LINES`, contentRight, HEAD_TITLE_BASE, { align: 'right' });
+  doc.setCharSpace(0);
+
+  // Legend, wrapped to the width the headings span.
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(LEG_SIZE);
+  text(C_HEAD_DIM);
+  doc.text(legendLine1, blockLeft, HEAD_LEG1_BASE);
+  doc.text(legendLine2, blockLeft, HEAD_LEG2_BASE);
+
+  stroke(C_HEAD_DIM);
+  doc.setLineWidth(RULE_W);
+  for (const dx of HEAD_DIV_X) doc.line(dx, HEAD_DIV_TOP, dx, HEAD_RULE_Y);
+  doc.line(PAGE_MARGIN, HEAD_RULE_Y, contentRight, HEAD_RULE_Y);
+
+  // ── Move numbers ──────────────────────────────────────────────────────────
+  // One per full move, down the gutter: the cap sits on that row's board top.
+  doc.setFont(FONT, 'bold');
+  doc.setFontSize(HEAD_SIZE);
+  text(C_HEAD_DIM);
+  for (let r = 0; r <= layout.maxDepth; r += 2) {
+    const boardTop = Y(TOP_PAD + r * ROW_H + TOP_INSET);
+    doc.text(`${r / 2 + 1}.`, PAGE_MARGIN, boardTop + CAP_RATIO * HEAD_SIZE);
   }
-  // Legend (top-right)
-  doc.setFontSize(12);
-  let lx = pageW - MARGIN - 340;
-  const legend: [string, string][] = [
-    [C_GREEN, 'good'],
-    [C_YELLOW, 'risky'],
-    [C_RED, 'blunder'],
-  ];
-  for (const [hex, label] of legend) {
-    stroke(hex);
-    doc.setLineWidth(3);
-    doc.line(lx, MARGIN + 26, lx + 22, MARGIN + 26);
-    text(C_DIM);
-    doc.text(label, lx + 28, MARGIN + 30);
-    lx += 110;
-  }
-  // Bottom legend: what the numbers under/on each board mean (+ the connectors).
-  text(C_DIM);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(12);
-  doc.text(
-    'Under each board: the move, the engine eval in pawns (+ favours White), then your record from that position as wins/draws/losses. Games played is top-left. Green strong · amber even · red weak.    Connector colour grades the move: green good · amber risky · red blunder.',
-    MARGIN,
-    pageH - 26,
-    { baseline: 'top' }
-  );
 
   // ── Edges ─────────────────────────────────────────────────────────────────
   // Orthogonal elbow connectors (parent bottom → horizontal bus → child top),
@@ -458,7 +530,7 @@ async function renderPoster(
     // opening changes — wrapped to two lines, NEVER shortened (the font shrinks
     // instead), and clear of the connector (its arrow lands above the name).
     if (n.name) {
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(FONT, 'bold');
       const bandW = L(CARD_W);
       let fs = L(8);
       let lines: string[] = [n.name];
@@ -479,14 +551,14 @@ async function renderPoster(
     // Games count, top-left — how often this line occurs (reference style).
     if (n.games) {
       text(C_DIM);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(FONT, 'normal');
       doc.setFontSize(Math.max(3, L(7.5)));
       doc.text(String(n.games), X(boardLX) + L(1.5), Y(boardLY) + L(1.5), { align: 'left', baseline: 'top' });
     }
     // Blunder count, top-right (only when you've erred here).
     if (n.blunders > 0) {
       text(C_RED);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(FONT, 'bold');
       doc.setFontSize(Math.max(3.5, L(9)));
       doc.text(String(n.blunders), X(boardLX + BOARD) - L(1.5), Y(boardLY) + L(1.5), { align: 'right', baseline: 'top' });
     }
@@ -502,7 +574,7 @@ async function renderPoster(
     // A popular first move carries counts like "252/20/304", which would run
     // past the card and collide with its neighbour — so shrink to fit.
     let fs = L(9);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(FONT, 'bold');
     const widthAt = (size: number) => {
       doc.setFontSize(size);
       return (
@@ -582,6 +654,14 @@ export async function renderOpeningTreePreview(
   targetPx = 1400
 ): Promise<{ dataUrl: string; pages: number; branches: string[]; fens: string[] }> {
   const { CanvasPdf } = await import('./pdf-canvas');
+  // Canvas draws with whatever is loaded at the time, so make sure the app's
+  // face is in before the first stroke — otherwise the preview silently falls
+  // back to Helvetica and mismatches the PDF.
+  if (typeof document !== 'undefined' && document.fonts) {
+    try {
+      await Promise.all([document.fonts.load(`700 24px ${FONT}`), document.fonts.load(`400 24px ${FONT}`)]);
+    } catch { /* fall back to the default face */ }
+  }
   const { doc, pages, branches, fens } = await renderPoster(
     (orient) => new CanvasPdf(orient, targetPx),
     tree,

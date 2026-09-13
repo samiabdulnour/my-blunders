@@ -291,16 +291,16 @@ export const POSTER_MAX_NODES = 1400;
  *  A tidy layout gives every leaf its own column, so lines set the width and
  *  plies set the height: a sheet W pt wide inside its margins fits
  *  (W / scale - 108) / 116 columns, and H pt tall fits (H / scale - 18) / 140
- *  rows. Portrait (1578 x 2192) → 19 long lines; landscape (2278 x 1492) → 28
- *  shorter ones. Same board size either way, each sheet filled — a landscape
+ *  rows. Inside the margins and the move-number gutter that's 1476 x 2199
+ *  portrait → 18 long lines; 2176 x 1498 landscape → 27 shorter ones. Same board size either way, each sheet filled — a landscape
  *  poster is simply broader and shallower, which is the shape it wants.
  *
  *  `maxPly` must match the rows the poster actually draws: a line budget spent
  *  on branches that diverge below the last drawn row buys columns you can't
  *  see, which is what left landscape two-thirds empty. */
 export const POSTER_BUDGET = {
-  portrait: { maxLines: 19, maxPly: 23 },
-  landscape: { maxLines: 28, maxPly: 15 },
+  portrait: { maxLines: 18, maxPly: 23 },
+  landscape: { maxLines: 27, maxPly: 15 },
 } as const;
 
 export type PosterShape = keyof typeof POSTER_BUDGET;

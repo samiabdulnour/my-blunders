@@ -39,6 +39,7 @@ export class CanvasPdf {
   private strokeColor = '#000';
   private textColor = '#000';
   private fontStyle = '';
+  private fontFamily = 'Helvetica';
   private fontSize = 12;
 
   constructor(orientation: 'portrait' | 'landscape', targetPx = 1400) {
@@ -63,7 +64,7 @@ export class CanvasPdf {
   };
 
   private applyFont() {
-    this.ctx.font = `${this.fontStyle} ${this.fontSize}px Helvetica, Arial, sans-serif`.trim();
+    this.ctx.font = `${this.fontStyle} ${this.fontSize}px ${this.fontFamily}, Helvetica, Arial, sans-serif`.trim();
   }
 
   setFillColor(r: number, g: number, b: number) {
@@ -75,11 +76,21 @@ export class CanvasPdf {
   setTextColor(r: number, g: number, b: number) {
     this.textColor = `rgb(${r},${g},${b})`;
   }
-  setFont(_family: string, style?: string) {
+  setFont(family: string, style?: string) {
+    // Quote the family so a name with spaces still parses in a canvas font
+    // shorthand; the poster sets it to the app's own face.
+    this.fontFamily = /^[\w-]+$/.test(family) ? family : `"${family}"`;
     this.fontStyle = style === 'bold' ? 'bold' : '';
   }
   setFontSize(pt: number) {
     this.fontSize = pt;
+  }
+  /** jsPDF char spacing, in points. The context is already scaled to page
+   *  units, so the CSS length is in those same units. Ignored by browsers
+   *  without `letterSpacing`, which only costs the header's slight tracking. */
+  setCharSpace(pt: number) {
+    const ctx = this.ctx as CanvasRenderingContext2D & { letterSpacing?: string };
+    if ('letterSpacing' in ctx) ctx.letterSpacing = `${pt}px`;
   }
   setLineWidth(w: number) {
     this.ctx.lineWidth = w;
