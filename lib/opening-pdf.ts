@@ -448,12 +448,18 @@ async function renderPoster(
 
   // ── Move numbers ──────────────────────────────────────────────────────────
   // One per full move, down the gutter: the cap sits on that row's board top.
+  // Set flush RIGHT on a common axis so the figures line up as a column — the
+  // face has no tabular cut, and its narrow "1" would otherwise leave the
+  // column ragged. The widest number still starts at the margin, so the block
+  // sits where the layout puts it.
   doc.setFont(FONT, 'bold');
   doc.setFontSize(HEAD_SIZE);
   text(C_HEAD_DIM);
+  const lastMove = Math.floor(layout.maxDepth / 2) + 1;
+  const numAxis = PAGE_MARGIN + doc.getTextWidth(`${lastMove}.`);
   for (let r = 0; r <= layout.maxDepth; r += 2) {
     const boardTop = Y(TOP_PAD + r * ROW_H + TOP_INSET);
-    doc.text(`${r / 2 + 1}.`, PAGE_MARGIN, boardTop + CAP_RATIO * HEAD_SIZE);
+    doc.text(`${r / 2 + 1}.`, numAxis, boardTop + CAP_RATIO * HEAD_SIZE, { align: 'right' });
   }
 
   // ── Edges ─────────────────────────────────────────────────────────────────
