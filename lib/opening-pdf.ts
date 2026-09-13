@@ -87,6 +87,14 @@ const FONT_FILES: [string, string][] = [
   ['RL-Gruezi-C-Bold.ttf', 'bold'],
   ['RL-Gruezi-C-Regular.ttf', 'normal'],
 ];
+/** Where `scripts/otf2ttf.py` publishes the family's tabular figures — its
+ *  `tnum` glyphs, all 600 units wide — in the embedded faces. PDF text can't
+ *  ask for an OpenType feature, so a column that has to line up addresses those
+ *  glyphs directly; everything else keeps the proportional figures, as the
+ *  InDesign layout this poster follows does. */
+const TAB_ZERO = 0xe030;
+const tabular = (s: string) => s.replace(/\d/g, (d) => String.fromCharCode(TAB_ZERO + +d));
+
 let fontData: { file: string; style: string; b64: string }[] | null = null;
 async function loadPosterFonts() {
   if (fontData) return fontData;
@@ -448,18 +456,15 @@ async function renderPoster(
 
   // ── Move numbers ──────────────────────────────────────────────────────────
   // One per full move, down the gutter: the cap sits on that row's board top.
-  // Set flush RIGHT on a common axis so the figures line up as a column — the
-  // face has no tabular cut, and its narrow "1" would otherwise leave the
-  // column ragged. The widest number still starts at the margin, so the block
-  // sits where the layout puts it.
+  // Flush left at the margin, in the face's TABULAR figures: every digit is one
+  // 600-unit column wide, so the numbers line up down the gutter and "10" grows
+  // rightwards from the same axis as "1" — no alignment trick needed.
   doc.setFont(FONT, 'bold');
   doc.setFontSize(HEAD_SIZE);
   text(C_HEAD_DIM);
-  const lastMove = Math.floor(layout.maxDepth / 2) + 1;
-  const numAxis = PAGE_MARGIN + doc.getTextWidth(`${lastMove}.`);
   for (let r = 0; r <= layout.maxDepth; r += 2) {
     const boardTop = Y(TOP_PAD + r * ROW_H + TOP_INSET);
-    doc.text(`${r / 2 + 1}.`, numAxis, boardTop + CAP_RATIO * HEAD_SIZE, { align: 'right' });
+    doc.text(tabular(`${r / 2 + 1}.`), PAGE_MARGIN, boardTop + CAP_RATIO * HEAD_SIZE);
   }
 
   // ── Edges ─────────────────────────────────────────────────────────────────

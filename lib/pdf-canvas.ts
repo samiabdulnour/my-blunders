@@ -18,6 +18,13 @@ const A1_SHORT = 1683.78;
 
 type Style = 'F' | 'S' | 'FD' | 'DF';
 
+/** The poster asks for tabular figures by private-use code point (U+E030…E039),
+ *  which only the TTFs it embeds carry — the OTF the browser loads has the
+ *  family's proportional figures and would draw those points as tofu. The
+ *  preview is a thumbnail of an A1 sheet, so it just shows the plain digits. */
+const plainDigits = (s: string) =>
+  s.replace(/[\uE030-\uE039]/g, (c) => String(c.charCodeAt(0) - 0xe030));
+
 interface QueuedImage {
   src: string;
   x: number;
@@ -157,12 +164,12 @@ export class CanvasPdf {
     this.ctx.fillStyle = this.textColor;
     this.ctx.textAlign = opts?.align ?? 'left';
     this.ctx.textBaseline = opts?.baseline ?? 'alphabetic';
-    this.ctx.fillText(str, x, y);
+    this.ctx.fillText(plainDigits(str), x, y);
   }
 
   getTextWidth(str: string): number {
     this.applyFont();
-    return this.ctx.measureText(str).width;
+    return this.ctx.measureText(plainDigits(str)).width;
   }
 
   splitTextToSize(str: string, maxW: number): string[] {
