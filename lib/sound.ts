@@ -15,7 +15,7 @@
  * real wood never lands twice the same way.
  */
 
-export type Cue = 'move' | 'capture' | 'castle' | 'check' | 'wrong' | 'end';
+export type Cue = 'move' | 'capture' | 'castle' | 'check' | 'correct' | 'wrong' | 'end';
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -172,6 +172,24 @@ function render(cue: Cue, c: AudioContext, t0: number) {
       tone(c, t0, 784, 0.2, 0.09);
       tone(c, t0 + 0.075, 1175, 0.22, 0.13);
       break;
+
+    // A struck bell: one fundamental with inharmonic partials above it, each
+    // quieter and shorter than the last, which is what separates a bell from a
+    // beep. Started a fraction late so it answers the knock of the move rather
+    // than colliding with it.
+    case 'correct': {
+      const t = t0 + 0.06;
+      const f = 880;
+      // Ratios from a real strike tone — deliberately not whole multiples.
+      tone(c, t, f, 0.2, 0.9, 'sine', 0.002);
+      tone(c, t, f * 2, 0.1, 0.55, 'sine', 0.002);
+      tone(c, t, f * 2.76, 0.06, 0.35, 'sine', 0.002);
+      tone(c, t, f * 5.4, 0.025, 0.18, 'sine', 0.002);
+      // A second strike a fifth up: the phrase resolves instead of just ringing.
+      tone(c, t + 0.13, f * 1.5, 0.14, 0.8, 'sine', 0.002);
+      tone(c, t + 0.13, f * 1.5 * 2.76, 0.04, 0.3, 'sine', 0.002);
+      break;
+    }
 
     // Low, dull and falling. Unpleasant on purpose, but brief.
     case 'wrong': {

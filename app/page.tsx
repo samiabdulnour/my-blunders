@@ -5,6 +5,7 @@ import { Chess, type Move } from 'chess.js';
 
 import { AppShell } from '@/components/AppShell';
 import { Board, MOVE_ANIM_MS } from '@/components/Board';
+import { play as playCue } from '@/lib/sound';
 import { OpeningClinic } from '@/components/OpeningClinic';
 import { OpeningSidebar } from '@/components/OpeningSidebar';
 import { PlayMode } from '@/components/PlayMode';
@@ -507,6 +508,10 @@ export default function Page() {
     const ok = applied.san === line[lineStep];
 
     if (ok) {
+      // Rung here rather than off `flashOk`, which the board also lights up
+      // while replaying the engine's line — that would chime for moves the
+      // solver never found.
+      playCue('correct');
       setChess(next);
       setSelected(null);
       setLastFrom(mv.from);

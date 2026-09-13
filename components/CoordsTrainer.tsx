@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chess, type Move } from 'chess.js';
 import { Board } from './Board';
+import { play as playCue } from '@/lib/sound';
 import { FAMOUS_GAMES } from '@/lib/famous-games';
 
 /**
@@ -369,6 +370,7 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
     try { mv = g.move({ from: m.from, to: m.to, promotion: m.promotion ?? 'q' }); } catch { return; }
     if (!mv) return;
     if (mv.san === expected) {
+      playCue('correct');
       advance(mv);
     } else {
       g.undo();
