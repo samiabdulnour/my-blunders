@@ -33,6 +33,9 @@ interface ClinicValue {
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
   tree: TreeNode;
+  /** Imported games, so the poster can rebuild a denser tree (lower games floor)
+   *  than the on-screen explorer wants. */
+  games: OpeningGame[];
   openings: OpeningEntry[];
 }
 
@@ -107,7 +110,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
 
   const value: ClinicValue = {
     ready, fetching, loading: !ready || !bookReady, color, setColor,
-    focus, setFocus, selectedId, setSelectedId, tree, openings,
+    focus, setFocus, selectedId, setSelectedId, tree, games, openings,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

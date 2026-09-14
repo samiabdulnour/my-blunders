@@ -188,10 +188,10 @@ export function OpeningClinic() {
       const node = findByPath(tree, focus);
       if (node) {
         const parent = focus.split('/').slice(0, -1).join('/');
-        return layoutTree(tree, { topNodes: [node], basePath: parent });
+        return layoutTree(tree, { topNodes: [node], basePath: parent, maxChildren: 3 });
       }
     }
-    return layoutTree(tree);
+    return layoutTree(tree, { maxChildren: 3 });
   }, [tree, focus]);
   const hasGames = tree.games > 0;
 

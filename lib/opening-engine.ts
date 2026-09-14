@@ -37,6 +37,59 @@ export async function evalPosition(fen: string): Promise<EngineEval | null> {
   }
 }
 
+/** Depth for the poster's bulk pass. Every drawn position gets an eval, so this
+ *  trades a little accuracy for speed: ~18ms/position versus ~44ms at the
+ *  clinic's depth 14 (measured on the WASM build), i.e. seconds rather than
+ *  tens of seconds for a full sheet. */
+const POSTER_DEPTH = 12;
+
+/** Shallow evals keyed by FEN, white-relative cp. Kept apart from the depth-14
+ *  `cache` so a quick poster pass never downgrades what the clinic shows. */
+const posterCache = new Map<string, number | null>();
+
+/**
+ * Evaluate every position on the poster, so each board can print an eval
+ * instead of only the ~1-in-5 that came from a server-analysed game.
+ *
+ * Positions the clinic already analysed at depth 14 are reused as-is (better and
+ * free); the rest are searched at POSTER_DEPTH and cached, so re-opening the
+ * dialog or flipping orientation is instant. Searches are serialized by the
+ * engine's own queue. `onProgress` reports only the positions actually searched.
+ * Failures are cached as "no eval" rather than retried — a poster shouldn't hang
+ * on a flaky engine.
+ */
+export async function fillPosterEvals(
+  fens: string[],
+  onProgress?: (done: number, total: number) => void,
+  shouldStop?: () => boolean,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const todo: string[] = [];
+  for (const fen of fens) {
+    const deep = whiteCp(peekEval(fen));
+    if (deep != null) { out.set(fen, deep); continue; }
+    const shallow = posterCache.get(fen);
+    if (shallow !== undefined) { if (shallow != null) out.set(fen, shallow); continue; }
+    if (!todo.includes(fen)) todo.push(fen);
+  }
+  onProgress?.(0, todo.length);
+  let done = 0;
+  for (const fen of todo) {
+    if (shouldStop?.()) break;
+    try {
+      const res = await getWasmEngine().analyze({ fen, depth: POSTER_DEPTH });
+      const l = res.lines[0];
+      const cp = l ? (l.mate != null ? (l.mate > 0 ? 10000 : -10000) : l.cp) : null;
+      posterCache.set(fen, cp);
+      if (cp != null) out.set(fen, cp);
+    } catch {
+      posterCache.set(fen, null);
+    }
+    onProgress?.(++done, todo.length);
+  }
+  return out;
+}
+
 /** One candidate move from a multi-PV search (cp is white-relative). */
 export interface EngineMove {
   uci: string;

@@ -21,6 +21,26 @@
   font-display: swap;
 }
 
+/* The A1 poster only. It follows an InDesign layout set in Gruezi's FULL-WIDTH
+   Bold and Medium, so its preview canvas has to draw in those rather than the
+   condensed cut above — same reason lib/opening-pdf.ts embeds them in the PDF.
+   Nothing in the UI uses this family, so it's fetched only when the print
+   dialog opens. */
+@font-face {
+  font-family: 'GrueziPoster';
+  src: url('/fonts/RL-Gruezi-Medium.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'GrueziPoster';
+  src: url('/fonts/RL-Gruezi-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   /* Pinženýři palette — white page, warm paper on the board */
   --bg: #f1eee8;
@@ -50,12 +70,21 @@
   --mint: #7ce3a0;
   --lemon: #e8e373;
   --font: 'Gruezi', 'Helvetica Neue', Arial, sans-serif;
-  /* ── Type scale — one family (two cuts), five sizes, two weights ── */
-  --fs-micro: 11px; /* eyebrows, captions, meta, all controls */
-  --fs-base: 13px; /* body, queue-card text, inputs */
-  --fs-title: 18px; /* titles, verdicts, wordmark */
-  --fs-big: 24px; /* large stat numerals */
-  --fs-display: 30px; /* onboarding hero */
+  /* ── Type system — EXACTLY THREE STYLES. Nothing else is allowed. ──
+     A  Title   13px / 700 / --txt      / regular case   ("Find the best move.")
+     B  Body    13px / 400 / --txt-dim  / regular case   ("For white.")
+     C  Label   11px / 700 / --txt-dim  / UPPERCASE + --track-caps  ("OPENING")
+     Only exceptions: the top tabs, icon glyphs (arrows/chevrons/steppers/×),
+     the coordinate-trainer readouts (.ct-coord-big/.ct-coord-cell) and the
+     brand wordmark. Every other piece of text must be A, B or C. */
+  --fs-micro: 11px; /* Label (C) */
+  --fs-base: 13px; /* Title (A) + Body (B) */
+  /* Legacy heading sizes are collapsed onto the base size — every heading,
+     verdict and stat numeral now renders as Title. Kept as aliases so the
+     old names still resolve; do not give them their own values again. */
+  --fs-title: var(--fs-base);
+  --fs-big: var(--fs-base);
+  --fs-display: var(--fs-base);
   --fw-reg: 400;
   --fw-bold: 700;
   --track-caps: 0.14em; /* the single uppercase tracking */
@@ -116,6 +145,11 @@ body {
 }
 button {
   font-family: inherit;
+  /* Inherit the text colour. Without this, any button that doesn't set its own
+     colour falls back to the UA default — which on iOS WebKit is system blue,
+     so notation inside buttons (e.g. .cont-row) rendered blue on device while
+     looking correct in desktop browsers. */
+  color: inherit;
   cursor: pointer;
 }
 input,
@@ -127,12 +161,141 @@ select {
 .app-root {
   height: 100vh;
   box-sizing: border-box;
-  /* Keep content clear of the home-indicator at the bottom (the top inset is
-     handled by .topbar). No-op where there's no safe area. */
-  padding-bottom: env(safe-area-inset-bottom);
   display: flex;
   flex-direction: column;
 }
+
+/* Board-control bracket: move nav (first/prev/next/last) on the left, menu (☰)
+   toggle on the right. It portals into .bc-slot so it sits directly under the
+   board, styled like the other panels — paper fill, sharp contour border. The
+   board + this bracket are stacked (board-width) so it lines up under the grid;
+   the result/status brackets follow below. */
+.board-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: fit-content;
+  margin: 0 auto;
+}
+.bc-slot,
+.bc-top-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* The coord mode switcher is a plain control bracket — the same height as the
+   arrows bracket (a `.board-controls` with 38px buttons), so every top bracket
+   across the app is this one compact size. 12px side padding matches the puzzle
+   / play / opening headers so the menu button lands at the same x in every tab. */
+.ct-switcher-head > .board-controls {
+  flex: 1;
+  padding: 7px 12px;
+}
+.board-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px;
+  border: 1px solid var(--contour);
+  background: var(--bg2);
+}
+/* Fallback for a board-less screen (Opening): no slot exists, so the bar pins
+   to the app-root bottom and fills the home-indicator safe area itself. */
+.board-controls.is-bottom {
+  flex-shrink: 0;
+  border: 0;
+  border-top: 1px solid var(--contour);
+  padding: 7px calc(12px + env(safe-area-inset-right))
+    calc(7px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+}
+/* No navigation to show (coordinate trainers, opening map): drop the bracket
+   framing entirely and leave just the menu button, aligned to the right edge. */
+.board-controls.menu-only {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  justify-content: flex-end;
+}
+.board-controls.is-bottom.menu-only {
+  padding: 0 calc(12px + env(safe-area-inset-right))
+    env(safe-area-inset-bottom) calc(12px + env(safe-area-inset-left));
+}
+.bc-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 150px;
+}
+/* Same treatment as the app's other buttons (.btn): white fill, sharp black
+   contour, invert on hover. */
+.bc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 38px;
+  border: 1px solid var(--contour);
+  border-radius: 2px;
+  background: var(--bg2);
+  color: var(--txt);
+  cursor: pointer;
+  transition: all 0.12s var(--ease-snap);
+}
+.bc-btn:hover:not(:disabled) {
+  background: var(--contour);
+  color: var(--bg2);
+}
+.bc-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.bc-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 38px;
+  flex-shrink: 0;
+  border: 1px solid var(--contour);
+  border-radius: 2px;
+  background: var(--bg2);
+  color: var(--txt);
+  cursor: pointer;
+  transition: all 0.12s var(--ease-snap);
+}
+.bc-menu:hover,
+.bc-menu.on {
+  background: var(--contour);
+  color: var(--bg2);
+}
+/* Mode switcher injected into the bracket (Coordinates): a compact segmented
+   button group sharing the same paper/contour treatment as the arrows. */
+.bc-modes { display: flex; align-items: center; flex: 1 1 auto; min-width: 210px; }
+.bc-mode-btn {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0 4px;
+  border: 1px solid var(--contour);
+  border-right-width: 0;
+  background: var(--bg2);
+  color: var(--txt);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  cursor: pointer;
+  transition: all 0.12s var(--ease-snap);
+}
+.bc-mode-btn:first-child { border-radius: 2px 0 0 2px; }
+.bc-mode-btn:last-child { border-radius: 0 2px 2px 0; border-right-width: 1px; }
+.bc-mode-btn:hover:not(.on) { background: var(--bg3); }
+.bc-mode-btn.on { background: var(--contour); color: var(--bg2); }
 
 .topbar {
   /* Reserve the iOS status-bar / Dynamic Island height on top of the normal
@@ -205,7 +368,7 @@ select {
   display: flex;
   align-items: baseline;
   gap: 5px;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   color: var(--txt-dim);
 }
 .stat .v {
@@ -223,7 +386,7 @@ select {
 .stat .lbl {
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
 }
 .topbar-prefs {
   display: flex;
@@ -299,7 +462,7 @@ select {
   flex-shrink: 0;
 }
 .side-h {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
@@ -309,6 +472,34 @@ select {
   margin-left: 8px;
   color: var(--green);
 }
+/* "Print tree · A1 PDF" — exports the current colour's whole opening tree. */
+.side-print {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--txt-dim);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  cursor: pointer;
+  transition: border-color 0.12s var(--ease-snap), color 0.12s var(--ease-snap);
+}
+.side-print svg { flex-shrink: 0; }
+@media (hover: hover) {
+  .side-print:hover:not(:disabled) { border-color: var(--coral); color: var(--coral); }
+}
+.side-print:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Print-depth sub-label + ellipsised print label (long opening names). */
+.side-h-sub { margin-top: 12px; }
+.side-print-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 /* Import bar */
 .import-bar {
@@ -327,7 +518,7 @@ select {
   border: 1px solid var(--border);
   color: var(--txt);
   padding: 7px 10px;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   outline: none;
   border-radius: 3px;
 }
@@ -390,8 +581,18 @@ select {
   background: var(--green);
   transition: width 0.3s;
 }
+/* No fixed target while auto-import runs — a travelling stripe shows "working". */
+.imp-progress .bar.indeterminate {
+  width: 34%;
+  transition: none;
+  animation: imp-slide 1.1s ease-in-out infinite;
+}
+@keyframes imp-slide {
+  0% { left: -34%; }
+  100% { left: 100%; }
+}
 .imp-status {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   color: var(--txt-dim);
   line-height: 1.4;
 }
@@ -407,7 +608,7 @@ select {
   border: 0;
   padding: 0;
   color: var(--txt-dim);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
   text-decoration: underline;
@@ -425,7 +626,7 @@ select {
 }
 .imp-sep {
   color: var(--border2);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
 }
 /* Tap targets big enough for touch — Upload PGN / Clear all sit close together. */
 .imp-row { align-items: center; min-height: 32px; }
@@ -452,7 +653,7 @@ select {
 
 /* Inline "Clear everything?" confirm — replaces window.confirm, real touch targets */
 .imp-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.imp-confirm-q { font-size: var(--fs-micro); color: var(--txt); font-weight: var(--fw-bold); flex: 1 1 auto; }
+.imp-confirm-q { font-size: var(--fs-base); color: var(--txt); font-weight: var(--fw-bold); flex: 1 1 auto; }
 .imp-confirm-btn {
   min-height: 32px;
   padding: 6px 12px;
@@ -534,7 +735,7 @@ select {
   justify-content: center;
   padding: 7px 8px;
   gap: 4px;
-  letter-spacing: 0.02em;
+  letter-spacing: var(--track-caps);
   min-width: 0;
 }
 .chip-plus {
@@ -623,7 +824,7 @@ select {
   background: var(--lemon);
 }
 .filter-popover-h {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
@@ -632,21 +833,51 @@ select {
 
 /* Matched-count line */
 .qcount {
-  font-size: var(--fs-micro);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   color: var(--txt-dim);
-  padding: 8px 16px;
+  padding: 6px 16px;
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
   flex-shrink: 0;
 }
+/* Shuffle toggle living in the matched-count row. */
+.qcount-random {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 4px 9px;
+  border: 1px solid var(--border2);
+  border-radius: 100px;
+  background: var(--bg);
+  color: var(--txt-dim);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  cursor: pointer;
+}
+.qcount-random:hover { border-color: var(--contour); color: var(--txt); }
+.qcount-random.on { color: #16140f; background: var(--lemon); border-color: var(--contour); }
+/* Condensed session stats at the top of the sidebar. */
+.ps-stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ps-stat { display: flex; flex-direction: column; gap: 2px; }
+.ps-stat-v { font-size: var(--fs-title); font-weight: var(--fw-bold); color: var(--txt); line-height: 1; font-variant-numeric: tabular-nums; }
+/* Body style (same as the filter-popover options, e.g. "blitz"): lower case,
+   regular weight, no caps tracking — not the uppercase Label treatment. */
+.ps-stat-l { font-size: var(--fs-base); font-weight: var(--fw-reg); color: var(--txt-dim); text-transform: none; letter-spacing: normal; }
 .qcount em {
   color: var(--coral);
   font-style: normal;
   font-weight: var(--fw-bold);
 }
-.q-loading { color: var(--txt-faint); animation: q-pulse 1.2s ease-in-out infinite; }
+.q-loading { color: var(--txt-dim); animation: q-pulse 1.2s ease-in-out infinite; }
 @keyframes q-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 
 /* Queue list */
@@ -666,7 +897,7 @@ select {
 }
 .queue-empty {
   padding: 24px;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   color: var(--txt-dim);
   text-align: center;
 }
@@ -696,7 +927,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   font-weight: var(--fw-bold);
   color: var(--txt-dim);
   flex-shrink: 0;
@@ -724,7 +955,7 @@ select {
   text-overflow: ellipsis;
 }
 .qcard .qmeta {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   color: var(--txt-dim);
   margin-top: 2px;
   white-space: nowrap;
@@ -748,74 +979,77 @@ select {
   max-width: 808px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  /* Uniform 10px gap between the brackets, matching the board-stack gap so the
+     header→board and board→arrows gaps are identical across every tab. */
+  gap: 10px;
 }
+/* Puzzle name + info in a white bracket, menu button pinned to the right. */
 .ctx-line {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 6px 2px;
-  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 12px;
+  min-width: 0;
+  /* Compact shared header height (same as the arrows bracket). */
+  height: 54px;
+  box-sizing: border-box;
+  border: 1px solid var(--contour);
+  background: var(--bg2);
 }
-.ctx-l {
+.ctx-body {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+  justify-content: center;
+  gap: 2px;
 }
+/* Opponent name on row 1, the "… to move" chip on row 2 — both left-aligned,
+   tight so both fit in the compact header. */
+/* Shared top-bracket title line: 14px bold dark, regular case (same in every tab). */
 .ctx-title {
-  font-size: var(--fs-title);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  font-size: var(--fs-base);
   font-weight: var(--fw-bold);
   color: var(--txt);
+  /* Fixed 16px line box so the two-line block is exactly 16+3+13=32px and
+     centres identically to Play/Opening (no inherited-line-height drift). */
+  line-height: 16px;
+  min-width: 0;
+}
+.ctx-opp {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
-.ctx-title .vs {
-  color: var(--txt-dim);
-  font-weight: var(--fw-reg);
-  margin-right: 4px;
-}
+/* Meta on a single row — the (often long) opening name ellipsises rather than
+   wrapping the row to two lines. */
 .ctx-meta {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.ctx-open {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ctx-meta > .sep,
+.ctx-meta > span:not(.ctx-open) {
+  flex-shrink: 0;
 }
 .ctx-meta .sep {
   color: var(--border2);
-}
-.turn-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 12px;
-  border-radius: 100px;
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  font-size: var(--fs-micro);
-  color: var(--txt);
-  font-weight: var(--fw-reg);
-  text-transform: uppercase;
-  letter-spacing: var(--track-caps);
-  flex-shrink: 0;
-}
-.turn-chip .dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 1px solid var(--txt);
-}
-.turn-chip.white .dot {
-  background: #fff;
-}
-.turn-chip.black .dot {
-  background: var(--txt);
-  border-color: var(--txt);
 }
 
 /* ─── Board + result row ─── */
@@ -833,12 +1067,25 @@ select {
   gap: 8px;
   align-items: flex-start;
 }
+/* Mirror the rank-label column on the right so the 8×8 grid — not the
+   grid-plus-labels block — is what centres on screen. Same width as .ranks.
+   Only when labels are shown; a no-coords board is just the grid, centred on
+   its own. */
+.bwrap:not(.no-coords)::after {
+  content: '';
+  flex: 0 0 14px;
+  align-self: stretch;
+}
+.bwrap.no-coords { gap: 0; }
 .ranks {
   display: flex;
   flex-direction: column;
   justify-content: space-around;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   color: var(--txt-dim);
+  width: 14px;
+  box-sizing: border-box;
+  text-align: right;
   padding-right: 2px;
   font-weight: var(--fw-bold);
 }
@@ -865,7 +1112,7 @@ select {
   display: flex;
   justify-content: space-around;
   padding-top: 5px;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   color: var(--txt-dim);
   font-weight: var(--fw-bold);
 }
@@ -897,6 +1144,19 @@ select {
 .sq.sel {
   box-shadow: inset 0 0 0 3px var(--coral);
   z-index: 2;
+}
+/* Hint: ring the piece you should move, pulsing to draw the eye. */
+.sq.sq-hint {
+  box-shadow: inset 0 0 0 3px var(--coral);
+  z-index: 2;
+  animation: sq-hint-pulse 1.2s ease-in-out infinite;
+}
+@keyframes sq-hint-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px var(--coral); }
+  50% { box-shadow: inset 0 0 0 6px var(--coral); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sq.sq-hint { animation: none; }
 }
 .sq-dot-hint {
   position: absolute;
@@ -1011,10 +1271,10 @@ html[data-theme='dark'] .sq.cap-ring {
 .result {
   border: 1px solid var(--contour);
   background: var(--bg2);
-  padding: 16px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .verdict {
@@ -1047,16 +1307,18 @@ html[data-theme='dark'] .sq.cap-ring {
 .verdict.bad .verdict-text {
   color: var(--red);
 }
+/* Unified bracket typography: a base-size bold title over base-size dimmed body,
+   regular case — shared by the puzzle / coordinate / play result brackets. */
 .verdict-title {
   font-size: var(--fs-base);
   font-weight: var(--fw-bold);
+  color: var(--txt);
 }
 .verdict-sub {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   color: var(--txt-dim);
   margin-top: 2px;
-  text-transform: uppercase;
-  letter-spacing: var(--track-caps);
+  line-height: 1.4;
 }
 
 .eval-bar {
@@ -1068,7 +1330,7 @@ html[data-theme='dark'] .sq.cap-ring {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
@@ -1104,7 +1366,7 @@ html[data-theme='dark'] .sq.cap-ring {
 .eval-vals {
   display: flex;
   justify-content: space-between;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   font-variant-numeric: tabular-nums;
   color: var(--txt-dim);
 }
@@ -1121,13 +1383,52 @@ html[data-theme='dark'] .sq.cap-ring {
   grid-template-columns: 1fr 1fr;
   gap: 6px;
 }
+/* Single "Best move" cell (no "you played") spans the full width. */
+.move-grid.solo {
+  grid-template-columns: 1fr;
+}
+/* Condensed result facts — best move + blunder as a tight label→value grid so
+   the move sits right next to its label (not pushed to the far right). */
+/* Compact result footer: facts on the left, verdict on the right, one row. */
+.result-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  flex-wrap: wrap;
+}
+.result-summary .verdict { margin-left: auto; }
+/* Slightly smaller verdict here so "Solution shown." fits beside the facts on a
+   narrow phone rather than wrapping to its own line. */
+.result-summary .verdict-ico,
+.result-summary .verdict-text { font-size: var(--fs-base); }
+.result-facts {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  gap: 2px 10px;
+  align-items: baseline;
+}
+.rf { display: contents; }
+.rf-lbl { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); }
+.rf-v { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); font-variant-numeric: tabular-nums; }
+.rf-v.best { color: var(--green); }
+/* Eval in brackets after the move — secondary, so Body weight/colour. */
+.rf-eval { font-weight: var(--fw-reg); color: var(--txt-dim); }
+/* The best/played move is a button that opens the replay popup — underlined so
+   it reads as tappable, inheriting the row's colour (green for best). */
+.rf-move {
+  background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+  text-decoration-color: var(--border2);
+}
+.rf-move:hover, .rf-move:active { text-decoration-color: currentColor; }
 .move-cell {
   border: 1px solid var(--border);
   background: var(--bg);
   padding: 8px 10px;
 }
 .move-cell .lbl {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
@@ -1160,7 +1461,7 @@ html[data-theme='dark'] .sq.cap-ring {
 }
 
 .blunder-line {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
@@ -1183,7 +1484,7 @@ html[data-theme='dark'] .sq.cap-ring {
   border-top: 1px solid var(--border);
 }
 .engine-line-h {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
@@ -1206,7 +1507,7 @@ html[data-theme='dark'] .sq.cap-ring {
   gap: 3px;
   white-space: nowrap;
 }
-.el-no { color: var(--txt-faint); }
+.el-no { color: var(--txt-dim); }
 .el-move {
   background: none; border: 0; padding: 1px 5px; border-radius: 3px;
   font: inherit; font-weight: var(--fw-bold); color: var(--txt); cursor: pointer;
@@ -1262,7 +1563,7 @@ html[data-theme='dark'] .sq.cap-ring {
 }
 
 .pre-result .help {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   color: var(--txt-dim);
   line-height: 1.5;
 }
@@ -1287,28 +1588,34 @@ html[data-theme='dark'] .sq.cap-ring {
 .onboarding {
   width: 100%;
   max-width: 520px;
-  margin: auto;
+  /* Top-aligned, not vertically centred: `margin: auto` pushed the hero down the
+     screen and made the first run scroll before you'd read anything. */
+  margin: 0 auto;
   /* Add the safe-area insets so the first-run screen clears the notch and
      home indicator too. No-op on the web / non-notched devices. */
-  padding: calc(32px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right))
-    calc(32px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
+  padding: calc(18px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right))
+    calc(20px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 20px;
   align-items: center;
   text-align: center;
 }
 .onb-hero {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
+/* This is the wordmark itself, so it uses the logo's lettering — mixed case and
+   tight tracking, exactly like .brand-word on the web — not a shouty uppercase
+   eyebrow. Wordmark is one of the documented exemptions from the 3-style rule. */
 .onb-eyebrow {
-  font-size: var(--fs-micro);
+  font-size: 22px;
   color: var(--coral);
   font-weight: var(--fw-bold);
-  text-transform: uppercase;
-  letter-spacing: var(--track-caps);
+  text-transform: none;
+  letter-spacing: -0.01em;
+  line-height: 1;
 }
 .onb-title {
   font-size: var(--fs-display);
@@ -1359,7 +1666,7 @@ html[data-theme='dark'] .sq.cap-ring {
   background: var(--bg);
   border: 1px solid var(--contour);
   color: var(--txt-dim);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   font-weight: var(--fw-bold);
   display: flex;
   align-items: center;
@@ -1382,7 +1689,7 @@ html[data-theme='dark'] .sq.cap-ring {
   margin-bottom: 2px;
 }
 .onb-step p {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   color: var(--txt-dim);
   line-height: 1.4;
 }
@@ -1413,7 +1720,7 @@ html[data-theme='dark'] .sq.cap-ring {
   color: #16140f;
   border: 1px solid var(--contour);
   padding: 12px 24px;
-  font-size: var(--fs-base);
+  font-size: var(--fs-micro);
   font-weight: var(--fw-bold);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
@@ -1433,8 +1740,8 @@ html[data-theme='dark'] .sq.cap-ring {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: var(--fs-micro);
-  color: var(--txt-faint);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
+  color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
 }
@@ -1469,14 +1776,14 @@ html[data-theme='dark'] .sq.cap-ring {
   filter: brightness(1.06);
 }
 .onb-famous .sub {
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-base);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-reg);
   letter-spacing: var(--track-caps);
   opacity: 0.7;
 }
 .onb-alt {
-  font-size: var(--fs-micro);
-  color: var(--txt-faint);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
+  color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
 }
@@ -1522,7 +1829,7 @@ html[data-theme='dark'] .sq.cap-ring {
   100% { left: 100%; }
 }
 .onb-running .progress-text {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   color: var(--txt-dim);
   display: flex;
   justify-content: space-between;
@@ -1530,8 +1837,8 @@ html[data-theme='dark'] .sq.cap-ring {
 }
 .onb-running .progress-text.solo { justify-content: center; }
 .onb-running .progress-note {
-  font-size: var(--fs-micro);
-  color: var(--txt-faint);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
+  color: var(--txt-dim);
   text-align: center;
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
@@ -1620,6 +1927,194 @@ html[data-theme='dark'] .sq.cap-ring {
 /* The bar reuses .side-block; drop its sidebar chrome inside the sheet. */
 .import-sheet .import-bar { padding: 0; border-bottom: 0; }
 
+/* Settings dropdown: global site controls — coordinates, dark mode, about,
+   and the import-games panel — grouped behind one legible button. */
+.settings-sheet {
+  position: absolute;
+  top: 48px;
+  right: 16px;
+  z-index: 60;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: sheet-in 160ms var(--ease-snap);
+}
+/* "Settings" and "Import games" headings share one style. */
+.settings-sheet h3,
+.settings-sheet .side-h {
+  font-size: var(--fs-micro);
+  color: var(--txt-dim);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  font-weight: var(--fw-bold);
+}
+/* Back button at the top of the settings panel. */
+.settings-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-bottom: 2px;
+  padding: 2px 6px 2px 0;
+  background: none;
+  border: 0;
+  color: var(--txt-dim);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  cursor: pointer;
+}
+.settings-back:hover { color: var(--txt); }
+.settings-toggles { display: flex; flex-direction: column; gap: 6px; }
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg2);
+  color: var(--txt);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+  text-align: left;
+}
+.settings-row:hover { border-color: var(--contour); }
+.settings-row-label { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.settings-row-label svg { color: var(--txt-dim); flex-shrink: 0; }
+.settings-link { text-decoration: none; }
+.settings-link svg:last-child { color: var(--txt-faint); }
+.toggle-pill {
+  flex-shrink: 0;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  padding: 3px 10px;
+  border-radius: 100px;
+  border: 1px solid var(--border2);
+  color: var(--txt-dim);
+  background: var(--bg);
+}
+.toggle-pill.on { color: #16140f; background: var(--lemon); border-color: var(--contour); }
+.settings-import {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Board theme picker (settings sheet + onboarding step) ── */
+.settings-board {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.settings-board-h,
+.board-picker-mode {
+  font-size: var(--fs-micro);
+  color: var(--txt-dim);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  font-weight: var(--fw-bold);
+}
+.settings-row-end { display: flex; align-items: center; gap: 8px; }
+.settings-row-hint {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--txt-dim);
+}
+.board-picker { display: flex; flex-direction: column; gap: 14px; }
+.board-picker-group { display: flex; flex-direction: column; gap: 8px; }
+.board-picker-row { display: flex; gap: 10px; }
+.board-swatch {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: border-color 0.12s var(--ease-snap);
+}
+.board-swatch.sel {
+  border-color: var(--coral);
+  box-shadow: inset 0 0 0 1px var(--coral);
+}
+.board-swatch-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.board-swatch-grid > span { display: block; }
+.board-swatch-label {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--txt-dim);
+}
+.board-swatch.sel .board-swatch-label { color: var(--txt); }
+
+/* Onboarding "choose your board" step */
+.onb-board {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 440px;
+}
+.onb-board-h {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-bold);
+  color: var(--txt);
+}
+.onb-board-sub {
+  font-size: var(--fs-base);
+  color: var(--txt-dim);
+  line-height: 1.5;
+  margin-top: -8px;
+}
+.settings-h {
+  font-size: var(--fs-micro);
+  color: var(--txt-dim);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  font-weight: var(--fw-bold);
+}
+.settings-sheet .import-bar { padding: 0; border-bottom: 0; }
+/* Text labels on the topbar prefs buttons (Random · Stats · Settings). */
+.icon-btn span {
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  font-weight: var(--fw-bold);
+}
+
 .stats-sheet {
   position: absolute;
   top: 48px;
@@ -1648,7 +2143,7 @@ html[data-theme='dark'] .sq.cap-ring {
   }
 }
 .stats-sheet h3 {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
@@ -1664,7 +2159,7 @@ html[data-theme='dark'] .sq.cap-ring {
   border-radius: 3px;
 }
 .stat-card .lbl {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
@@ -1676,7 +2171,7 @@ html[data-theme='dark'] .sq.cap-ring {
   font-variant-numeric: tabular-nums;
 }
 .stat-card .delta {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   margin-top: 2px;
   color: var(--green);
 }
@@ -1684,7 +2179,7 @@ html[data-theme='dark'] .sq.cap-ring {
   color: var(--red);
 }
 .spark-h {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   color: var(--txt-dim);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
@@ -1715,7 +2210,12 @@ html[data-theme='dark'] .sq.cap-ring {
 @media (max-width: 900px) {
   .topbar {
     gap: 8px;
-    padding: 0 10px;
+    /* Keep the tighter phone padding, but preserve the safe-area insets from
+       the base rule — the `height` still reserves the status-bar/Dynamic Island
+       height, so dropping the top inset here would let the tabs ride up under
+       the island and leave a gap above the divider. */
+    padding: env(safe-area-inset-top) calc(10px + env(safe-area-inset-right)) 0
+      calc(10px + env(safe-area-inset-left));
   }
   .stats-strip {
     gap: 10px;
@@ -1761,7 +2261,9 @@ html[data-theme='dark'] .sq.cap-ring {
     align-items: center;
     gap: 4px;
     position: fixed;
-    top: 48px;
+    /* Sit at the bottom of the (safe-area-aware) topbar, not a fixed 48px —
+       otherwise on a Dynamic Island phone the strip rides up into the header. */
+    top: calc(48px + env(safe-area-inset-top));
     left: 0;
     width: min(85%, 320px);
     z-index: 82;
@@ -1774,20 +2276,74 @@ html[data-theme='dark'] .sq.cap-ring {
     box-shadow: 4px 6px 24px rgba(0, 0, 0, 0.25);
   }
   .topbar-prefs.open .icon-btn { padding: 8px 10px; }
-  /* Drop the sidebar below the prefs strip. */
-  .side { top: 46px; }
-  /* Import/stats sheets must sit above the drawer scrim (z-index 70). */
-  .import-sheet, .stats-sheet { z-index: 90; }
+  /* The drawer fills from the top of the body row (already below the topbar);
+     pad its top to clear the fixed prefs strip that overlays it. Pushing the
+     whole drawer down instead (top: 46px) left a gap that showed the board
+     behind it — worse on a Dynamic Island phone where the offsets compound. */
+  .side { top: 0; padding-top: 44px; }
+  /* On phones the prefs live in the drawer, so a sheet opens as a clean panel
+     over it (drawer width, anchored under the topbar) instead of a top-right
+     dropdown that overlaps the strip. Tap the dimmed board beside it to close. */
+  .settings-sheet, .stats-sheet {
+    position: fixed;
+    top: calc(48px + env(safe-area-inset-top));
+    left: 0;
+    right: auto;
+    width: min(85%, 320px);
+    max-width: min(85%, 320px);
+    border: 0;
+    border-right: 1px solid var(--contour);
+    border-bottom: 1px solid var(--contour);
+    border-radius: 0;
+    box-shadow: 4px 6px 24px rgba(0, 0, 0, 0.25);
+    z-index: 95;
+  }
+  .settings-sheet {
+    bottom: 0;
+    max-height: none;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+  .stats-sheet {
+    max-height: calc(100vh - 56px - env(safe-area-inset-top));
+    overflow-y: auto;
+  }
 
   .main {
     padding: 12px;
+    /* The control bar is no longer a fixed bottom element filling the safe
+       area, so the scroll content pads past the home indicator itself. */
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
   .bwrap {
-    --sq-size: min(44px, calc((100vw - 40px) / 8));
+    /* Reserve the 12px main padding + the rank column and its mirror spacer
+       (14 + 8 gap, both sides) so the 8×8 grid sits centred on screen. */
+    --sq-size: min(44px, calc((100vw - 68px) / 8));
+  }
+  /* No labels → the grid fills the width (just the page padding reserved). */
+  .bwrap.no-coords {
+    --sq-size: min(52px, calc((100vw - 28px) / 8));
   }
   .board-row {
     flex-direction: column;
     align-items: center;
+    /* Same 10px gap as the other stacked brackets (board → result / moves). */
+    gap: 10px;
+  }
+  /* Full-column width so the control bracket lines up with the result / moves
+     brackets below it, whether or not the board shows coordinate labels. The
+     slot stretches full width; the board itself stays centred within the stack. */
+  .board-stack {
+    width: 100%;
+    max-width: 480px;
+    align-items: stretch;
+  }
+  /* Only the board keeps its intrinsic width (centred); every bracket around it
+     — mode switcher, arrows, coordinate row, notation — stretches full width so
+     they all line up edge-to-edge, identically in every mode. */
+  .board-stack > .bwrap,
+  .board-stack > .ct-board,
+  .board-stack > .ct-board-area {
+    align-self: center;
   }
   .result-slot {
     width: 100%;
@@ -1796,7 +2352,10 @@ html[data-theme='dark'] .sq.cap-ring {
 }
 @media (max-width: 480px) {
   .bwrap {
-    --sq-size: calc((100vw - 36px) / 8);
+    --sq-size: calc((100vw - 68px) / 8);
+  }
+  .bwrap.no-coords {
+    --sq-size: calc((100vw - 28px) / 8);
   }
 }
 
@@ -1916,7 +2475,7 @@ body.panning * {
   font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
-  color: var(--txt-faint);
+  color: var(--txt-dim);
   font-weight: var(--fw-bold);
 }
 .about-steps {
@@ -1940,7 +2499,7 @@ body.panning * {
   border-radius: 2px;
   color: var(--coral);
   font-weight: var(--fw-bold);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
   background: var(--bg2);
 }
 .about-step h4 {
@@ -2014,14 +2573,14 @@ body.panning * {
   text-decoration: underline;
 }
 .about-foot {
-  font-size: var(--fs-micro);
-  color: var(--txt-faint);
+  font-size: var(--fs-base);
+  color: var(--txt-dim);
   line-height: 1.7;
   border-top: 1px solid var(--border);
   padding-top: 18px;
 }
 .about-foot .about-link {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-base);
 }
 
 /* Contact form (components/ContactForm.tsx) — mailto-based "ask a question". */
@@ -2036,7 +2595,7 @@ body.panning * {
   gap: 6px;
 }
 .contact-label {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
   color: var(--txt-dim);
@@ -2068,7 +2627,7 @@ body.panning * {
   color: #16140f;
   border: 1px solid var(--contour);
   padding: 12px 24px;
-  font-size: var(--fs-base);
+  font-size: var(--fs-micro);
   font-weight: var(--fw-bold);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
@@ -2084,8 +2643,8 @@ body.panning * {
   cursor: not-allowed;
 }
 .contact-note {
-  font-size: var(--fs-micro);
-  color: var(--txt-faint);
+  font-size: var(--fs-base);
+  color: var(--txt-dim);
   line-height: 1.6;
 }
 
@@ -2103,15 +2662,39 @@ body.panning * {
 .ob-hl::after { content: ''; position: absolute; inset: 0; background: var(--lm-d); opacity: 0.6; }
 .ob-pc { position: absolute; inset: 0; width: 100%; height: 100%; }
 
-.clinic { display: flex; height: 100%; min-height: 0; min-width: 0; flex: 1; }
+.clinic { position: relative; display: flex; height: 100%; min-height: 0; min-width: 0; flex: 1; }
 .clinic-tree {
   flex: 1; min-width: 0; overflow: auto; position: relative;
   background: radial-gradient(circle at center, var(--border) 0.8px, transparent 1.2px) 0 0 / 22px 22px, var(--bg);
   cursor: grab;
 }
 .clinic-bar {
-  position: sticky; top: 0; left: 0; z-index: 5; display: flex; align-items: center; gap: 16px;
-  padding: 10px 16px; background: var(--bg2); border-bottom: 1px solid var(--border);
+  position: sticky; top: 12px; left: 0; z-index: 5; display: flex; align-items: flex-start; gap: 12px;
+  /* 12px inset so the bracket sits at the same top/side offset (top 60, left 12)
+     as the puzzle / play / coords headers. The inset is done with a transform,
+     NOT a left margin: this bar sticks horizontally inside a pannable canvas,
+     and a stuck element's margin box collapses against the scrollport edge, so
+     a margin-based inset drifts to the left as soon as you pan. A transform is
+     applied after positioning, so the gap stays exactly 12px at any scroll. */
+  box-sizing: border-box;
+  width: calc(100% - 24px);
+  margin: 12px 0;
+  transform: translateX(12px);
+  padding: 8px 12px; background: var(--bg2); border: 1px solid var(--contour);
+}
+/* Crumbs + legend + drill flow on the left and wrap among themselves. */
+.clinic-bar-left { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+/* Tools (menu button, and zoom on the web) stay pinned to the top-right. */
+.clinic-tools { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+/* Drill CTA: its own control under the header bracket. Sticky just below the bar
+   (12 top margin + 54 bar + 12 gap) and inset with the same transform trick, so
+   it stays put and stays aligned while the canvas is panned. */
+.clinic-drill {
+  position: sticky; top: 78px; left: 0; z-index: 5;
+  box-sizing: border-box;
+  width: calc(100% - 24px);
+  margin: 0 0 12px;
+  transform: translateX(12px);
 }
 .clinic-seg { display: inline-flex; border: 1px solid var(--contour); border-radius: 3px; overflow: hidden; }
 .clinic-seg button {
@@ -2121,10 +2704,10 @@ body.panning * {
 }
 .clinic-seg button:last-child { border-right: 0; }
 .clinic-seg button.on { background: var(--contour); color: var(--bg2); }
-.clinic-bar-meta { display: flex; gap: 14px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); }
+.clinic-bar-meta { display: flex; gap: 14px; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); }
 .clinic-bar-meta b { color: var(--txt); font-weight: var(--fw-bold); }
 .clinic-bar-meta .hot b { color: var(--red); }
-.clinic-loading { color: var(--txt-faint); text-transform: none; letter-spacing: 0; font-style: italic; }
+.clinic-loading { color: var(--txt-dim); text-transform: none; letter-spacing: 0; }
 .clinic-empty { max-width: 320px; margin: 60px auto; text-align: center; color: var(--txt-dim); padding: 24px; }
 .clinic-empty h3 { font-size: var(--fs-title); color: var(--txt); margin-bottom: 8px; }
 
@@ -2151,23 +2734,23 @@ body.panning * {
 .cnode-warn {
   position: absolute; top: -9px; left: -9px; z-index: 3; display: inline-flex; align-items: center; gap: 2px;
   height: 17px; padding: 0 5px; border-radius: 9px; background: var(--red); color: #fff;
-  border: 1.5px solid var(--bg2); font-size: 10px; font-weight: var(--fw-bold);
+  border: 1.5px solid var(--bg2); font-size: var(--fs-base); font-weight: var(--fw-bold);
 }
 .cnode-more {
   position: absolute; top: -8px; right: -8px; z-index: 3; min-width: 18px; height: 16px; padding: 0 5px; border-radius: 8px;
   display: inline-flex; align-items: center; justify-content: center; background: var(--bg2); color: var(--txt-dim);
-  border: 1.5px solid var(--border2); font-size: 9px; font-weight: var(--fw-bold);
+  border: 1.5px solid var(--border2); font-size: var(--fs-base); font-weight: var(--fw-bold);
 }
 .cnode-off {
   position: absolute; bottom: -8px; left: -7px; z-index: 3; height: 16px; padding: 0 6px; border-radius: 8px;
   display: inline-flex; align-items: center; background: var(--bg2); color: var(--coral);
-  border: 1.5px solid var(--coral); font-size: 9px; font-weight: var(--fw-bold);
-  text-transform: uppercase; letter-spacing: 0.03em;
+  border: 1.5px solid var(--coral); font-size: var(--fs-micro); font-weight: var(--fw-bold);
+  text-transform: uppercase; letter-spacing: var(--track-caps);
 }
 .cnode-label { text-align: center; padding-top: 6px; }
-.cnode-name { display: block; font-size: 10px; color: var(--txt-dim); font-weight: var(--fw-bold); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cnode-move { display: block; font-size: 12px; font-weight: var(--fw-bold); color: var(--txt); letter-spacing: -0.01em; }
-.cnode-games { display: block; font-size: 10px; color: var(--txt-faint); margin-top: 1px; }
+.cnode-name { display: block; font-size: var(--fs-base); color: var(--txt-dim); font-weight: var(--fw-bold); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cnode-move { display: block; font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); letter-spacing: normal; }
+.cnode-games { display: block; font-size: var(--fs-base); color: var(--txt-dim); margin-top: 1px; }
 
 .clinic-detail { position: relative; width: 340px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--bg2); overflow-y: auto; display: flex; flex-direction: column; }
 .cd-close {
@@ -2177,45 +2760,45 @@ body.panning * {
   cursor: pointer; transition: color 0.12s ease, border-color 0.12s ease;
 }
 .cd-close:hover { color: var(--txt); border-color: var(--border2); }
-.cd-empty { margin: auto; padding: 40px 24px; text-align: center; color: var(--txt-faint); font-size: var(--fs-base); }
-.cd-board-sec { padding: 18px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; }
+.cd-empty { margin: auto; padding: 40px 24px; text-align: center; color: var(--txt-dim); font-size: var(--fs-base); }
+.cd-board-sec { padding: 8px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
 .cd-board { display: flex; justify-content: center; }
 .cd-head { width: 100%; text-align: center; }
 .cd-name { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); }
-.cd-move { font-size: var(--fs-title); font-weight: var(--fw-bold); letter-spacing: -0.01em; line-height: 1.1; }
+.cd-move { font-size: var(--fs-title); font-weight: var(--fw-bold); letter-spacing: normal; line-height: 1.1; }
 .cd-theory { display: inline-block; margin-top: 5px; padding: 2px 9px; border-radius: 10px; border: 1px solid currentColor; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); font-weight: var(--fw-bold); }
 .cd-theory.book { color: var(--green); }
 .cd-theory.off { color: var(--coral); }
-.cd-sub { font-size: var(--fs-micro); color: var(--txt-dim); margin-top: 3px; }
+.cd-sub { font-size: var(--fs-base); color: var(--txt-dim); margin-top: 3px; }
 .cd-blund { color: var(--red); }
 /* Your win rate (score %) + W/D/L from the selected position */
-.cd-record { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin-top: 4px; font-size: var(--fs-micro); }
+.cd-record { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin-top: 4px; font-size: var(--fs-base); }
 .cd-score { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
 .cd-wdl { color: var(--txt-dim); font-variant-numeric: tabular-nums; }
-.cd-sec { padding: 16px 18px; border-bottom: 1px solid var(--border); }
-.cd-eyebrow { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt); margin-bottom: 10px; }
-.cd-src { color: var(--txt-faint); font-weight: var(--fw-reg); letter-spacing: 0.06em; }
-.cd-note { font-size: 12px; color: var(--txt-faint); }
+.cd-sec { padding: 8px 14px; border-bottom: 1px solid var(--border); }
+.cd-eyebrow { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt); margin-bottom: 5px; }
+.cd-src { color: var(--txt-dim); font-weight: var(--fw-bold); letter-spacing: var(--track-caps); }
+.cd-note { font-size: var(--fs-base); color: var(--txt-dim); }
 .theory-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .theory-row { display: flex; align-items: center; gap: 8px; }
 .theory-row .t-san { width: 66px; flex-shrink: 0; font-size: var(--fs-base); font-weight: var(--fw-bold); display: flex; align-items: center; gap: 5px; }
 .theory-row.best .t-san { color: var(--green); }
-.t-tag { font-size: 8px; text-transform: uppercase; letter-spacing: 0.06em; padding: 1px 4px; border-radius: 3px; background: var(--green-soft); color: var(--green); font-weight: var(--fw-bold); }
+.t-tag { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); padding: 1px 4px; border-radius: 3px; background: var(--green-soft); color: var(--green); font-weight: var(--fw-bold); }
 .t-tag.you { background: var(--bg3); color: var(--txt-dim); }
 .t-bar { flex: 1; height: 7px; border-radius: 4px; background: var(--bg3); overflow: hidden; }
 .t-fill { display: block; height: 100%; background: var(--txt-faint); }
 .theory-row.best .t-fill { background: var(--green); }
-.t-share { width: 34px; text-align: right; font-size: var(--fs-micro); color: var(--txt-dim); }
-.cd-verdict { margin-top: 12px; font-size: 12px; line-height: 1.5; color: var(--txt-dim); }
+.t-share { width: 34px; text-align: right; font-size: var(--fs-base); color: var(--txt-dim); }
+.cd-verdict { margin-top: 3px; font-size: var(--fs-base); line-height: 1.35; color: var(--txt-dim); }
 .cd-verdict b { color: var(--txt); font-weight: var(--fw-bold); }
 .cd-verdict b.good { color: var(--green); }
 .cd-verdict b.bad { color: var(--red); }
-.cont-list { list-style: none; display: flex; flex-direction: column; gap: 5px; }
-.cont-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); cursor: pointer; transition: border-color 0.12s ease; }
+.cont-list { list-style: none; display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; }
+.cont-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 0; background: var(--bg); color: var(--txt); cursor: pointer; transition: border-color 0.12s ease; }
 .cont-row:hover { border-color: var(--border2); }
 .cont-row.bad { border-color: var(--red); }
 .cont-row .c-san { font-size: var(--fs-base); font-weight: var(--fw-bold); }
-.cont-row .c-meta { font-size: var(--fs-micro); color: var(--txt-dim); display: inline-flex; align-items: center; gap: 6px; }
+.cont-row .c-meta { font-size: var(--fs-base); color: var(--txt-dim); display: inline-flex; align-items: center; gap: 6px; }
 .c-score { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
 .c-warn { display: inline-flex; align-items: center; gap: 2px; color: var(--red); font-weight: var(--fw-bold); }
 
@@ -2234,7 +2817,7 @@ body.panning * {
 .main.clinic-mode { padding: 0; flex-direction: row; align-items: stretch; overflow: hidden; }
 
 /* Wrong/correct arrow legend under the detail board */
-.cd-legend { display: flex; gap: 16px; justify-content: center; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: 0.06em; color: var(--txt-dim); }
+.cd-legend { display: flex; gap: 16px; justify-content: center; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); }
 .cd-leg { display: inline-flex; align-items: center; gap: 6px; }
 .cd-leg::before { content: ''; width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 .cd-leg.good::before { background: var(--green); }
@@ -2246,7 +2829,7 @@ body.panning * {
 .op-item:hover { border-color: var(--border2); }
 .op-item.cur { border-color: var(--contour); background: var(--bg3); }
 .op-name { font-size: var(--fs-base); font-weight: var(--fw-bold); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.op-ct { font-size: var(--fs-micro); color: var(--txt-dim); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.op-ct { font-size: var(--fs-base); color: var(--txt-dim); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 
 /* Openings list wrapper + focus-clear chip (Opening mode) */
 .op-list { padding: 12px 16px; }
@@ -2254,12 +2837,14 @@ body.panning * {
 .clinic-clear:hover { color: var(--txt); border-color: var(--contour); }
 
 /* Drill breadcrumb (Opening mode) */
-.clinic-crumbs { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; flex: 1; min-width: 0; }
-.crumb { padding: 4px 8px; border-radius: 3px; background: none; border: 0; color: var(--txt-dim); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; white-space: nowrap; }
+/* -6px cancels the first crumb's left padding so the title text lines up with
+   the puzzle/play titles at the bracket's left edge (inter-crumb spacing intact). */
+.clinic-crumbs { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; flex: 1; min-width: 0; margin-left: -6px; }
+/* Crumb is the Opening tab's title line — 14px bold dark regular-case, matching
+   the puzzle name and the Play opening name (same style in every tab). */
+.crumb { padding: 0 6px; border-radius: 3px; background: none; border: 0; color: var(--txt); font-size: var(--fs-base); font-weight: var(--fw-bold); letter-spacing: normal; line-height: 16px; cursor: pointer; white-space: nowrap; }
 .crumb:hover { color: var(--txt); background: var(--bg3); }
 .crumb.on { color: var(--txt); }
-.crumb-wrap { display: inline-flex; align-items: center; gap: 3px; }
-.crumb-sep { color: var(--txt-faint); }
 
 /* Win-rate, shown as a secondary stat (correct continuation stays primary) */
 .cnode-score.green, .op-score.green, .cd-score.green, .c-score.green { color: var(--green); }
@@ -2267,17 +2852,20 @@ body.panning * {
 .cnode-score.red, .op-score.red, .cd-score.red, .c-score.red { color: var(--red); }
 
 /* Stockfish "right continuation" readout */
-.cd-engine { display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
-.ce-move { font-size: var(--fs-title); font-weight: var(--fw-bold); color: var(--green); letter-spacing: -0.01em; }
+.cd-engine { display: flex; align-items: baseline; gap: 8px; margin-bottom: 0; }
+.ce-move { font-size: var(--fs-title); font-weight: var(--fw-bold); color: var(--green); letter-spacing: normal; }
 .ce-eval { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt-dim); font-variant-numeric: tabular-nums; }
-.ce-tag { font-size: 9px; text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-faint); font-weight: var(--fw-bold); margin-left: auto; }
+.ce-tag { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); margin-left: auto; }
 
 /* Per-node + per-continuation Stockfish eval (games count now lives only in the left panel) */
-.cnode-eval { display: block; font-size: 11px; color: var(--txt-dim); margin-top: 1px; font-variant-numeric: tabular-nums; font-weight: var(--fw-bold); }
+.cnode-eval { display: block; font-size: var(--fs-base); color: var(--txt-dim); margin-top: 1px; font-variant-numeric: tabular-nums; font-weight: var(--fw-bold); }
 .c-eval { color: var(--txt-dim); font-variant-numeric: tabular-nums; }
 
 /* Clinic legend — explains the connector colours (move quality) + frame marks */
-.clinic-legend { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: 0.04em; color: var(--txt-dim); }
+/* Legend is the Opening tab's line 2 — bold uppercase dim to match the play
+   label. Tracking stays tight (0.04em) so the 4-item key keeps to one line;
+   the single-word labels elsewhere can afford the wider --track-caps. */
+.clinic-legend { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: 0.04em; line-height: 13px; color: var(--txt-dim); }
 .cleg { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .cleg .ln { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
 .cleg .ln.good { background: var(--green); }
@@ -2292,12 +2880,12 @@ body.panning * {
 .clinic-zoom { display: inline-flex; align-items: center; flex-shrink: 0; border: 1px solid var(--contour); border-radius: 3px; overflow: hidden; }
 .clinic-zoom button {
   width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
-  font-size: 15px; font-weight: var(--fw-bold); color: var(--txt-dim); background: var(--bg2);
+  font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt-dim); background: var(--bg2);
   border: 0; cursor: pointer; transition: color 0.12s ease, background 0.12s ease;
 }
 .clinic-zoom button:hover:not(:disabled) { color: var(--txt); background: var(--bg3); }
 .clinic-zoom button:disabled { opacity: 0.35; cursor: default; }
-.clinic-zoom .num { min-width: 40px; text-align: center; font-size: var(--fs-micro); color: var(--txt-dim); border-left: 1px solid var(--border); border-right: 1px solid var(--border); padding: 0 2px; }
+.clinic-zoom .num { min-width: 40px; text-align: center; font-size: var(--fs-base); color: var(--txt-dim); border-left: 1px solid var(--border); border-right: 1px solid var(--border); padding: 0 2px; }
 
 /* Fixed-width topbar lead (toggle + brand) ≈ sidebar width, so the Puzzles/
    Opening tabs line up with the tree content ("All openings"). */
@@ -2306,65 +2894,77 @@ body.panning * {
 /* ════════════════════════════════════════════════════════════════
    Opening Drill — practice the best move in your weak positions.
    ════════════════════════════════════════════════════════════════ */
-.odrill { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.od-topbar { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--bg2); }
-.od-back { background: none; border: 0; color: var(--txt-dim); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; padding: 4px 0; }
+/* One centred column — header bracket · board · prompt · actions — sized so the
+   whole drill fits a phone screen. No side panel, no second copy of the opening
+   name, no per-game tallies: the board and the prompt are the drill. */
+.odrill { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px 12px 0; box-sizing: border-box; }
+/* Top bracket — the same 54px header at top 60 / left 12 as every other tab
+   (puzzle .ctx-line, play .ps-block-open, opening .clinic-bar), with the menu
+   (three-dash) portaled in at the right so it lands in the identical spot. */
+.od-head {
+  flex-shrink: 0; display: flex; align-items: center; gap: 10px;
+  width: 100%; max-width: 520px; margin: 0 auto;
+  height: 54px; box-sizing: border-box; padding: 0 12px;
+  border: 1px solid var(--contour); background: var(--bg2);
+}
+/* Title line then label line — 16 + 3 + 13 = 32px, centred like the others. */
+.od-head-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+.od-name { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.od-sub { font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); line-height: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Leaving the drill is an icon glyph (chevron), so the header keeps to the
+   title + label pair instead of spending a row on a "back" word. */
+.od-back { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-left: -7px; padding: 0; background: none; border: 0; color: var(--txt-dim); cursor: pointer; }
 .od-back:hover { color: var(--txt); }
-.od-progress { margin-left: auto; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt); letter-spacing: var(--track-caps); }
-.od-meta { display: flex; gap: 14px; font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
-.od-meta b { color: var(--txt); }
-.od-meta .bad { color: var(--red); }
 
-.od-body { flex: 1; display: flex; min-height: 0; }
-.od-stage { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 28px; overflow: auto; background: radial-gradient(circle at center, var(--border) 0.8px, transparent 1.2px) 0 0 / 24px 24px, var(--bg); }
-.od-board-col { display: flex; flex-direction: column; gap: 10px; }
-.od-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
-.od-tomove { display: inline-flex; align-items: center; gap: 7px; font-weight: var(--fw-bold); color: var(--txt); }
-.od-turndot { width: 11px; height: 11px; border-radius: 50%; background: var(--contour); border: 1.5px solid var(--contour); }
-.od-turndot.white { background: #fff; border-color: var(--contour); }
-.od-frame { --sq-size: 54px; padding: 6px; border-radius: 5px; border: 3px solid var(--border2); background: var(--bg2); transition: border-color 0.15s ease; }
+/* The column scrolls (long reveal text, landscape) but is budgeted to fit. */
+.od-body {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+  width: 100%; max-width: 520px; margin: 0 auto;
+  padding: 10px 0 calc(12px + env(safe-area-inset-bottom));
+}
+.od-frame { align-self: center; padding: 3px; border: 1px solid var(--contour); background: var(--bg2); transition: border-color 0.15s ease; }
 .od-frame.ok { border-color: var(--green); }
 .od-frame.bad { border-color: var(--red); }
+/* .bwrap sets --sq-size on *itself*, so an inherited value never reaches the
+   grid — the drill has to set it on the board (and match .bwrap.no-coords'
+   specificity) for it to take. Width budget: the viewport minus the column's
+   12px side padding and the frame's 3px padding + 1px border. */
+.od-frame .bwrap,
+.od-frame .bwrap.no-coords { --sq-size: min(54px, calc((100vw - 32px) / 8)); }
 
-.od-panel { width: 360px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--bg2); overflow-y: auto; display: flex; flex-direction: column; }
-.od-sec { padding: 18px 20px; border-bottom: 1px solid var(--border); }
-.od-grow { flex: 1; }
-.od-eyebrow { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--red); }
-.od-title { margin-top: 9px; font-size: var(--fs-big); font-weight: var(--fw-bold); letter-spacing: -0.02em; line-height: 1.1; }
-.od-line { margin-top: 10px; padding: 9px 11px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; font-weight: var(--fw-bold); color: var(--txt); }
-.od-played { margin-top: 6px; padding: 8px 11px; background: var(--green-soft); border: 1px solid var(--green); border-radius: 4px; font-size: 12px; font-weight: var(--fw-bold); color: var(--green); letter-spacing: 0.02em; }
-.od-record { font-size: var(--fs-base); line-height: 1.5; color: var(--txt); }
-.od-record .bad { color: var(--red); }
-.od-dots { display: flex; gap: 5px; margin-top: 12px; flex-wrap: wrap; }
-.od-att { width: 22px; height: 22px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: var(--fw-bold); border: 1px solid var(--border2); }
-.od-att.bad { background: var(--red); color: #fff; border-color: var(--red); }
-.od-att.ok { background: var(--green-soft); color: var(--green); border-color: var(--green); }
-.od-prompt { padding: 13px 15px; background: var(--contour); color: var(--bg2); border-radius: 5px; display: flex; flex-direction: column; gap: 3px; }
+.od-prompt { padding: 9px 12px; background: var(--contour); color: var(--bg2); border-radius: 0; display: flex; flex-direction: column; gap: 2px; }
 .od-prompt.ok { background: var(--green); color: #fff; }
 .od-prompt.bad { background: var(--red); color: #fff; }
-.od-prompt .q { font-size: var(--fs-title); font-weight: var(--fw-bold); letter-spacing: -0.01em; }
-.od-prompt .qs { font-size: 12px; opacity: 0.75; }
-.od-usual { display: flex; gap: 11px; align-items: flex-start; margin-top: 12px; padding: 11px 12px; border-radius: 4px; background: var(--red-soft); border: 1px solid var(--border2); }
-.od-usual .um { flex-shrink: 0; font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--red); }
-.od-usual .ut { font-size: 12px; color: var(--txt); line-height: 1.5; }
-.od-actions { display: flex; gap: 10px; }
-.od-btn { flex: 1; padding: 12px; border-radius: 3px; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); border: 1px solid var(--contour); cursor: pointer; transition: filter 0.1s ease, background 0.1s ease; }
+.od-prompt .q { font-size: var(--fs-base); font-weight: var(--fw-bold); letter-spacing: normal; line-height: 16px; }
+.od-prompt .qs { font-size: var(--fs-base); line-height: 16px; opacity: 0.75; }
+/* The moves you've drilled so far — one line, scrolled rather than wrapped. */
+.od-played { padding: 6px 10px; background: var(--green-soft); border: 1px solid var(--green); border-radius: 0; font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--green); letter-spacing: normal; line-height: 16px; white-space: nowrap; overflow-x: auto; }
+.od-done { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 20px 0; }
+.od-done-line { font-size: var(--fs-base); color: var(--txt-dim); line-height: 16px; }
+.od-done-line b { color: var(--txt); font-weight: var(--fw-bold); }
+.od-done .od-btn { flex: 0 0 auto; padding: 9px 18px; }
+.od-actions { display: flex; gap: 8px; }
+.od-btn { flex: 1; padding: 9px; border-radius: 0; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); border: 1px solid var(--contour); cursor: pointer; transition: filter 0.1s ease, background 0.1s ease; }
 .od-btn.primary { background: var(--contour); color: var(--bg2); }
 .od-btn.primary:hover { filter: brightness(1.1); }
 .od-btn.ghost { background: var(--bg); color: var(--txt); }
 .od-btn.ghost:hover { background: var(--bg3); }
 .od-btn:disabled { opacity: 0.4; cursor: default; }
-.od-reveal { margin-top: 12px; font-size: 12px; color: var(--txt-dim); line-height: 1.55; }
+.od-reveal { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.45; }
 .od-reveal b { color: var(--green); font-weight: var(--fw-bold); }
 .od-reveal b.bad { color: var(--red); }
-.od-complete { margin: auto; text-align: center; color: var(--txt-dim); padding: 40px; }
-.od-complete h2 { font-size: var(--fs-big); color: var(--txt); margin-bottom: 6px; }
-.od-complete .od-next { margin-top: 16px; padding: 10px 18px; background: var(--contour); color: var(--bg2); border: 0; border-radius: 3px; font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); font-size: var(--fs-micro); cursor: pointer; }
+/* Landscape phone: height is the constraint, so size the board off the viewport
+   height instead (header + prompt + actions reserved). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .od-frame .bwrap,
+  .od-frame .bwrap.no-coords { --sq-size: min(42px, calc((100vh - 150px) / 8)); }
+}
 
 /* Drill entry buttons (clinic bar + detail panel) */
-.od-start { flex-shrink: 0; padding: 7px 12px; border-radius: 3px; background: var(--coral); color: #16140f; border: 1px solid var(--contour); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; white-space: nowrap; }
+.od-start { flex-shrink: 0; padding: 7px 12px; border-radius: 0; background: var(--coral); color: #16140f; border: 1px solid var(--contour); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; white-space: nowrap; }
 .od-start:hover { filter: brightness(1.08); }
-.cd-drill { width: 100%; margin-top: 12px; }
+.cd-drill { width: 100%; margin-top: 6px; }
 
 /* ── Opening Clinic + Drill: mobile (stack the panes, keep tabs on-screen) ── */
 @media (max-width: 900px) {
@@ -2375,26 +2975,35 @@ body.panning * {
   .main.clinic-mode { overflow: hidden; }
   .clinic { flex-direction: column; }
   .clinic-tree { flex: 1; min-height: 0; }
-  /* Compact bar so the canvas gets the room: crumbs share row 1 with the zoom
-     control, the (smaller) legend takes row 2, the drill button row 3. */
-  .clinic-bar { flex-wrap: wrap; gap: 6px 10px; height: auto; padding: 7px 12px; }
+  /* Compact bar, fixed to the same 72px height as the puzzle / play header:
+     crumbs on row 1 (menu pinned right), the smaller legend on row 2, all
+     vertically centred. The drill button (row 3, when present) lets it grow. */
+  .clinic-bar { min-height: 54px; height: auto; padding: 5px 12px; align-items: center; }
+  .clinic-bar-left { gap: 3px 10px; }
   .clinic-crumbs { order: 0; flex: 1 1 auto; }
-  .clinic-zoom { order: 1; }
-  .clinic-legend { order: 2; flex: 1 1 100%; font-size: 10px; gap: 4px 10px; }
+  /* 11px legend, but tight item/swatch gaps so all four keep to one line (keeping
+     the bar at 54px like the other tabs) while staying readable. */
+  /* Tracking drops to 0 and the swatches shrink so the whole key — including the
+     gaps/hotspots counts and the loading note — stays on ONE line next to
+     good/risky/blunder, keeping the bar at its 54px height. */
+  /* One line, always — including the gaps/hotspots keys, and on narrow phones.
+     nowrap guarantees it never breaks to a second row; if a very small screen
+     can't fit the whole key it scrolls sideways rather than growing the bar. */
+  .clinic-legend {
+    order: 2; flex: 1 1 100%; font-size: var(--fs-micro); letter-spacing: 0;
+    flex-wrap: nowrap; gap: 4px; overflow-x: auto; scrollbar-width: none;
+  }
+  .clinic-legend::-webkit-scrollbar { display: none; }
+  .cleg { gap: 2px; flex: 0 0 auto; }
+  .cleg .ln { width: 7px; }
+  .cleg .sw { width: 7px; height: 7px; }
   .od-start { order: 3; flex: 1 1 100%; text-align: center; padding: 6px 12px; }
-  .clinic-detail { width: 100%; flex-shrink: 0; border-left: 0; border-top: 1px solid var(--contour); max-height: 46vh; }
+  .clinic-detail { width: 100%; flex-shrink: 0; border-left: 0; border-top: 1px solid var(--contour); max-height: 54vh; }
   .cd-board-sec { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px; }
   .cd-board { margin: 0 auto; }
 
-  /* Drill: board over panel; the whole drill body scrolls so the actions at
-     the bottom of the panel stay reachable. */
-  .od-topbar { padding: 0 12px; gap: 10px; }
-  .od-meta { display: none; }
-  .od-body { flex-direction: column; overflow-y: auto; }
-  .od-stage { flex: none; padding: 14px; }
-  .od-frame { --sq-size: min(42px, calc((100vw - 44px) / 8)); }
-  .od-sec { padding: 14px 16px; }
-  .od-panel { width: 100%; border-left: 0; border-top: 1px solid var(--contour); }
+  /* The drill needs no mobile override: it is a single column at every width,
+     and its board is sized off the viewport (see .od-frame .bwrap). */
 }
 
 /* Phones: drop the wordmark and tighten the clusters so the mode tabs, the
@@ -2402,9 +3011,19 @@ body.panning * {
 @media (max-width: 560px) {
   .topbar { gap: 6px; }
   .brand-word { display: none; }
-  /* All four mode tabs must fit a ~390px bar without clipping "Play". */
-  .mode-seg { gap: 1px; }
-  .mode-seg button { padding: 0 5px; }
+  /* Drop the (now empty) brand slot entirely so the tabs fill the bar
+     symmetrically instead of being nudged right by its leftover gap. */
+  .topbar-lead { display: none; }
+  /* Give the tabs the whole bar: drop the trailing spacer and let the mode
+     segment flex to full width, spreading the four tabs edge-to-edge instead of
+     bunching them by the hamburger. They bottom-align so each label sits on the
+     divider line (the active underline is flush with the topbar border) rather
+     than floating centred with the line a row below. */
+  .topbar-spacer { display: none; }
+  /* Small side inset pulls the row in a few px, so the four tabs sit slightly
+     closer together while staying symmetric edge-to-edge. */
+  .mode-seg { flex: 1; justify-content: space-between; gap: 0; padding: 0 7px; box-sizing: border-box; }
+  .mode-seg button { padding: 0 2px 8px; align-items: flex-end; }
   .stats-strip { gap: 7px; padding: 5px 6px; }
   .icon-btn { padding: 4px 5px; }
 }
@@ -2415,11 +3034,44 @@ body.panning * {
  * height and its controls pin to the bottom, so both columns share top & bottom
  * edges instead of the panel floating shorter/taller than the board. */
 .play { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 900px; }
-.play-board { flex-shrink: 0; }
-.ps-opening { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.ps-opening-name { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
-.ps-opening-eco { font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
-.ps-dim { font-size: var(--fs-base); color: var(--txt-faint); }
+.play-board { flex-shrink: 0; display: flex; justify-content: center; }
+/* Play is now a single centred column: opening · board · move result · moves.
+   (Opponent strength + game controls live in the hamburger drawer.) */
+.play-col {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  /* Uniform 10px gap between brackets, same as every other tab. */
+  gap: 10px;
+  width: 100%;
+  max-width: 520px;
+}
+/* Opening header matches the compact puzzle/coords header height so the board aligns. */
+.play-col .ps-block-open {
+  height: 54px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+}
+.ps-open-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+/* Drop the label's default 10px margin so "Opening" and the position name sit
+   as a tight two-line block (like the puzzle name + chip), centred in the header. */
+.ps-open-body .ps-h { margin-bottom: 0; line-height: 13px; }
+/* Play top bracket: opening name is the title line (14px bold dark), matching
+   the puzzle name — same size/weight/case in every tab. */
+/* One line, ellipsised — a long opening name must never wrap the header to a
+   second row and push the bracket past its fixed 54px. */
+.ps-opening { display: flex; align-items: baseline; min-width: 0; }
+.ps-opening-name { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); line-height: 16px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The move list block grows to fill the column down toward the board's lower
  * edge (so the columns line up when it fits) but keeps a usable minimum and
  * scrolls inside itself, so a long game never stretches the panel without bound
@@ -2429,34 +3081,49 @@ body.panning * {
  * scrolls past a cap, so it never nudges the blocks above it. Collapsible. */
 .play-side .ps-moves-block { flex: 0 0 auto; display: flex; flex-direction: column; }
 .ps-moves-h { display: flex; align-items: center; justify-content: space-between; }
-.ps-moves-toggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; color: var(--txt-dim); font: inherit; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); }
-.ps-moves-toggle:hover { color: var(--txt); }
+/* Moves header reads exactly like the "Your move" status title above it:
+   base-size bold dark, regular case — not a small uppercase label. */
+.ps-moves-toggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; color: var(--txt); font: inherit; font-size: var(--fs-base); font-weight: var(--fw-bold); text-transform: none; letter-spacing: normal; }
+/* Only on real pointers — on touch, :hover sticks after a tap and would leave
+   the header sitting coral once you collapse/expand the list. */
+@media (hover: hover) {
+  .ps-moves-toggle:hover { color: var(--coral); }
+}
 .ps-moves-chevron { display: inline-block; width: 9px; font-size: 9px; }
 .play-side .ps-h { margin-bottom: 7px; }
 .play-side .ps-elo-note { margin-top: 6px; }
 .play-side .ps-controls { gap: 8px; }
 .play-side .ps-new-label { margin-bottom: 4px; }
-.ps-block { border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; background: var(--bg2); }
+.ps-block { border: 1px solid var(--contour); padding: 14px 16px; background: var(--bg2); }
 .play-side .ps-block { padding: 11px 14px; }
 .ps-moves-block .ps-h { display: flex; align-items: baseline; justify-content: space-between; }
-.ps-live-link { background: none; border: 0; padding: 0; color: var(--coral); cursor: pointer; font: inherit; font-size: var(--fs-micro); text-transform: none; letter-spacing: 0; }
+.ps-live-link { background: none; border: 0; padding: 0; color: var(--coral); cursor: pointer; font: inherit; font-size: var(--fs-base); text-transform: none; letter-spacing: 0; }
 .ps-live-link:hover { color: var(--contour); }
-.ps-moves { min-height: 88px; max-height: 240px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
-.ps-moves-empty { line-height: 1.5; }
+/* position:relative so the auto-scroll effect's cur.offsetTop is measured
+   against this scroll container, not some distant positioned ancestor. */
+.ps-moves { position: relative; min-height: 88px; max-height: 240px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+/* Same body style as the .ps-hint text in the status bracket above. */
+.ps-moves-empty { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.5; }
 .ps-move-row { display: grid; grid-template-columns: 30px 1fr 1fr; gap: 4px; align-items: center; }
-.ps-move-no { color: var(--txt-faint); font-size: var(--fs-micro); text-align: right; }
+.ps-move-no { color: var(--txt-dim); font-size: var(--fs-base); text-align: right; }
 .ps-ply { text-align: left; background: none; border: 0; padding: 3px 7px; border-radius: 3px; color: var(--txt); font: inherit; font-size: var(--fs-base); font-weight: var(--fw-bold); cursor: pointer; font-variant-numeric: tabular-nums; }
 .ps-ply:hover { background: var(--bg3); }
 .ps-ply.cur { background: var(--contour); color: var(--bg); }
 .ps-ply-empty, .ps-ply-empty:hover { cursor: default; background: none; }
-.ps-review-note { margin-top: 8px; font-size: var(--fs-micro); color: var(--coral); line-height: 1.4; }
+.ps-review-note { margin-top: 8px; font-size: var(--fs-base); color: var(--coral); line-height: 1.4; }
 .ps-h { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); margin-bottom: 10px; }
+/* The status header reads as a bracket title, matching the puzzle/coords prompts. */
+.ps-block-status .ps-h { font-size: var(--fs-base); text-transform: none; letter-spacing: normal; color: var(--txt); margin-bottom: 4px; }
+/* Same 4px title→body gap as the status bracket (overrides .play-side's 7px). */
+.ps-moves-block .ps-moves-h { margin-bottom: 4px; }
 .ps-elo { display: flex; align-items: center; gap: 12px; }
-.ps-elo-val { font-size: var(--fs-title); font-weight: var(--fw-bold); min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
-.ps-step { width: 34px; height: 34px; border: 1px solid var(--border2); border-radius: 4px; background: var(--bg); color: var(--txt); font-size: 18px; line-height: 1; cursor: pointer; }
+/* flex:1 lets the number fill the whole width between the −/+ buttons, so + sits
+   at the right edge (no dead space) and the value stays centred. */
+.ps-elo-val { flex: 1; font-size: var(--fs-title); font-weight: var(--fw-bold); text-align: center; font-variant-numeric: tabular-nums; }
+.ps-step { width: 34px; height: 34px; border: 1px solid var(--contour); border-radius: 2px; background: var(--bg); color: var(--txt); font-size: 18px; line-height: 1; cursor: pointer; }
 .ps-step:hover:not(:disabled) { border-color: var(--contour); }
 .ps-step:disabled { opacity: 0.4; cursor: default; }
-.ps-elo-note { margin-top: 9px; font-size: var(--fs-micro); color: var(--txt-faint); }
+.ps-elo-note { margin-top: 9px; font-size: var(--fs-base); color: var(--txt-dim); }
 .ps-link { background: none; border: 0; padding: 0; color: var(--coral); cursor: pointer; text-decoration: underline; font: inherit; }
 .ps-link:hover { color: var(--contour); }
 .ps-hint { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.5; }
@@ -2479,27 +3146,164 @@ body.panning * {
 .ps-book b { color: var(--txt); font-weight: var(--fw-bold); }
 .ps-book.b-main { color: var(--green); }
 .ps-book.b-offbook { color: var(--yellow); }
-.ps-book-name { margin-top: 3px; font-size: var(--fs-micro); color: var(--txt-faint); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.ps-book-name { margin-top: 3px; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
+
+/* The best move in the verdict is a button that opens the line popup. It keeps
+   the exact type of the <b> it replaced (title: base/bold/--txt) — only an
+   underline marks it as tappable, so hovering never changes the text colour. */
+.ps-best-link {
+  background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
+  font: inherit; font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt);
+  border-bottom: 1px dashed var(--border2);
+  font-variant-numeric: tabular-nums;
+}
+.ps-best-link:hover:not(:disabled) { border-bottom-color: var(--coral); }
+.ps-best-link:disabled { cursor: default; border-bottom-color: transparent; }
+
+/* ── "Where the best move leads" popup (portalled to <body>) ───────────── */
+.pv-backdrop {
+  position: fixed; inset: 0; z-index: 120;
+  display: flex; align-items: center; justify-content: center;
+  padding: 12px;
+  padding-top: calc(12px + env(safe-area-inset-top));
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.45);
+  animation: pv-fade 140ms var(--ease-snap);
+}
+@keyframes pv-fade { from { opacity: 0; } to { opacity: 1; } }
+/* Width is set inline from the board size (8 squares + this padding), so the
+   panel is exactly as wide as its board on any screen. */
+.pv-modal {
+  max-width: 100%;
+  max-height: 100%; overflow-y: auto;
+  box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 14px;
+  background: var(--bg2);
+  border: 1px solid var(--contour);
+  border-radius: 6px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: sheet-in 160ms var(--ease-snap);
+}
+.pv-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.pv-title { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
+/* Icon glyph only — exempt from the three text styles. */
+.pv-x {
+  flex-shrink: 0; width: 26px; height: 26px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid transparent; border-radius: 3px;
+  color: var(--txt-dim); font-size: 14px; cursor: pointer;
+}
+.pv-x:hover { color: var(--txt); border-color: var(--border); }
+.pv-board { line-height: 0; }
+/* Engine eval bar to the left of the popup board — its height matches the board
+   via the stretched flex row; the fill is bottom-anchored and animates. */
+.pv-board-wrap { display: flex; align-items: stretch; gap: 8px; }
+.pv-evalbar {
+  flex: 0 0 12px; width: 12px;
+  border: 1px solid var(--contour); border-radius: 2px;
+  overflow: hidden; position: relative;
+}
+.pv-evalbar-fill {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  transition: height 400ms var(--ease-snap);
+}
+/* Each move lands with a soft highlight rather than a bare jump. */
+.pv-board .ob-hl::after { animation: pv-hl 260ms var(--ease-snap); }
+@keyframes pv-hl { from { opacity: 0; } to { opacity: 0.6; } }
+/* Reads like the game score below the board: left-aligned, wrapping. */
+.pv-line {
+  display: flex; flex-wrap: wrap; gap: 2px;
+  margin: 0; padding: 0; list-style: none; width: 100%;
+}
+.pv-note { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.5; width: 100%; }
+.pv-actions { display: flex; gap: 10px; width: 100%; }
+.pv-actions .ps-btn { flex: 1; }
 
 .ps-controls { display: flex; flex-direction: column; gap: 10px; }
-.ps-btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.ps-btn { padding: 9px 12px; border: 1px solid var(--border2); border-radius: 4px; background: var(--bg); color: var(--txt); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
+.ps-btn { padding: 9px 12px; border: 1px solid var(--contour); border-radius: 2px; background: var(--bg); color: var(--txt); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
 .ps-btn:hover:not(:disabled) { border-color: var(--contour); }
 .ps-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* Print-poster dialog — live preview + orientation / coverage options. */
+.print-dialog {
+  width: 100%;
+  max-width: 460px;
+  max-height: 100%;
+  box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 14px;
+  background: var(--bg2);
+  border: 1px solid var(--contour);
+  border-radius: 6px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: sheet-in 160ms var(--ease-snap);
+}
+.pd-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pd-title { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-preview {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 320px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
+  border: 1px solid var(--contour);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.pd-frame { width: 100%; height: 100%; object-fit: contain; display: block; background: #fff; }
+.pd-msg { font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); font-weight: var(--fw-bold); }
+.pd-badge {
+  position: absolute; top: 8px; right: 8px;
+  padding: 3px 8px; border-radius: 2px;
+  background: rgba(0, 0, 0, 0.6); color: #fff;
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
+  text-transform: uppercase; letter-spacing: var(--track-caps);
+}
+.pd-controls { display: flex; flex-direction: column; gap: 10px; }
+.pd-row { display: flex; flex-direction: column; gap: 6px; }
+.pd-lbl { font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.pd-note { font-size: var(--fs-micro); color: var(--txt-dim); line-height: 1.4; }
 .ps-btn.on { border-color: var(--coral); color: var(--coral); }
-.ps-new-label { display: block; font-size: var(--fs-micro); color: var(--txt-dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: var(--track-caps); }
+/* Primary action (New game): filled coral, so it reads as the main button. */
+.ps-btn.prim { background: var(--coral); color: #16140f; border-color: var(--contour); }
+.ps-btn.prim:hover:not(:disabled) { filter: brightness(1.05); border-color: var(--contour); }
+.ps-new-label { display: block; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: var(--track-caps); }
+
+/* Time-control picker — a 3×2 grid of .ps-btn chips (Label-styled, coral .on
+   marks the active preset), reusing the existing control look. */
+.tc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tc-grid .ps-btn { padding: 9px 4px; text-align: center; }
+
+/* ── Play clocks — only rendered when a time control is active ─────────────
+   Two pills above the board (opponent + you). Full-width bracket in the same
+   normal flow as every other block, so it uses the column's 10px gap; the two
+   pills sit on a matching 10px gap. Digits render at Title (13px bold, tabular)
+   — the running clock is made prominent by a FILL + colour, never a larger
+   size, so the three-style type system holds. The fill inverts the text the
+   same way .ps-ply.cur and .seg-tab.on already do. */
+.play-clocks { display: flex; gap: 10px; width: 100%; }
+.pc {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--contour);
+  background: var(--bg2);
+}
+.pc-label { font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); }
+.pc-time { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); font-variant-numeric: tabular-nums; }
+/* Running clock: filled, inverted text — reads as the live side. */
+.pc.run { background: var(--contour); }
+.pc.run .pc-label, .pc.run .pc-time { color: var(--bg2); }
+/* Running + under 20s: the single alarm colour, same treatment as .seg-tab.on. */
+.pc.run.low { background: var(--coral); }
+.pc.run.low .pc-label, .pc.run.low .pc-time { color: #16140f; }
+
 @media (max-width: 720px) {
   .play { flex-direction: column; align-items: center; gap: 18px; }
-  .play-side { width: 100%; max-width: 480px; }
-  /* Stacked: the list isn't competing with the board height — give it more room. */
-  .play-side .ps-moves { max-height: 320px; }
-  /* On mobile, surface the live game status first — you need to see your
-     verdict immediately after a move, not after scrolling past opening info. */
-  .ps-block-status  { order: 1; }
-  .ps-block-open    { order: 2; }
-  .ps-block-elo     { order: 3; }
-  .ps-controls      { order: 4; }
-  .ps-moves-block   { order: 5; }
+  /* Play is a single column now (opening · board · result · moves), controls in
+     the drawer — the block DOM order is the display order, no reshuffling. */
+  .ps-moves { max-height: 320px; }
 }
 
 /* ── Coordinates trainer ────────────────────────────────────────────── */
@@ -2521,59 +3325,109 @@ body.panning * {
 
 /* Session stats (no button — Start/Finish lives in the result card) */
 .ct-inline-stats { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: baseline; margin-top: 4px; }
-.ct-stat { font-size: var(--fs-micro); color: var(--txt-dim); }
+.ct-stat { font-size: var(--fs-base); color: var(--txt-dim); }
 .ct-stat b { font-weight: var(--fw-bold); color: var(--txt); font-variant-numeric: tabular-nums; }
 .ct-session-result { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.4; margin: 6px 0 0; }
 .ct-session-result b { color: var(--txt); }
 
 /* Explanatory note shown in the idle result card */
-.ct-mode-note { margin: 10px 0 0; font-size: var(--fs-micro); color: var(--txt-dim); line-height: 1.6; }
+.ct-mode-note { margin: 10px 0 0; font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.6; }
 
 /* Board options — flip button + show-coords toggle */
-.ct-toggle { display: flex; align-items: center; gap: 8px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); cursor: pointer; }
+.ct-toggle { display: flex; align-items: center; gap: 8px; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); cursor: pointer; }
 .ct-toggle input { cursor: pointer; accent-color: var(--coral); }
 .ct-controls { display: flex; flex-direction: column; gap: 8px; }
 
-/* Coordinate shown above the board — width matches board so it centers over it */
-.ct-above-board {
-  width: 480px;
-  height: 44px;
-  display: flex; align-items: center; justify-content: center;
+/* Find mode — a scrolling strip of coordinates under the board with the target
+   dead-centre (black); the rest are dimmed. The row is a fixed viewport (overflow
+   hidden); the track holds 7 cells (5 shown + a buffer each side), centred on the
+   target, so the roll-in on each hit is seamless. */
+.ct-coord-row {
+  overflow: hidden;
+  border: 1px solid var(--contour);
+  background: var(--bg2);
 }
-.ct-coord-above {
-  font-size: 30px; font-weight: var(--fw-bold);
-  font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1;
-  color: var(--coral);
+.ct-coord-track {
+  display: flex;
+  width: 140%; /* 7 cells at 1/7 each; 5 show, 1 buffered off each edge */
+  /* Rest shifted one cell left so the middle 5 show and the target lands centre. */
+  transform: translateX(calc(-100% / 7));
 }
-.ct-coord-above.ct-coord-idle {
-  font-size: var(--fs-micro); font-weight: var(--fw-bold);
-  text-transform: uppercase; letter-spacing: var(--track-caps);
-  color: var(--txt-dim);
+.ct-coord-track.rolling {
+  /* On a hit the strip slides right: the guessed coord drifts off-centre and the
+     next target rolls into the middle, a fresh coord entering from the left. */
+  transform: translateX(0);
+  transition: transform 0.3s var(--ease-snap);
 }
-@media (max-width: 900px) {
-  .ct-above-board { width: min(480px, 92vw); }
+.ct-coord-cell {
+  flex: 0 0 calc(100% / 7);
+  box-sizing: border-box;
+  text-align: center;
+  padding: 13px 0;
+  font-size: 20px;
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--txt);
+  opacity: 0.3;
+  border-right: 1px solid var(--border);
 }
+.ct-coord-cell.cur { opacity: 1; }
+.ct-coord-cell.blank { opacity: 0; } /* not-yet-filled past slots at the start */
 
-/* Colour mode — big coordinate replaces the board */
-.ct-color-area { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; width: 480px; min-height: 480px; }
+/* Colour mode's board-width column: mode switcher, board-sized square, buttons. */
+.ct-color-stack { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 482px; }
+/* A board-sized white square in the board's spot, holding the coordinate. */
+.ct-color-square {
+  align-self: center;
+  position: relative;
+  width: 480px;
+  aspect-ratio: 1;
+  box-sizing: content-box;
+  border: 1px solid var(--contour);
+  background: var(--bg2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .ct-coord-big { font-size: 120px; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; color: var(--txt); transition: color 0.12s ease; }
 .ct-coord-big.ok { color: var(--green); }
 .ct-coord-big.fail { color: var(--red); }
 .ct-coord-ghost { color: var(--txt-faint); }
-.ct-color-hint { font-size: var(--fs-base); color: var(--txt-dim); min-height: 20px; }
+/* Wrong-answer hint floats in the upper area so it never nudges the coordinate,
+   which stays perfectly centred in the square. */
+.ct-color-hint { position: absolute; top: 26%; left: 12px; right: 12px; text-align: center; font-size: var(--fs-base); color: var(--txt-dim); min-height: 20px; }
 
-/* Light / Dark answer buttons */
-.ct-color-btns { display: flex; gap: 16px; }
-.ct-color-btn { width: 150px; padding: 22px 0; border-radius: 6px; border: 2px solid var(--contour); font-size: var(--fs-base); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; transition: transform 0.08s var(--ease-snap); }
+/* Light / Dark answer buttons — white fill, sharp contour, full width, invert on press. */
+.ct-color-btns { display: flex; gap: 10px; width: 100%; }
+.ct-color-btn {
+  flex: 1;
+  padding: 18px 0;
+  border-radius: 2px;
+  border: 1px solid var(--contour);
+  background: var(--bg2);
+  color: var(--txt);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  cursor: pointer;
+  transition: all 0.12s var(--ease-snap);
+}
+.ct-color-btn:hover:not(:disabled) { background: var(--contour); color: var(--bg2); }
 .ct-color-btn:active { transform: translateY(1px); }
-.ct-color-btn.light { background: var(--sq-l); color: #16140f; }
-.ct-color-btn.dark { background: var(--sq-d); color: #fff; }
 .ct-color-btn:disabled { opacity: 0.4; cursor: default; }
 .ct-color-btn:disabled:active { transform: none; }
+/* The Dark button is tinted the dark-square green as a colour cue. */
+.ct-color-btn.dark { background: var(--sq-d); color: #fff; }
+.ct-color-btn.dark:hover:not(:disabled) { background: var(--sq-d); color: #fff; filter: brightness(0.94); }
 
-/* Find-mode board — 480 px to match the regular chess board */
-.ct-board { display: grid; grid-template-columns: repeat(8, 60px); width: 480px; aspect-ratio: 1; border: 1px solid var(--contour); border-radius: 3px; overflow: hidden; }
-.ct-board.idle { opacity: 0.5; }
+/* Find-mode board — sized to exactly match the regular chess board. Like that
+   board, the 1px contour sits *outside* the 8 squares (content-box), so the
+   outer size is 8·sq + 2 rather than being tucked inside the width. */
+.ct-board { display: grid; grid-template-columns: repeat(8, 60px); width: 480px; aspect-ratio: 1; box-sizing: content-box; border: 1px solid var(--contour); overflow: hidden; }
+/* The board stays full-colour even before Start — no dimmed idle overlay. */
 .ct-sq { width: 60px; height: 60px; border: 0; padding: 0; cursor: pointer; position: relative; }
 .ct-board.idle .ct-sq { cursor: default; }
 .ct-sq.l { background: var(--sq-l); }
@@ -2585,25 +3439,81 @@ body.panning * {
 /* Edge coordinates when showCoords is on */
 .ct-board-area { display: grid; grid-template-columns: 16px auto; grid-template-rows: auto 16px; }
 .ct-board-area .ct-board { grid-column: 2; grid-row: 1; }
-.ct-ranks { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; justify-content: space-around; align-items: center; font-size: 11px; font-weight: var(--fw-bold); color: var(--txt-dim); font-variant-numeric: tabular-nums; }
-.ct-files { grid-column: 2; grid-row: 2; display: flex; justify-content: space-around; align-items: center; font-size: 11px; font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; }
+.ct-ranks { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; justify-content: space-around; align-items: center; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); font-variant-numeric: tabular-nums; }
+.ct-files { grid-column: 2; grid-row: 2; display: flex; justify-content: space-around; align-items: center; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; }
 
-/* Game info (replay) in the left panel */
+/* Game info (replay) in the left panel: selector, name + blurb, turn line. */
 .ct-game-select { width: 100%; margin-top: 8px; padding: 7px 9px; border: 1px solid var(--border2); border-radius: 4px; background: var(--bg); color: var(--txt); font: inherit; font-size: var(--fs-base); cursor: pointer; }
-.ct-game-players { margin-top: 6px; font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
-.ct-game-context { margin: 4px 0 0; font-size: var(--fs-micro); color: var(--txt-faint); line-height: 1.55; }
+.ct-game-info { margin-top: 12px; }
+.ct-game-title { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); line-height: 1.25; }
+.ct-game-context { margin: 5px 0 0; font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.5; }
+.ct-game-status { margin-top: 9px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); font-weight: var(--fw-bold); color: var(--txt-dim); }
 
-/* Moves list inside the result-slot (replay mode) */
-.ct-moves-block { display: flex; flex-direction: column; }
+/* Games layout: board · arrows · notation stacked in one board-width column. */
+.ct-replay-stack { gap: 10px; }
+/* "What is this" bracket above the notation — same shell as the notation block. */
+.ct-replay-about { border: 1px solid var(--contour); background: var(--bg2); padding: 9px 11px; box-sizing: border-box; }
+.ct-replay-about .verdict-sub { margin-top: 2px; }
+/* Player names are long, so let the title wrap and keep the chevron beside it. */
+.ct-replay-about .ps-moves-toggle { max-width: 100%; text-align: left; white-space: normal; }
+.ct-notation { border: 1px solid var(--contour); background: var(--bg2); padding: 9px 11px; box-sizing: border-box; }
 .ct-moves-h { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); margin-bottom: 6px; }
-.ct-moves { margin: 0; padding: 0; list-style: none; max-height: 260px; overflow-y: auto; }
+.ct-moves { margin: 0; padding: 0; list-style: none; max-height: 148px; overflow-y: auto; }
 .ct-ply { padding: 2px 6px; border-radius: 3px; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; color: var(--txt); }
 .ct-ply.done { color: var(--txt-dim); font-weight: var(--fw-reg); }
 .ct-ply.next { background: var(--coral); color: #fff; }
 
 @media (max-width: 900px) {
-  .ct-board { width: min(480px, 92vw); grid-template-columns: repeat(8, 1fr); }
+  /* Match the shared board's width so Coordinates isn't smaller than the
+     other tabs: fill the viewport (minus the page padding) with no labels;
+     reserve the label columns when they're on. */
+  .ct-board { width: min(480px, calc(100vw - 28px)); grid-template-columns: repeat(8, 1fr); }
+  /* Mirror the 16px rank column on the right so the grid centres (like the
+     shared board's mirror spacer), and shrink the board to leave room. */
+  .ct-board-area { grid-template-columns: 16px auto 16px; }
+  .ct-board-area .ct-board { width: min(480px, calc(100vw - 68px)); }
   .ct-sq { width: auto; height: auto; }
-  .ct-color-area { width: min(480px, 92vw); min-height: 0; }
+  .ct-color-square { width: min(480px, calc(100vw - 28px)); }
   .ct-coord-big { font-size: clamp(60px, 18vw, 120px); }
+}
+
+/* ─── Motion ─────────────────────────────────────────────────────────────
+   Tab switching. The content settles into place so the swap reads as one
+   movement rather than a hard cut. Deliberately quick (180ms) and in the
+   house easing — snap, not bounce, like every other transition here.
+
+   Three rules this must not break:
+   · Only `opacity` and `transform` are animated. Both are GPU-composited, so
+     there's no reflow and no chance of the board or brackets shifting.
+   · No fill mode. A transform that persisted past the animation would turn
+     .main into a containing block and break the sticky opening bar (and any
+     position:fixed descendant). With the default fill the element is back to
+     `transform: none` the instant the animation ends, so resting geometry is
+     byte-identical to before.
+   · The fade starts at 0.15, not 0. If the animation ever stalls at frame 0 —
+     a throttled/hidden webview does exactly this — a `from` of 0 would leave
+     the whole content area blank. Starting just off zero still reads as a
+     full fade, but the worst case is "dim for a moment", never "blank". */
+@keyframes tab-in {
+  from { opacity: 0.15; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.main {
+  animation: tab-in 260ms var(--ease-snap);
+}
+
+/* Acknowledge the tap on the tab itself, before the content swaps in. */
+.mode-seg button:active { opacity: 0.55; }
+
+/* Honour the OS "reduce motion" setting — this covers the animations added
+   here and every pre-existing transition in the app. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
