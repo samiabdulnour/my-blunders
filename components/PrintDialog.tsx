@@ -54,9 +54,11 @@ export function PrintDialog({ games, color, focusPath, focusName, onClose }: Pri
   // played, not just the ≥2 core) and budgeted to the chosen sheet — portrait
   // gets fewer, longer lines; landscape more, shorter ones. Rebuilt on an
   // orientation switch, which is why it isn't built once by the sidebar.
+  // `focusPath` goes in here rather than being filtered out later, so a focused
+  // poster spends the whole budget inside that opening.
   const tree = useMemo(
-    () => buildOpeningTree(games, color, 1, POSTER_MAX_NODES, POSTER_BUDGET[orientation]),
-    [games, color, orientation]
+    () => buildOpeningTree(games, color, 1, POSTER_MAX_NODES, POSTER_BUDGET[orientation], focusPath),
+    [games, color, orientation, focusPath]
   );
 
   const opts = useCallback(

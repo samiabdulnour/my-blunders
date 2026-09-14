@@ -73,6 +73,13 @@ const RULE_W = 2;
  *  anchored to the margin whatever the sheet width. */
 const HEAD_R_TITLE = 912.75; // "<COLOUR> REPERTOIRE" + the legend below it
 const HEAD_R_MID = 541.41; // "OPENING TREE"
+/** Room the title has before "OPENING TREE", less a gap so the two never crowd
+ *  (the reference leaves ~132pt between them). Beyond this it wraps. */
+const TITLE_SLOT = HEAD_R_TITLE - HEAD_R_MID - 40;
+/** Baseline drop for a wrapped title's second row, and the size it won't shrink
+ *  below — the longest ECO names would otherwise set absurdly small. */
+const TITLE_LEAD = 26;
+const TITLE_MIN_SIZE = 14;
 /** InDesign tracks the bold caps ~0.02em; jsPDF calls this char spacing. */
 const HEAD_TRACK = 0.02;
 /** Gruezi cap height as a fraction of font size — a move number's cap top sits
@@ -270,13 +277,15 @@ async function renderPoster(
 ): Promise<{ doc: any; filename: string; title: string; pages: number; branches: string[]; fens: string[] }> { // eslint-disable-line @typescript-eslint/no-explicit-any
   const focusNode = opts.focusPath ? findByPath(tree, opts.focusPath) : null;
 
-  // Player nickname + a small account snapshot for the header. Totals are summed
-  // over the repertoire's first moves — i.e. every game the tree was built from.
+  // Player nickname + a small account snapshot for the header. Read off the
+  // root, which tallies every game the tree was built from — so the snapshot
+  // stays the whole repertoire even on a poster focused to one opening, whose
+  // branches below the focus are all this tree keeps.
   const nickname = (loadUsername() || '').trim();
-  const acctGames = tree.children.reduce((s, c) => s + c.games, 0);
-  const acctW = tree.children.reduce((s, c) => s + c.wins, 0);
-  const acctD = tree.children.reduce((s, c) => s + c.draws, 0);
-  const acctL = tree.children.reduce((s, c) => s + c.losses, 0);
+  const acctGames = tree.games;
+  const acctW = tree.wins;
+  const acctD = tree.draws;
+  const acctL = tree.losses;
   const acctScore = acctGames ? Math.round(((acctW + acctD / 2) / acctGames) * 100) : 0;
   // The header table reads as two rows of three: who/how many/how well, then
   // the W-D-L split beneath each.
@@ -305,7 +314,10 @@ async function renderPoster(
     branchDepth?: number;
   }) =>
     layoutTree(tree, {
-      topNodes: focusNode ? [focusNode] : topMoves,
+      // Always the first moves: a focused poster reads from the initial
+      // position too, down the trunk the builder kept, so its move numbers are
+      // the real ones. The tree itself is what's already been narrowed.
+      topNodes: topMoves,
       basePath: '',
       maxRows: o.maxRows,
       cardW: CARD_W,
@@ -436,14 +448,50 @@ async function renderPoster(
   });
 
   doc.setFont(FONT, 'bold');
-  doc.setCharSpace(HEAD_TRACK * HEAD_SIZE);
   text(C_TEXT);
   // The heading block keeps its spacing from the layout and hangs off the right
   // margin, the same on both orientations.
   const blockLeft = contentRight - HEAD_R_TITLE;
-  doc.text(title.toUpperCase(), blockLeft, HEAD_TITLE_BASE);
+
+  // The title owns the room up to "OPENING TREE". A long opening name — and
+  // ECO's run long — used to print straight through that label, so it wraps to
+  // a second row instead, and only shrinks if two rows still won't hold it.
+  // Measured with the tracking added by hand: jsPDF's getTextWidth ignores char
+  // spacing, and the canvas backend would otherwise count it twice.
+  const width = (s: string, size: number) => {
+    doc.setFontSize(size);
+    doc.setCharSpace(0);
+    return doc.getTextWidth(s) + HEAD_TRACK * size * s.length;
+  };
+  const wrap = (s: string, size: number): string[] => {
+    const out: string[] = [];
+    let line = '';
+    for (const w of s.split(' ').filter(Boolean)) {
+      const next = line ? `${line} ${w}` : w;
+      if (line && width(next, size) > TITLE_SLOT) { out.push(line); line = w; } else line = next;
+    }
+    if (line) out.push(line);
+    return out.length ? out : [s];
+  };
+  const caps = title.toUpperCase();
+  let titleSize = HEAD_SIZE;
+  let titleRows = [caps];
+  if (width(caps, titleSize) > TITLE_SLOT) {
+    titleRows = wrap(caps, titleSize);
+    while (titleRows.length > 2 && titleSize > TITLE_MIN_SIZE) {
+      titleSize = Math.max(TITLE_MIN_SIZE, titleSize * 0.92);
+      titleRows = wrap(caps, titleSize);
+    }
+    if (titleRows.length > 2) titleRows = [titleRows[0], `${titleRows[1]}…`];
+  }
+  doc.setFontSize(titleSize);
+  doc.setCharSpace(HEAD_TRACK * titleSize);
+  titleRows.forEach((row, i) => doc.text(row, blockLeft, HEAD_TITLE_BASE + i * TITLE_LEAD));
+
+  doc.setFontSize(HEAD_SIZE);
+  doc.setCharSpace(HEAD_TRACK * HEAD_SIZE);
   doc.text('OPENING TREE', contentRight - HEAD_R_MID, HEAD_TITLE_BASE);
-  doc.text(`${named} NAMED LINES`, contentRight, HEAD_TITLE_BASE, { align: 'right' });
+  doc.text(`${named} NAMED LINE${named === 1 ? '' : 'S'}`, contentRight, HEAD_TITLE_BASE, { align: 'right' });
   doc.setCharSpace(0);
 
   // Legend, wrapped to the width the headings span.

@@ -199,6 +199,10 @@ const emptyRaw = (san: string, ply: number): RawNode => ({
  * Build the opening tree for one colour from the game summaries: a trie of
  * positions with per-node tallies, then pruned/collapsed and laid out as
  * `TreeNode`s (FENs + move labels resolved with chess.js).
+ *
+ * `focusPath` (a `pathId`, i.e. a slash-joined SAN path) narrows the poster to
+ * one opening: the tree still runs from the initial position, but every line in
+ * the budget is opened below that node.
  */
 export function buildOpeningTree(
   games: OpeningGame[],
@@ -206,6 +210,7 @@ export function buildOpeningTree(
   minNodeGames: number = MIN_NODE_GAMES,
   maxNodes?: number,
   budget: { maxLines: number; maxPly: number } = POSTER_BUDGET.portrait,
+  focusPath?: string | null,
 ): TreeNode {
   const root = emptyRaw('', 0);
   for (const g of games) {
@@ -236,9 +241,27 @@ export function buildOpeningTree(
   // once-played tail included, so main lines run to move 6, 7, 8, 9 … A couple
   // of dozen long parallel lines, breadth only where they part: dense and
   // readable. `maxNodes` stays as a hard memory cap.
+  // `focusPath` posters one opening. The sheet still starts from the initial
+  // position, so the line down to that opening is kept as a trunk — but the
+  // budget is spent entirely BELOW it. Budgeting the whole repertoire and only
+  // then narrowing gave a focused poster whatever share of the lines happened
+  // to fall inside it, which for a side line was one.
+  let focus: RawNode | null = null;
+  const trunk: RawNode[] = [];
+  if (focusPath) {
+    let n: RawNode | undefined = root;
+    for (const san of focusPath.split('/')) {
+      n = n.children.get(san);
+      if (!n) break;
+      trunk.push(n);
+    }
+    focus = n ?? null;
+    if (!focus) trunk.length = 0; // unknown path — poster the whole colour
+  }
+
   let keep: Set<RawNode> | undefined;
   if (maxNodes && maxNodes > 0) {
-    const kept = new Set<RawNode>([root]);
+    const kept = new Set<RawNode>([root, ...trunk]);
     keep = kept;
     const kidsOf = (n: RawNode) =>
       [...n.children.values()]
@@ -249,7 +272,10 @@ export function buildOpeningTree(
     // line is never spent on an oddity the layout would drop anyway.
     const topFloor = Math.max(minNodeGames, Math.round(root.games * 0.02));
     const nextIdx = new Map<RawNode, number>(); // per branch point: next child to open
-    const frontier: RawNode[] = [root];
+    // Only the focused node (or the root) may start a line, so nothing above it
+    // competes for the budget.
+    const start = focus ?? root;
+    const frontier: RawNode[] = [start];
     let lines = 0;
     const openLine = (start: RawNode) => {
       let n = start;
