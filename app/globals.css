@@ -1434,39 +1434,51 @@ html[data-theme='dark'] .sq.cap-ring {
 }
 /* Condensed result facts — best move + blunder as a tight label→value grid so
    the move sits right next to its label (not pushed to the far right). */
-/* Compact result footer: facts on the left, verdict on the right, one row. */
-.result-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 10px;
-  flex-wrap: wrap;
-}
-.result-summary .verdict { margin-left: auto; }
-/* Slightly smaller verdict here so "Solution shown." fits beside the facts on a
-   narrow phone rather than wrapping to its own line. */
-.result-summary .verdict-ico,
-.result-summary .verdict-text { font-size: var(--fs-base); }
-.result-facts {
+/* Replay cards — the best move and the real-game blunder, each a button that
+   opens the board replay. Two across on a phone; `auto-fit` stacks them wherever
+   the slot can't hold two 150px cards (desktop's 280px column, landscape's
+   180px). 150px is not arbitrary: "BLUNDER IN GAME" sets 121px wide in the
+   Label style and needs a line to itself. */
+.rf-cards {
   display: grid;
-  grid-template-columns: max-content max-content;
-  gap: 2px 10px;
-  align-items: baseline;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px;
 }
-.rf { display: contents; }
+/* Quieter than the action buttons above (tinted ground, lighter rule) so Next /
+   Retry / Play keep the hierarchy — but unmistakably a button. */
+.rf-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'lbl lbl' 'val play';
+  align-items: center;
+  gap: 5px 8px;
+  min-height: 44px; /* iOS touch-target floor */
+  padding: 9px 10px;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  background: var(--bg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s var(--ease-snap), border-color 0.12s var(--ease-snap);
+}
+.rf-card .rf-lbl { grid-area: lbl; }
+.rf-card .rf-v { grid-area: val; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rf-play { grid-area: play; display: block; flex-shrink: 0; }
+.rf-play circle { fill: var(--contour); }
+.rf-play path { fill: var(--bg2); }
+/* Pressed feedback for touch; hover only where a pointer can actually hover —
+   on iOS a plain :hover sticks to whatever sits under the last tap. */
+.rf-card:active { background: var(--bg3); border-color: var(--contour); }
+@media (hover: hover) {
+  .rf-card:hover { background: var(--bg3); border-color: var(--contour); }
+}
+.rf-card:focus-visible { outline: 2px solid var(--contour); outline-offset: 2px; }
 .rf-lbl { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); }
 .rf-v { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); font-variant-numeric: tabular-nums; }
 .rf-v.best { color: var(--green); }
 /* Eval in brackets after the move — secondary, so Body weight/colour. */
 .rf-eval { font-weight: var(--fw-reg); color: var(--txt-dim); }
-/* The best/played move is a button that opens the replay popup — underlined so
-   it reads as tappable, inheriting the row's colour (green for best). */
-.rf-move {
-  background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer;
-  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
-  text-decoration-color: var(--border2);
-}
-.rf-move:hover, .rf-move:active { text-decoration-color: currentColor; }
 .move-cell {
   border: 1px solid var(--border);
   background: var(--bg);
@@ -1578,9 +1590,19 @@ html[data-theme='dark'] .sq.cap-ring {
   text-align: center;
   transition: all 0.12s var(--ease-snap);
 }
-.btn:hover:not(:disabled) {
+/* Inverted = "pressed". On :active for touch, and on :hover only where a pointer
+   can really hover: iOS leaves a plain :hover stuck on whatever sits under the
+   last tap, which painted "Play →" solid black (it appears exactly where "Show
+   solution" was just tapped) and made it look like the primary action. */
+.btn:active:not(:disabled) {
   background: var(--contour);
   color: var(--bg2);
+}
+@media (hover: hover) {
+  .btn:hover:not(:disabled) {
+    background: var(--contour);
+    color: var(--bg2);
+  }
 }
 .btn:disabled {
   opacity: 0.45;
@@ -1592,9 +1614,15 @@ html[data-theme='dark'] .sq.cap-ring {
   border-color: var(--contour);
   font-weight: var(--fw-bold);
 }
-.btn.prim:hover:not(:disabled) {
+.btn.prim:active:not(:disabled) {
   background: var(--contour);
   color: var(--bg2);
+}
+@media (hover: hover) {
+  .btn.prim:hover:not(:disabled) {
+    background: var(--contour);
+    color: var(--bg2);
+  }
 }
 .btn.ghost {
   background: transparent;
