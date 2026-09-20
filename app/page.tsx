@@ -13,13 +13,15 @@ import { ClinicProvider } from '@/lib/clinic-context';
 import { Sidebar } from '@/components/Sidebar';
 import { ResultPanel } from '@/components/ResultPanel';
 import { Onboarding } from '@/components/Onboarding';
+import { boardThemeById, DEFAULT_BOARD_LIGHT, DEFAULT_BOARD_DARK, type BoardThemeId } from '@/lib/board-theme';
 import { BrandMark } from '@/components/BrandMark';
 import { apiUrl } from '@/lib/api';
+import { useRegisterBoardNav, BoardControlsSlot, BoardTopSlot } from '@/lib/board-nav';
 import { isNativeApp } from '@/lib/platform';
 import { SEED_PUZZLES } from '@/lib/seed-puzzles';
-import { ecoName } from '@/lib/eco-names';
 import { clearElo } from '@/lib/player-elo';
 import { FAMOUS_PUZZLES } from '@/lib/famous-puzzles';
+import { playMove, loadSound, saveSound } from '@/lib/sound';
 import type {
   EcoFilter,
   Filter,
@@ -40,6 +42,12 @@ import {
   saveRandomOrder,
   loadTheme,
   saveTheme,
+  loadBoardLight,
+  saveBoardLight,
+  loadBoardDark,
+  saveBoardDark,
+  loadCoords,
+  saveCoords,
   loadStats,
   saveStats,
   loadHistory,
@@ -116,6 +124,8 @@ export default function Page() {
   /** Engine-line move index currently shown via the result panel's clickable
    *  notation (null = not navigating the line). */
   const [seekPly, setSeekPly] = useState<number | null>(null);
+  /** Square ringed by the "Hint" button — the piece you should move. */
+  const [hintSquare, setHintSquare] = useState<string | null>(null);
   /** True while a wrong move is flashing red and being undone. */
   const [awaitingRetry, setAwaitingRetry] = useState(false);
   /** Piece at `.from` slides back from `.to` — the wrong-move bounce. */
@@ -142,6 +152,16 @@ export default function Page() {
   const [randomOrder, setRandomOrder] = useState(false);
   /** Color theme. Drives a `data-theme` attribute on <html>. Persisted. */
   const [theme, setTheme] = useState<ThemeMode>('light');
+  /** Board colour theme per app-mode; the one for the active mode recolours
+   *  every board in the app. Light defaults to green, dark to walnut. */
+  const [boardLight, setBoardLight] = useState<BoardThemeId>(DEFAULT_BOARD_LIGHT);
+  const [boardDark, setBoardDark] = useState<BoardThemeId>(DEFAULT_BOARD_DARK);
+  /** Board rank/file labels. Off by default (clean, full-width board). Persisted. */
+  const [coords, setCoords] = useState(false);
+  /** Move sound. On by default; persisted. */
+  const [sound, setSound] = useState(true);
+  /** When set, the Play tab opens at this position — the puzzle's "Play" button. */
+  const [playFrom, setPlayFrom] = useState<{ fen: string; color: 'w' | 'b'; noClock?: boolean } | null>(null);
   const hydrated = useRef(false);
   /** Puzzle id whose outcome has already been counted in stats. Prevents
    *  double-counting across multiple wrong tries on one puzzle. */
@@ -152,6 +172,11 @@ export default function Page() {
   /** Set once any move is *revealed* (Show move / Show the rest), so the puzzle
    *  is recorded as a miss even though the engine plays the move for you. */
   const revealedRef = useRef(false);
+  /** Bumped on every puzzle load (including a retry of the *same* puzzle), so a
+   *  reveal animation still in flight aborts instead of overwriting the fresh
+   *  board — the puzzle id alone can't tell a retry from the run that spawned
+   *  the pending timeouts. */
+  const loadSeq = useRef(0);
   /** Mirror of `current` as a ref, used by handleImport to decide whether
    *  to auto-jump on the first streamed batch without stale-closure traps. */
   const currentRef = useRef<Puzzle | null>(null);
@@ -185,6 +210,10 @@ export default function Page() {
     setSolved(initialSolved);
     setRandomOrder(loadRandomOrder());
     setTheme(loadTheme());
+    setBoardLight(loadBoardLight());
+    setBoardDark(loadBoardDark());
+    setCoords(loadCoords());
+    setSound(loadSound());
     setStats(loadStats());
     setHistory(loadHistory());
     setOnboarded(loadOnboarded());
@@ -240,13 +269,36 @@ export default function Page() {
     if (hydrated.current) saveRandomOrder(randomOrder);
   }, [randomOrder]);
   useEffect(() => {
-    // The CSS theme switch is driven by data-theme on <html> so the
-    // variable swap stays outside React's tree (and works for portals).
+    if (hydrated.current) saveCoords(coords);
+  }, [coords]);
+  useEffect(() => {
+    // The CSS theme switch is driven by data-theme on <html> so the variable
+    // swap stays outside React's tree (and works for portals). The active board
+    // theme's four square vars are written the same way, so every board (the
+    // trainer, Play, the opening mini-boards and the popup) recolours at once.
     if (typeof document !== 'undefined') {
-      document.documentElement.setAttribute('data-theme', theme);
+      const el = document.documentElement;
+      el.setAttribute('data-theme', theme);
+      const bt = boardThemeById(theme === 'dark' ? boardDark : boardLight);
+      el.style.setProperty('--sq-l', bt.sqL);
+      el.style.setProperty('--sq-d', bt.sqD);
+      el.style.setProperty('--lm-l', bt.lmL);
+      el.style.setProperty('--lm-d', bt.lmD);
     }
     if (hydrated.current) saveTheme(theme);
-  }, [theme]);
+  }, [theme, boardLight, boardDark]);
+
+  /** Set (and persist) the board theme for one app-mode. The active mode's board
+   *  recolours immediately via the effect above. */
+  const setBoard = useCallback((mode: 'light' | 'dark', id: BoardThemeId) => {
+    if (mode === 'light') {
+      setBoardLight(id);
+      if (hydrated.current) saveBoardLight(id);
+    } else {
+      setBoardDark(id);
+      if (hydrated.current) saveBoardDark(id);
+    }
+  }, []);
 
   /* ── Derived: filtered puzzle list ── */
   const filtered = useMemo(() => {
@@ -294,6 +346,7 @@ export default function Page() {
 
   /* ── Load a puzzle: replay setup moves, animate the last (opponent) move ── */
   const loadPuzzle = useCallback((p: Puzzle) => {
+    loadSeq.current++; // invalidate any in-flight reveal animation (incl. retry)
     const c = new Chess();
     let lastMoveFrom: string | null = null;
     let lastMoveTo: string | null = null;
@@ -329,6 +382,7 @@ export default function Page() {
     setBounceBack(null);
     setAttempts([]);
     setSeekPly(null);
+    setHintSquare(null);
     setLegalFrom(groupLegal(c));
 
     if (lastMoveFrom && lastMoveTo) {
@@ -346,6 +400,7 @@ export default function Page() {
   /* ── Click on a board square ── */
   const onSquareClick = useCallback(
     (sqn: string) => {
+      if (seekPly != null) return; // browsing earlier moves — board is view-only
       if ((revealed && !analysis) || awaitingRetry || !current) return;
       // In analysis mode you can move whichever side is to move (explore freely).
       const myColor = analysis ? chess.turn() : current.abdulsColor === 'white' ? 'w' : 'b';
@@ -367,7 +422,7 @@ export default function Page() {
       else setSelected(null);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [revealed, analysis, awaitingRetry, current, chess, selected, legalFrom]
+    [revealed, analysis, awaitingRetry, current, chess, selected, legalFrom, seekPly]
   );
 
   /* ── Play out the rest of the engine line, then open free analysis ──
@@ -379,9 +434,10 @@ export default function Page() {
     const line = solutionLine(p);
     const c = new Chess(startFen);
     const id = p.id;
+    const seq = loadSeq.current; // abort if the puzzle is reloaded/retried mid-reveal
     let step = fromStep;
     const playNext = () => {
-      if (currentRef.current?.id !== id) return;
+      if (currentRef.current?.id !== id || loadSeq.current !== seq) return;
       if (step >= line.length) {
         setLineStep(step);
         setLegalFrom(groupLegal(c));
@@ -411,30 +467,84 @@ export default function Page() {
     setTimeout(playNext, 600); // let the solving move's own animation land first
   };
 
-  /* ── Jump the board to a position in the engine line (clickable notation in
-     the result panel). Replays the setup moves + the line up to `ply`, then
-     leaves the board in free-analysis so you can explore from there. */
-  const seekToLine = useCallback((ply: number) => {
+  /* ── Browse the whole game with the board arrows ──────────────────────────
+     `seekPly` is a *global* half-move index into [...setupMoves, ...line]:
+       · -1            = the initial position (before move 1)
+       · setupLen - 1  = the puzzle position (where you make your move)
+       · setupLen + k  = k moves into the solution (only reachable once revealed)
+     Seeking is view-only — it never touches the solvable `chess`, so you can
+     rewind to study the earlier moves and then step forward to solve. The
+     displayed board (`boardChess`) reconstructs the seeked position; `null`
+     means "follow the live game". */
+  const seekToGame = useCallback((g: number) => {
     if (!current) return;
-    const line = current.line && current.line.length > 0 ? current.line : [current.bestMove];
+    const line = solutionLine(current);
+    const full = [...current.setupMoves, ...line];
+    const setupLen = current.setupMoves.length;
+    const livePly = revealed ? full.length - 1 : setupLen - 1;
+    const gi = Math.max(-1, Math.min(livePly, g));
+    const fromPly = seekPly ?? livePly;
+    // Replay as far as the *further* of where we are and where we're going, and
+    // keep each move: stepping needs the single move that separates the two
+    // plies, and which one that is depends on the direction of travel.
     const c = new Chess();
-    for (const m of current.setupMoves) { try { c.move(m); } catch { /* odd SAN — skip */ } }
-    let last: Move | null = null;
-    for (let i = 0; i <= ply && i < line.length; i++) {
-      try { last = c.move(line[i]); } catch { break; }
+    const played: Move[] = [];
+    for (let i = 0; i <= Math.max(gi, fromPly) && i < full.length; i++) {
+      try { played.push(c.move(full[i])); } catch { break; }
     }
-    setChess(new Chess(c.fen()));
+    // Highlight the move that lands on square gi.
+    const last: Move | null = gi >= 0 ? played[gi] ?? null : null;
+
+    // Stepping one ply either way animates the piece across, instead of
+    // repainting it into place — a jump reads as a blink, and the arrows are
+    // exactly where you're watching for the move. Forward, the piece arrives
+    // at `to` from `from`; rewinding, the same move runs backwards, so the
+    // piece lands on `from` having come from `to`. First/last skip whole
+    // stretches of game at once, where there is no one piece to follow.
+    const step = gi - fromPly;
+    let travel: { from: string; to: string } | null = null;
+    if (step === 1 && played[gi]) {
+      travel = { from: played[gi].from, to: played[gi].to };
+    } else if (step === -1 && played[fromPly]) {
+      travel = { from: played[fromPly].to, to: played[fromPly].from };
+    }
+
     setSelected(null);
-    setLastFrom(last?.from ?? null);
-    setLastTo(last?.to ?? null);
     setFlashOk(null);
     setFlashFail(null);
     setBounceBack(null);
-    setIntroMove(null);
-    setAnalysis(true);
-    setLegalFrom(groupLegal(c));
-    setSeekPly(ply);
-  }, [current]);
+    setIntroMove(travel);
+    if (travel) {
+      const id = current.id;
+      setTimeout(() => {
+        if (currentRef.current?.id === id) setIntroMove(null);
+      }, 260);
+    }
+    if (gi < 0) {
+      setLastFrom(null);
+      setLastTo(null);
+    } else if (gi === setupLen - 1) {
+      // Back at the puzzle position — restore the opponent's setup-move marker.
+      setLastFrom(puzzleLastMoveRef.current?.from ?? null);
+      setLastTo(puzzleLastMoveRef.current?.to ?? null);
+    } else {
+      setLastFrom(last?.from ?? null);
+      setLastTo(last?.to ?? null);
+    }
+    // Landing back on the live position follows the game again (unlocks moves).
+    setSeekPly(gi === livePly ? null : gi);
+  }, [current, revealed, seekPly]);
+
+  // The board the user sees: the seeked position while browsing history,
+  // otherwise the live game. Browsing is view-only, so `chess` stays put and
+  // the puzzle is still solvable once you step back to the live position.
+  const boardChess = useMemo(() => {
+    if (seekPly == null || !current) return chess;
+    const full = [...current.setupMoves, ...solutionLine(current)];
+    const c = new Chess();
+    for (let i = 0; i <= seekPly && i < full.length; i++) { try { c.move(full[i]); } catch { break; } }
+    return c;
+  }, [seekPly, chess, current]);
 
   /* ── Apply a move ──
      Three modes: free analysis (after solve — any legal move), multi-move
@@ -442,6 +552,8 @@ export default function Page() {
      single-move default. */
   const makeMove = (mv: Move, fromDrag = false) => {
     if (!current) return;
+    if (seekPly != null) return; // browsing earlier moves — board is view-only
+    setHintSquare(null); // any move dismisses the hint
     const cur = current;
     // Record the puzzle's outcome once (solved-status · stats · streak). A
     // revealed move counts as a miss, like giving up, via `revealedRef`.
@@ -479,6 +591,12 @@ export default function Page() {
       return;
     }
     if (!applied) return;
+    playMove(!!applied.captured);
+    // While solving, only the user's own pieces count. The ~500ms opponent
+    // auto-reply window (multi-move puzzles) otherwise lets a *drag* of an
+    // opponent piece register as a wrong move — clicks are already turn-guarded
+    // in onSquareClick, drags weren't.
+    if (!analysis && applied.color !== (cur.abdulsColor === 'white' ? 'w' : 'b')) return;
 
     // ── Free analysis: once solved, any legal move is allowed (explore). ──
     if (analysis) {
@@ -527,10 +645,10 @@ export default function Page() {
       if (solvedNow) {
         record('ok'); // combinations record here; normal puzzles already did
         setRevealed(true);
-        // "You played" reflects what you actually did: the key move on a clean
-        // solve, otherwise your first wrong try (or — when you revealed it).
-        setYourMove(keyResultRef.current === 'fail' ? attempts[0] ?? '—' : line[0]);
-        setIsOk(keyResultRef.current !== 'fail');
+        // Finding the best move reads as "Correct" even after a wrong try or
+        // two (stats still logged the miss). Revealing it is "Solution shown".
+        setYourMove(revealedRef.current ? '—' : line[0]);
+        setIsOk(!revealedRef.current);
         // Don't auto-blast the rest of the line on the board — that felt
         // chaotic. Stop on the solved position and open free analysis; the full
         // engine line is still shown as text in the result panel.
@@ -559,6 +677,7 @@ export default function Page() {
             setLegalFrom(groupLegal(c2));
             return;
           }
+          playMove(!!rep.captured);
           setChess(new Chess(c2.fen()));
           setLastFrom(rep.from);
           setLastTo(rep.to);
@@ -575,13 +694,26 @@ export default function Page() {
       return;
     }
 
-    // ── Wrong move: red flash at the destination, then bounce home. ──
+    // ── Wrong move: red flash at the destination, then bounce home so you can
+    //    try again. A mistake is never revealed — you keep solving. ──
     setChess(next);
     setSelected(null);
     setLastFrom(mv.from);
     setLastTo(mv.to);
     setFlashFail(mv.to);
     setAwaitingRetry(true);
+    // A wrong move is still a move, and until now it was the one kind that
+    // never travelled: the piece appeared on the square already red, then
+    // slid home 400ms later. Half an animation, and the missing half was the
+    // half you asked for. Cleared before the bounce sets off, so the two
+    // never fight over the same piece.
+    if (!fromDrag) {
+      setIntroMove({ from: mv.from, to: mv.to });
+      const wrongId = current.id;
+      setTimeout(() => {
+        if (currentRef.current?.id === wrongId) setIntroMove(null);
+      }, 260);
+    }
     setAttempts((prev) => (prev.includes(applied.san) ? prev : [...prev, applied.san]));
 
     // The first unrecorded wrong move fails the puzzle. Once the key move is
@@ -615,11 +747,23 @@ export default function Page() {
     }, 700);
   };
 
+  /* ── Hint: ring the piece you should move (the from-square of the move you're
+     looking for) without giving away where it lands. ── */
+  const showHint = useCallback(() => {
+    if (!current || seekPly != null) return;
+    const expected = solutionLine(current)[lineStep];
+    if (!expected) return;
+    const norm = (s: string) => s.replace(/[+#]$/, '');
+    const mv = chess.moves({ verbose: true }).find((m) => norm(m.san) === norm(expected));
+    setHintSquare(mv ? mv.from : null);
+  }, [current, seekPly, lineStep, chess]);
+
   /* ── Show move: reveal just the move you're stuck on (counts as a miss),
      then continue exactly like solving — the opponent replies and you find the
      next move yourself. Same flow, the engine just plays this one move. ── */
   const revealMove = () => {
     if (!current || revealed || awaitingRetry || analysis) return;
+    setHintSquare(null);
     const san = solutionLine(current)[lineStep];
     if (!san) return;
     const probe = new Chess(chess.fen());
@@ -672,6 +816,25 @@ export default function Page() {
   const retry = () => {
     if (current) loadPuzzle(current);
   };
+
+  /* ── "Play" from the result panel: hand the puzzle's position to the Play tab
+     so the user can play it out against the engine from exactly there. ── */
+  const playFromCurrent = useCallback(() => {
+    if (!current) return;
+    // Hand Play the exact position on the board *right now* — wherever you've
+    // stepped in the engine line or explored in free analysis. Keep your own
+    // colour so the board stays oriented exactly as the puzzle showed it (never
+    // flipping to whoever's on move); Play makes the engine reply first if it's
+    // the opponent's turn in that position.
+    // Always hand off clock-free: solving a puzzle out against the engine isn't
+    // a timed game, so ignore whatever time control Play was last set to.
+    setPlayFrom({
+      fen: boardChess.fen(),
+      color: current.abdulsColor === 'white' ? 'w' : 'b',
+      noClock: true,
+    });
+    setMode('play');
+  }, [current, boardChess]);
 
   const next = useCallback(() => {
     if (!current || filtered.length === 0) return;
@@ -849,6 +1012,9 @@ export default function Page() {
               onImport={handleImport}
               onGamesFetched={handleGamesFetched}
               onComplete={completeOnboarding}
+              boardLight={boardLight}
+              boardDark={boardDark}
+              onSetBoard={setBoard}
             />
           </div>
         </div>
@@ -857,11 +1023,6 @@ export default function Page() {
   }
 
   /* ── Main app ── */
-  const openingName = current ? ecoName(current.eco) : null;
-  const speedLabel =
-    current?.speed && current.speed !== 'unknown'
-      ? `${current.speed}${current.timeControl ? ` ${current.timeControl}` : ''}`
-      : null;
   // Is there still a continuation past the move you're on? (drives "Show the rest")
   const restAvailable = !!current && solutionLine(current).length > lineStep + 1;
 
@@ -874,6 +1035,13 @@ export default function Page() {
       onToggleRandom={() => setRandomOrder((o) => !o)}
       theme={theme}
       onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+      boardLight={boardLight}
+      boardDark={boardDark}
+      onSetBoard={setBoard}
+      coords={coords}
+      onToggleCoords={() => setCoords((c) => !c)}
+      sound={sound}
+      onToggleSound={() => setSound((v) => { const n = !v; saveSound(n); return n; })}
       mode={mode}
       onModeChange={setMode}
       onImport={handleImport}
@@ -889,13 +1057,19 @@ export default function Page() {
           </div>
         </ClinicProvider>
       ) : mode === 'play' ? (
-        <div className="main play-mode">
-          <PlayMode />
-        </div>
+        <PlayMode coords={coords} startFrom={playFrom} onStarted={() => setPlayFrom(null)} />
       ) : mode === 'coords' ? (
-        <CoordsTrainer />
+        <CoordsTrainer coords={coords} />
       ) : (
         <>
+          <PuzzleNav
+            enabled={!!current}
+            setupLen={current ? current.setupMoves.length : 0}
+            lineLen={current ? solutionLine(current).length : 0}
+            revealed={revealed}
+            seekPly={seekPly}
+            onSeek={seekToGame}
+          />
           <Sidebar
             all={all}
             filtered={filtered}
@@ -906,6 +1080,10 @@ export default function Page() {
             current={current}
             solved={solved}
             counts={counts}
+            stats={stats}
+            queueSize={unseenCount}
+            randomOrder={randomOrder}
+            onToggleRandom={() => setRandomOrder((o) => !o)}
             onFilterChange={setFilter}
             onEcoFilterChange={setEcoFilter}
             onSpeedFilterChange={setSpeedFilter}
@@ -921,61 +1099,37 @@ export default function Page() {
           </div>
         ) : (
           <div className="board-col">
+            {/* Puzzle name + info in a white bracket, with the menu on the right. */}
             <div className="ctx-line">
-              <div className="ctx-l">
+              <div className="ctx-body">
                 <div className="ctx-title">
-                  <span className="vs">vs</span>
-                  {current.opponent}
-                </div>
-                <div className="ctx-meta">
-                  {openingName && (
-                    <>
-                      <span>{openingName}</span>
-                      <span className="sep">·</span>
-                    </>
-                  )}
-                  <span>{current.eco}</span>
-                  {speedLabel && (
-                    <>
-                      <span className="sep">·</span>
-                      <span>{speedLabel}</span>
-                    </>
-                  )}
-                  <span className="sep">·</span>
-                  <span>{current.date.replace(/\./g, '-')}</span>
+                  <span className="ctx-opp">{current.opponent}</span>
                 </div>
               </div>
-              <div
-                className={
-                  'turn-chip ' +
-                  ((analysis ? chess.turn() === 'w' : current.abdulsColor === 'white')
-                    ? 'white'
-                    : 'black')
-                }
-              >
-                <span className="dot" />
-                {(analysis ? chess.turn() === 'w' : current.abdulsColor === 'white')
-                  ? 'White to move'
-                  : 'Black to move'}
-              </div>
+              <BoardTopSlot />
             </div>
-
             <div className="board-row">
-              <Board
-                chess={chess}
-                orientation={current.abdulsColor}
-                selected={selected}
-                legalFrom={legalFrom}
-                lastFrom={lastFrom}
-                lastTo={lastTo}
-                flashOk={flashOk}
-                flashFail={flashFail}
-                bounceBack={bounceBack}
-                introMove={introMove}
-                revealed={analysis ? false : revealed || awaitingRetry}
-                onSquareClick={onSquareClick}
-                onDragMove={(mv) => makeMove(mv, true)}
-              />
+              <div className="board-stack">
+                <Board
+                  chess={boardChess}
+                  orientation={current.abdulsColor}
+                  selected={selected}
+                  legalFrom={legalFrom}
+                  lastFrom={lastFrom}
+                  lastTo={lastTo}
+                  flashOk={flashOk}
+                  flashFail={flashFail}
+                  bounceBack={bounceBack}
+                  introMove={introMove}
+                  revealed={seekPly != null ? true : analysis ? false : revealed || awaitingRetry}
+                  onSquareClick={onSquareClick}
+                  onDragMove={(mv) => makeMove(mv, true)}
+                  coords={coords}
+                  hintSquare={hintSquare}
+                />
+                {/* Control bracket sits right under the board (portal target). */}
+                <BoardControlsSlot />
+              </div>
 
               {/* Reserve the 280px slot so the board doesn't shift when the
                   result appears. Before reveal: a verdict-style prompt +
@@ -986,15 +1140,13 @@ export default function Page() {
                     puzzle={current}
                     yourMove={yourMove}
                     isOk={isOk}
-                    onSeek={seekToLine}
-                    seekPly={seekPly}
                     onRetry={retry}
                     onNext={next}
+                    onPlay={playFromCurrent}
                   />
                 ) : (
                   <div className="pre-result">
                     <div className="verdict idle">
-                      <div className="verdict-ico">{lineStep > 0 ? '➜' : '?'}</div>
                       <div>
                         {/* Don't reveal the motif (sacrifice / combination) up
                             front — that gives the solution away. Just ask for the
@@ -1004,27 +1156,18 @@ export default function Page() {
                         </div>
                         <div className="verdict-sub">
                           {lineStep > 0
-                            ? 'Play the continuation — keep the advantage.'
+                            ? 'Play the continuation. Keep the advantage.'
                             : `For ${current.abdulsColor === 'white' ? 'white' : 'black'}.`}
                         </div>
                       </div>
                     </div>
-                    <div className="help">
-                      {lineStep > 0
-                        ? <>Find each move yourself — or reveal just this one.</>
-                        : <>Click a piece, then its destination — or drag.</>}
-                    </div>
                     <div className="btn-row">
-                      <button className="btn" onClick={revealMove} disabled={awaitingRetry}>
+                      <button className="btn" onClick={showHint} disabled={awaitingRetry || seekPly != null}>
+                        Hint
+                      </button>
+                      <button className="btn" onClick={revealMove} disabled={awaitingRetry || seekPly != null}>
                         {lineStep > 0 ? 'Show move' : 'Show solution'}
                       </button>
-                      {/* "Show the rest" only once you're into the line — after
-                          you've solved or revealed the first move. */}
-                      {lineStep > 0 && restAvailable && (
-                        <button className="btn ghost" onClick={showRest} disabled={awaitingRetry}>
-                          Show the rest
-                        </button>
-                      )}
                     </div>
                   </div>
                 )}
@@ -1037,6 +1180,46 @@ export default function Page() {
       )}
     </AppShell>
   );
+}
+
+/** Drives the board arrows through the whole game — the setup moves that lead
+ *  up to the puzzle (so you can rewind and study them) plus, once revealed, the
+ *  solution line. A tiny component so the registration mounts/unmounts with
+ *  puzzle mode and never fights Play's nav. */
+function PuzzleNav({
+  enabled,
+  setupLen,
+  lineLen,
+  revealed,
+  seekPly,
+  onSeek,
+}: {
+  enabled: boolean;
+  setupLen: number;
+  lineLen: number;
+  revealed: boolean;
+  seekPly: number | null;
+  onSeek: (ply: number) => void;
+}) {
+  // Global half-move index: -1 = start, setupLen-1 = puzzle position, and the
+  // solution only opens up once revealed. Live position (seekPly null) is the
+  // puzzle position before solving, the line's end after.
+  const livePly = revealed ? setupLen + lineLen - 1 : setupLen - 1;
+  const cur = seekPly ?? livePly;
+  useRegisterBoardNav(
+    enabled && setupLen + lineLen > 0
+      ? {
+          canPrev: cur > -1,
+          canNext: cur < livePly,
+          first: () => onSeek(-1),
+          prev: () => onSeek(Math.max(-1, cur - 1)),
+          next: () => onSeek(Math.min(livePly, cur + 1)),
+          last: () => onSeek(livePly),
+        }
+      : {},
+    [enabled, setupLen, lineLen, revealed, seekPly],
+  );
+  return null;
 }
 
 /** Famous-blunder placeholder puzzles carry a `famous_` id prefix. They are

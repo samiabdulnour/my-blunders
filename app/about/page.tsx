@@ -29,7 +29,7 @@ export default function AboutPage() {
               Train on <em>your own</em> blunders.
             </h1>
             <p className="about-lead">
-              <strong>my·blunders</strong> turns the games you actually played — on{' '}
+              <strong>My Blunders</strong> turns the games you actually played — on{' '}
               <strong>Lichess</strong> or <strong>Chess.com</strong> — into training built around
               your own mistakes. It pulls your recent games, finds the moves where your position
               really slipped, and asks you to find what you should have played instead, so you
@@ -77,7 +77,7 @@ export default function AboutPage() {
                 <span className="tick" aria-hidden="true">✓</span>
                 <p>
                   <strong>Public games only.</strong> You give a username, not a password.
-                  my·blunders only reads games you&apos;ve already made public on Lichess or
+                  My Blunders only reads games you&apos;ve already made public on Lichess or
                   Chess.com — it never signs in as you.
                 </p>
               </div>
@@ -113,7 +113,7 @@ export default function AboutPage() {
             <div className="about-h">Author</div>
             <div className="about-author">
               <div className="who">
-                Built by <strong>Sami Abdulnour</strong>.
+                Built by <strong>Sami Abdulnour</strong> and <strong>Žofia Kosová</strong>.
               </div>
               <div className="about-links">
                 <a

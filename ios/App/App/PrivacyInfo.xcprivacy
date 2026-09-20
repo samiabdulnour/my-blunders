@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The app does no tracking and no cross-app data sharing. -->
+  <key>NSPrivacyTracking</key>
+  <false/>
+  <key>NSPrivacyTrackingDomains</key>
+  <array/>
+  <!-- No data is collected by the developer: games are fetched from public
+       Lichess / Chess.com APIs and analysed on-device by a local Stockfish;
+       nothing is sent to a server we control, and there are no accounts. -->
+  <key>NSPrivacyCollectedDataTypes</key>
+  <array/>
+  <!-- Required-reason API declarations. Capacitor stores app state in
+       UserDefaults (CA92.1 = "access info from the app itself"). -->
+  <key>NSPrivacyAccessedAPITypes</key>
+  <array>
+    <dict>
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array>
+        <string>CA92.1</string>
+      </array>
+    </dict>
+  </array>
+</dict>
+</plist>

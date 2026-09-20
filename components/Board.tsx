@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Chess, Move } from 'chess.js';
 import { Piece } from './Piece';
 
@@ -35,6 +35,10 @@ interface BoardProps {
   onSquareClick: (square: string) => void;
   /** Drag handler. Receives the legal Move to apply. */
   onDragMove: (move: Move) => void;
+  /** Show rank/file labels around the board. Off → a clean, full-width grid. */
+  coords?: boolean;
+  /** A square to ring as a hint — the piece you should move. */
+  hintSquare?: string | null;
 }
 
 /** Pixels of pointer movement before a press becomes a drag. Below the
@@ -80,6 +84,8 @@ export function Board({
   revealed,
   onSquareClick,
   onDragMove,
+  coords = true,
+  hintSquare = null,
 }: BoardProps) {
   const flipped = orientation === 'black';
   const pos = useMemo(() => chess.board(), [chess]);
@@ -139,6 +145,44 @@ export function Board({
   const files = flipped
     ? ['h', 'g', 'f', 'e', 'd', 'c', 'b', 'a']
     : ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+
+  // Give a travelling piece one frame before its clock starts.
+  //
+  // Squares are keyed by square, so a piece that moves is not the same DOM
+  // node that left — it is a brand new <img> mounted at the destination. A CSS
+  // animation is timed, not counted: it does not wait to be painted, it asks
+  // what time it is. So if that first frame costs anything — laying the image
+  // out, rasterising the SVG, handing it a compositor layer — the animation is
+  // already partway through when the piece finally appears, and it starts its
+  // travel from halfway. That is the skip; the frames after it were always
+  // smooth, which is why this never showed up as dropped frames.
+  //
+  // So: paint the piece at its origin first, un-animated, and only start the
+  // animation on the following frame, by which point the element exists and
+  // its layer is made. Costs one frame of latency, buys the whole first half
+  // of the move. If the frame never comes (a backgrounded tab), the piece sits
+  // at its origin until the caller clears the move a few hundred ms later.
+  const travel = introMove ?? bounceBack;
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!travel) {
+      setArmed(false);
+      return;
+    }
+    setArmed(false);
+    // rAF is the right signal — it means "you have been painted". But a
+    // backgrounded WebView never fires it, and an un-armed piece is parked at
+    // its origin, so on its own this trades a skip for a freeze. The timer is
+    // the floor: whichever arrives first arms the move, and the piece is never
+    // left sitting somewhere it should not be.
+    const frame = requestAnimationFrame(() => setArmed(true));
+    const floor = window.setTimeout(() => setArmed(true), 50);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(floor);
+    };
+    // Keyed on the actual squares: a new move re-arms, a re-render does not.
+  }, [travel?.from, travel?.to]);
 
   /** Walk up from the given client point to find the square underneath.
    *  Used during pointermove (for hover ring) and pointerup (for drop). */
@@ -247,6 +291,7 @@ export function Board({
 
       const classes = ['sq', light ? 'sq-l' : 'sq-d'];
       if (sqn === lastFrom || sqn === lastTo) classes.push('lm');
+      if (sqn === hintSquare) classes.push('sq-hint');
       if (sqn === selected || sqn === drag?.from) classes.push('sel');
       if (!revealed && legalTargets.has(sqn)) {
         if (piece) classes.push('cap-ring');
@@ -287,16 +332,26 @@ export function Board({
             ? introDelta
             : null;
       if (activeDelta && !isDragActive) {
-        wrapClass += ' animating';
         wrapStyle = {
           '--bx': `${activeDelta.dx}`,
           '--by': `${activeDelta.dy}`,
         } as React.CSSProperties;
+        if (armed) {
+          wrapClass += ' animating';
+        } else {
+          // Frame one: sit at the origin so there is something painted to
+          // animate. Same transform the keyframe starts from, so arming it
+          // next frame continues from here rather than jumping.
+          wrapClass += ' arming';
+          wrapStyle.transform =
+            `translate3d(calc(${activeDelta.dx} * var(--sq-size, 60px)),` +
+            ` calc(${activeDelta.dy} * var(--sq-size, 60px)), 0)`;
+        }
       }
       if (isDragActive) {
         wrapClass += ' dragging';
         wrapStyle = {
-          transform: `translate(${drag.curX - drag.startX}px, ${drag.curY - drag.startY}px) scale(1.1)`,
+          transform: `translate3d(${drag.curX - drag.startX}px, ${drag.curY - drag.startY}px, 0) scale(1.1)`,
         };
       }
 
@@ -328,19 +383,23 @@ export function Board({
   }
 
   return (
-    <div className="bwrap">
-      <div className="ranks">
-        {ranks.map((r) => (
-          <span key={r}>{r}</span>
-        ))}
-      </div>
-      <div className="bcol">
-        <div className="board-grid">{cells}</div>
-        <div className="files">
-          {files.map((f) => (
-            <span key={f}>{f}</span>
+    <div className={'bwrap' + (coords ? '' : ' no-coords')}>
+      {coords && (
+        <div className="ranks">
+          {ranks.map((r) => (
+            <span key={r}>{r}</span>
           ))}
         </div>
+      )}
+      <div className="bcol">
+        <div className="board-grid">{cells}</div>
+        {coords && (
+          <div className="files">
+            {files.map((f) => (
+              <span key={f}>{f}</span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

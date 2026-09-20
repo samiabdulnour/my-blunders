@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Puzzle } from '@/lib/types';
 import { useImporter } from '@/lib/useImporter';
+import { BoardThemePicker } from '@/components/BoardThemePicker';
+import type { BoardThemeId } from '@/lib/board-theme';
 
 interface OnboardingProps {
   /** Feed imported puzzles into the app as they arrive. */
@@ -15,9 +17,13 @@ interface OnboardingProps {
    *  `showFamous` asks the app to show the famous-blunder library to play while
    *  a real import is still streaming in (or as the guest fallback). */
   onComplete: (username: string, opts?: { showFamous?: boolean }) => void;
+  /** Board theme choice for the "choose your board" step, applied live. */
+  boardLight: BoardThemeId;
+  boardDark: BoardThemeId;
+  onSetBoard: (mode: 'light' | 'dark', id: BoardThemeId) => void;
 }
 
-type Phase = 'idle' | 'running' | 'done' | 'error';
+type Phase = 'idle' | 'board' | 'running' | 'done' | 'error';
 
 /**
  * First-run screen: captures the user's Lichess username and kicks off a real
@@ -26,8 +32,18 @@ type Phase = 'idle' | 'running' | 'done' | 'error';
  * reflects live analysis status. Users can also upload a PGN or skip straight
  * into the app.
  */
-export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingProps) {
+export function Onboarding({
+  onImport,
+  onGamesFetched,
+  onComplete,
+  boardLight,
+  boardDark,
+  onSetBoard,
+}: OnboardingProps) {
   const [phase, setPhase] = useState<Phase>('idle');
+  // Which action the "choose your board" step continues into: a real import or
+  // the guest famous-library entry.
+  const [pending, setPending] = useState<'import' | 'famous'>('import');
   const fileRef = useRef<HTMLInputElement>(null);
   // Hand off to the app exactly once — whether that's triggered by the first
   // puzzle, the batch finishing with none, or a skip link.
@@ -94,8 +110,18 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  // Entering a name (or choosing the guest path) lands on the "choose your
+  // board" step first; the import / famous entry runs when you continue.
   const start = () => {
     if (!username.trim()) return;
+    setPending('import');
+    setPhase('board');
+  };
+  const proceedFromBoard = () => {
+    if (pending === 'famous') {
+      enterApp('');
+      return;
+    }
     setPhase('running');
     runImport();
   };
@@ -126,7 +152,7 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
   return (
     <div className="onboarding">
       <div className="onb-hero">
-        <div className="onb-eyebrow">my·blunders</div>
+        <div className="onb-eyebrow">My Blunders</div>
         <div className="onb-title">
           Train on <em>your own</em> blunders.
         </div>
@@ -199,7 +225,10 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
           <button
             type="button"
             className="onb-famous"
-            onClick={() => enterApp('')}
+            onClick={() => {
+              setPending('famous');
+              setPhase('board');
+            }}
           >
             ♟ Play famous blunders
             <span className="sub">no account needed</span>
@@ -215,6 +244,22 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
             style={{ display: 'none' }}
             onChange={onFile}
           />
+        </div>
+      )}
+
+      {phase === 'board' && (
+        <div className="onb-board">
+          <div className="onb-board-h">Choose your chessboard</div>
+          <div className="onb-board-sub">
+            Pick a look for light and dark mode. You can change this any time in Settings.
+          </div>
+          <BoardThemePicker boardLight={boardLight} boardDark={boardDark} onSet={onSetBoard} />
+          <button className="onb-go" onClick={proceedFromBoard}>
+            {pending === 'famous' ? '♟ Play famous blunders →' : 'Continue →'}
+          </button>
+          <div className="onb-alt">
+            <a onClick={() => setPhase('idle')}>← back</a>
+          </div>
         </div>
       )}
 
@@ -264,7 +309,7 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
       )}
 
       <div className="onb-alt">
-        <Link href="/about">about my·blunders →</Link>
+        <Link href="/about">about My Blunders →</Link>
       </div>
     </div>
   );

@@ -1,4 +1,7 @@
 import { apiUrl } from './api';
+import { isNativeApp } from './platform';
+import { fetchLichessGamesPgn } from './lichess';
+import { fetchChessComGamesPgn } from './chesscom';
 import { parsePgn, oldestGameStartMs } from './pgn';
 import { summarizeGame, type OpeningGame } from './opening-tree';
 import { recordEloFromGames } from './player-elo';
@@ -28,16 +31,18 @@ import type { GameSource } from './types';
  * completed corpus is never re-pulled. `onProgress` fires after every page with
  * the running total so the tree can grow live as games arrive.
  */
-const PAGE = 50;
+const PAGE = 100;
 
-/** The corpus size the clinic builds toward — enough for a rich tree (main lines
- *  plus common sidelines and opponents) without unbounded fetching. Tunable. */
-export const OPENING_TARGET_GAMES = 500;
+/** The corpus size the clinic builds toward — a deep tree (main lines plus
+ *  sidelines and many opponents) for a well-populated opening repertoire.
+ *  Tunable. Built incrementally & resumably, so a large target just means more
+ *  visits fill it in rather than one huge fetch. */
+export const OPENING_TARGET_GAMES = 2000;
 
-/** Per-run page cap: a backstop so a single visit can't loop forever. 500/50 = 10
- *  pages, with slack for de-duped or result-less games. A run that hits the cap
- *  without finishing just resumes on the next visit (the cursor persists). */
-const MAX_PAGES_PER_RUN = 14;
+/** Per-run page cap: a backstop so a single visit can't loop forever. 2000/100 =
+ *  20 pages, with slack for de-duped or result-less games. A run that hits the
+ *  cap without finishing just resumes on the next visit (the cursor persists). */
+const MAX_PAGES_PER_RUN = 30;
 
 /** In-flight builds, keyed by account. Coalesces concurrent callers — a fast
  *  mode-switch (or React's dev StrictMode double-invoke) would otherwise start a
@@ -86,16 +91,27 @@ async function buildOpeningCorpus(
 
   while (stored.length < OPENING_TARGET_GAMES && pages < MAX_PAGES_PER_RUN) {
     pages++;
-    const url = new URL(apiUrl(proxy), window.location.origin);
-    url.searchParams.set('username', name);
-    url.searchParams.set('max', String(PAGE));
-    if (until) url.searchParams.set('until', String(until));
 
     let pgn: string;
     try {
-      const res = await fetch(url.toString());
-      if (!res.ok) break; // transient — keep what we have and retry next visit
-      pgn = await res.text();
+      if (isNativeApp()) {
+        // No backend in the native app — pull straight from Lichess / chess.com
+        // over Capacitor's native HTTP (bypasses the WebView CORS), exactly like
+        // the puzzle importer. Without this fork the proxy 404s on the
+        // capacitor:// origin and the opening corpus never builds on device.
+        pgn =
+          source === 'chesscom'
+            ? await fetchChessComGamesPgn({ username: name, max: PAGE, untilMillis: until })
+            : await fetchLichessGamesPgn({ username: name, max: PAGE, untilMillis: until });
+      } else {
+        const url = new URL(apiUrl(proxy), window.location.origin);
+        url.searchParams.set('username', name);
+        url.searchParams.set('max', String(PAGE));
+        if (until) url.searchParams.set('until', String(until));
+        const res = await fetch(url.toString());
+        if (!res.ok) break; // transient — keep what we have and retry next visit
+        pgn = await res.text();
+      }
     } catch {
       break; // network hiccup — retry next visit
     }

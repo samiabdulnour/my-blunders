@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chess, type Move } from 'chess.js';
 import { Board } from './Board';
+import { BestLinePopup } from './BestLinePopup';
 import {
   bestLine,
   chooseEngineMove,
@@ -11,6 +12,8 @@ import {
 } from '@/lib/play-engine';
 import { fetchTheory } from '@/lib/opening-explorer';
 import { ensureOpeningBook, lookupOpening } from '@/lib/opening-book';
+import { useRegisterBoardNav, BoardControlsSlot, BoardTopSlot } from '@/lib/board-nav';
+import { playMove } from '@/lib/sound';
 import {
   effectiveElo,
   loadEstimatedElo,
@@ -20,6 +23,16 @@ import {
   MIN_ELO,
   MAX_ELO,
 } from '@/lib/player-elo';
+import { loadTimeControl, saveTimeControl } from '@/lib/storage';
+import { figurine } from '@/lib/figurine';
+import {
+  TIME_CONTROLS,
+  OFF_TC,
+  timeControlById,
+  engineThinkMs,
+  formatMs,
+  type TimeControl,
+} from '@/lib/time-control';
 
 type Color = 'w' | 'b';
 interface LastMove { from: string; to: string }
@@ -62,14 +75,32 @@ const QUALITY_LABEL: Record<MoveVerdict['quality'], string> = {
  *    want to train (e.g. force 1.d4) before handing the opponent back to the
  *    engine — no repeated take-backs.
  */
-export function PlayMode() {
-  const gameRef = useRef(new Chess());
+export function PlayMode({
+  coords = true,
+  startFrom,
+  onStarted,
+}: {
+  coords?: boolean;
+  /** Open at this position instead of the initial one (from a puzzle's "Play").
+   *  `noClock` forces this game clock-free regardless of the saved time control. */
+  startFrom?: { fen: string; color: Color; noClock?: boolean } | null;
+  /** Called once the start position has been consumed, so the parent can clear
+   *  it and a later return to this tab begins from the standard position. */
+  onStarted?: () => void;
+}) {
+  const gameRef = useRef<Chess>(startFrom ? safeGame(startFrom.fen) : new Chess());
   const [fen, setFen] = useState(gameRef.current.fen());
-  const [userColor, setUserColor] = useState<Color>('w');
-  const [orientation, setOrientation] = useState<Color>('w');
+  const [userColor, setUserColor] = useState<Color>(startFrom?.color ?? 'w');
+  const [orientation, setOrientation] = useState<Color>(startFrom?.color ?? 'w');
   const [selected, setSelected] = useState<string | null>(null);
   const [lastMove, setLastMove] = useState<LastMove | null>(null);
   const [verdict, setVerdict] = useState<MoveVerdict | null>(null);
+  /** The position the current verdict's best move applies to — i.e. the one you
+   *  faced, before your move. Kept beside the verdict so the best-move popup can
+   *  replay the engine's line from exactly there. */
+  const [verdictFen, setVerdictFen] = useState<string | null>(null);
+  /** Best-move popup open? Closes itself whenever the verdict changes. */
+  const [lineOpen, setLineOpen] = useState(false);
   const [book, setBook] = useState<BookNote | null>(null);
   const [thinking, setThinking] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -78,6 +109,8 @@ export function PlayMode() {
    *  Scrubbing back is non-destructive; playing a move from a past ply branches
    *  there (the moves after it are dropped). */
   const [viewPly, setViewPly] = useState<number | null>(null);
+  /** Piece slide for a one-ply scrub with the arrows (see `seekTo`). */
+  const [navTravel, setNavTravel] = useState<{ from: string; to: string } | null>(null);
   /** Move-list panel open by default; collapsible so it isn't in the way. */
   const [movesOpen, setMovesOpen] = useState(true);
   /** SAN of your move the current verdict refers to (so the rating clearly
@@ -91,6 +124,13 @@ export function PlayMode() {
   const [estimated, setEstimated] = useState<number | null>(null);
   const [custom, setCustom] = useState(false);
 
+  // ── Clocks / time control ──
+  /** Selected preset id (drives the picker's active state). */
+  const [tcId, setTcId] = useState<string>('off');
+  /** Remaining time per colour, for display. `null` when the TC is Off (no
+   *  clock bar shown — nothing changes from the pre-clock behaviour). */
+  const [clockView, setClockView] = useState<{ w: number; b: number } | null>(null);
+
   // Refs so async engine callbacks read live values, free of stale closures.
   const eloRef = useRef(elo);
   eloRef.current = elo;
@@ -98,16 +138,148 @@ export function PlayMode() {
   userColorRef.current = userColor;
   const manualRef = useRef(manual);
   manualRef.current = manual;
+  // Live time control + the authoritative clock, kept in refs so the ~100ms
+  // ticker and the async engine turn read them without stale closures.
+  const tcRef = useRef<TimeControl>(OFF_TC);
+  const clockRef = useRef<{ w: number; b: number }>({ w: 0, b: 0 });
+  /** performance.now() of the last time we charged the running clock. */
+  const lastTickRef = useRef<number>(0);
+  /** Mirrors `result` so the ticker can see "game over" synchronously. */
+  const resultRef = useRef<string | null>(null);
+  /** Mirrors `viewPly` so the ticker can tell when history is being scrubbed. */
+  const viewPlyRef = useRef<number | null>(null);
+  viewPlyRef.current = viewPly;
+
+  /** Set the game-over message, keeping the ref the clock loop reads in sync. */
+  const setResultBoth = (text: string | null) => {
+    resultRef.current = text;
+    setResult(text);
+  };
+
+  /** Reset both clocks to the current control's base and (re)start the ticker
+   *  from now. Hides the clock bar entirely when the control is Off. */
+  const resetClocks = () => {
+    const base = tcRef.current.base;
+    clockRef.current = { w: base, b: base };
+    lastTickRef.current = performance.now();
+    setClockView(base > 0 ? { w: base, b: base } : null);
+  };
+
+  /** After `mover` completes a move: charge the sliver of time since the last
+   *  tick to them, add the Fischer increment, and hand the ticking clock to the
+   *  other side (which is now to move). No-op when Off or steering both sides. */
+  const commitClock = (mover: Color) => {
+    if (tcRef.current.base <= 0 || manualRef.current) return;
+    const now = performance.now();
+    const dt = now - lastTickRef.current;
+    if (dt > 0 && !resultRef.current) {
+      clockRef.current[mover] = Math.max(0, clockRef.current[mover] - dt);
+    }
+    clockRef.current[mover] += tcRef.current.inc;
+    lastTickRef.current = now;
+    setClockView({ w: clockRef.current.w, b: clockRef.current.b });
+  };
+
+  /** Target "human" think time for the engine on the current position, given the
+   *  engine's own read of how hard the choice is (0..1). Capped so it can never
+   *  flag itself (a half-second buffer under its own clock). */
+  const engineTargetMs = (complexity: number): number => {
+    const g = gameRef.current;
+    const engineColor = g.turn(); // it's the engine's turn when this is called
+    const remaining = clockRef.current[engineColor];
+    const raw = engineThinkMs({
+      remainingMs: remaining,
+      incrementMs: tcRef.current.inc,
+      ply: g.history().length,
+      legalMoves: g.moves().length,
+      inCheck: g.inCheck(),
+      complexity,
+      rand: Math.random,
+    });
+    return Math.max(0, Math.min(raw, remaining - 500));
+  };
+
+  /** Sleep so the engine's move lands ~`target` ms after `turnStart` — the
+   *  real elapsed (WASM compute + this wait) is what its clock decrements by. */
+  const paceEngine = async (turnStart: number, target: number) => {
+    const waitMore = target - (performance.now() - turnStart);
+    if (waitMore > 0) await sleep(waitMore);
+  };
 
   useEffect(() => {
     setEloState(effectiveElo());
     setEstimated(loadEstimatedElo());
     setCustom(loadEloOverride() != null);
+    // A puzzle's "Play" hands off clock-free; otherwise restore the saved control.
+    const tc = startFrom?.noClock ? OFF_TC : timeControlById(loadTimeControl());
+    tcRef.current = tc;
+    setTcId(tc.id);
+    resetClocks();
     // Warm the local opening-name book, then name the current position from it.
     ensureOpeningBook().then(() => {
       const o = lookupOpening(gameRef.current.fen());
       if (o) setOpening(o);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Single ticker. Each tick charges only the ACTIVE side by the real elapsed
+  // since the previous tick (performance.now()), so a dropped frame never
+  // over- or under-counts. The clock is paused — we just keep `lastTick` fresh,
+  // never retro-charging the gap — when the game is over, while scrubbing
+  // history, in "move for both sides", when Off, and when the tab is hidden.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const now = performance.now();
+      const g = gameRef.current;
+      const vp = viewPlyRef.current;
+      const scrubbing = vp !== null && vp < g.history().length;
+      const paused =
+        tcRef.current.base <= 0 ||
+        g.history().length === 0 || // clock only starts once the first move is made
+        !!resultRef.current ||
+        manualRef.current ||
+        scrubbing ||
+        (typeof document !== 'undefined' && document.hidden);
+      if (paused) {
+        lastTickRef.current = now;
+        return;
+      }
+      const active = g.turn();
+      const dt = now - lastTickRef.current;
+      lastTickRef.current = now;
+      if (dt <= 0) return;
+      const left = Math.max(0, clockRef.current[active] - dt);
+      clockRef.current[active] = left;
+      if (left <= 0) {
+        // Flag: that side is out of time. Time is just another end condition —
+        // checkmate/stalemate/draw detection is unaffected.
+        const userLost = active === userColorRef.current;
+        const loserName = active === 'w' ? 'White' : 'Black';
+        setResultBoth(userLost ? 'You lost on time.' : `${loserName} lost on time — you win.`);
+      }
+      setClockView({ w: clockRef.current.w, b: clockRef.current.b });
+    }, 100);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Don't drain the clock while the app is backgrounded on mobile: reset the
+  // tick origin on any visibility change so the hidden gap is never charged.
+  useEffect(() => {
+    const onVis = () => {
+      lastTickRef.current = performance.now();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
+  // The start position (from a puzzle's "Play") is applied once on mount via the
+  // refs above; tell the parent so it clears it and a later revisit to this tab
+  // begins from the standard initial position.
+  useEffect(() => {
+    if (startFrom) onStarted?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Name the current opening. The bundled book resolves instantly and offline;
@@ -155,16 +327,72 @@ export function PlayMode() {
   for (let i = 0; i < history.length; i += 2) {
     moveRows.push({ n: i / 2 + 1, w: history[i], wPly: i + 1, b: history[i + 1] ?? null, bPly: i + 2 });
   }
-  const goPly = (n: number) => setViewPly(n >= totalPlies ? null : n);
+  /**
+   * Move to a ply, sliding the piece if it is one step away.
+   *
+   * Scrubbing rebuilds the position from a FEN, so without this the piece
+   * simply is not on one square and is on another — which reads as a blink
+   * rather than a move, on the control that exists precisely so you can watch
+   * the game go by. One ply forward replays that move; one ply back runs it in
+   * reverse, so the piece returns the way it came. Jumps of more than a ply
+   * have no single piece to follow, and stay instant.
+   */
+  const seekTo = (target: number | null) => {
+    const to = target === null ? totalPlies : target;
+    const step = to - curPly;
+    let travel: { from: string; to: string } | null = null;
+    if (step === 1 && history[to - 1]) {
+      travel = { from: history[to - 1].from, to: history[to - 1].to };
+    } else if (step === -1 && history[curPly - 1]) {
+      travel = { from: history[curPly - 1].to, to: history[curPly - 1].from };
+    }
+    setNavTravel(travel);
+    if (travel) setTimeout(() => setNavTravel(null), 260);
+    setViewPly(target);
+  };
+
+  const goPly = (n: number) => seekTo(n >= totalPlies ? null : n);
+
+  // Drive the bottom control bar's first/prev/next/last through the game.
+  useRegisterBoardNav(
+    {
+      canPrev: curPly > 0,
+      canNext: curPly < totalPlies,
+      first: () => seekTo(totalPlies > 0 ? 0 : null),
+      prev: () => seekTo(Math.max(0, curPly - 1)),
+      next: () => seekTo(curPly + 1 >= totalPlies ? null : curPly + 1),
+      last: () => seekTo(null),
+    },
+    [curPly, totalPlies],
+  );
   const movesRef = useRef<HTMLOListElement | null>(null);
 
-  // Keep the active ply in view as the game grows or you scrub. Scroll the list
-  // element directly (not scrollIntoView, which could also scroll the page).
+  // Keep the active ply in view as the game grows or you scrub. Measured with
+  // getBoundingClientRect (not offsetTop, which depends on the offsetParent
+  // chain) and deferred a frame so the new row is laid out before we measure.
+  // Scrolls the list element itself — never scrollIntoView, which would also
+  // scroll the page.
   useEffect(() => {
     const ol = movesRef.current;
-    const cur = ol?.querySelector<HTMLElement>('.ps-ply.cur');
-    if (ol && cur) ol.scrollTop = cur.offsetTop - ol.clientHeight / 2 + cur.offsetHeight / 2;
-  }, [curPly, totalPlies]);
+    if (!ol) return;
+    const id = requestAnimationFrame(() => {
+      const cur = ol.querySelector<HTMLElement>('.ps-ply.cur');
+      if (!cur) return;
+      const c = cur.getBoundingClientRect();
+      const o = ol.getBoundingClientRect();
+      // Centre the active ply in the visible strip.
+      ol.scrollTop += c.top - o.top - (ol.clientHeight - c.height) / 2;
+    });
+    return () => cancelAnimationFrame(id);
+  }, [curPly, totalPlies, movesOpen]);
+
+  /** Drop the current move rating and everything hanging off it (the position it
+   *  referred to, and the best-move popup — which must never outlive it). */
+  const clearVerdict = () => {
+    setVerdict(null);
+    setVerdictFen(null);
+    setLineOpen(false);
+  };
 
   /** Opening-book status for a move played from `fen`. Null when out of known theory. */
   const lookupBook = async (fenBefore: string, playedSan: string): Promise<BookNote | null> => {
@@ -185,25 +413,56 @@ export function PlayMode() {
     let text: string;
     if (g.isCheckmate()) {
       const userLost = g.turn() === userColorRef.current;
-      text = userLost ? 'Checkmate — you lost.' : 'Checkmate — you won! ♚';
-    } else if (g.isStalemate()) text = 'Stalemate — draw.';
+      text = userLost ? 'Checkmate. You lost.' : 'Checkmate. You won! ♚';
+    } else if (g.isStalemate()) text = 'Stalemate. Draw.';
     else if (g.isThreefoldRepetition()) text = 'Draw by repetition.';
-    else if (g.isInsufficientMaterial()) text = 'Draw — insufficient material.';
+    else if (g.isInsufficientMaterial()) text = 'Draw. Insufficient material.';
     else text = 'Draw.';
-    setResult(text);
+    setResultBoth(text);
     return true;
   };
 
   const playEngineMove = async () => {
     const g = gameRef.current;
+    const clockOn = tcRef.current.base > 0;
+    // Start the clock on this turn, then search — the search needs to run first so
+    // its complexity read can shape the think time. The compute counts toward the
+    // target (turnStart is before it), so a deep search isn't added on top.
+    const turnStart = performance.now();
     const choice = await chooseEngineMove(g.fen(), eloRef.current);
+    if (clockOn) await paceEngine(turnStart, engineTargetMs(choice.complexity));
     if (choice.uci) {
       const em = applyUci(g, choice.uci);
-      if (em) setLastMove({ from: em.from, to: em.to });
+      if (em) {
+        playMove(!!em.captured);
+        setLastMove({ from: em.from, to: em.to });
+        commitClock(em.color);
+      }
       setFen(g.fen());
     }
     return choice;
   };
+
+  // Handed a position where it's the engine's turn — e.g. "Play" from a puzzle
+  // right after the solution move — open with the engine's reply, the same way
+  // starting a game as Black does. Your colour and the board orientation stay
+  // fixed (the board never flips to whoever's on move) and the game continues.
+  useEffect(() => {
+    if (!startFrom) return;
+    const g = gameRef.current;
+    if (g.isGameOver() || manualRef.current) return;
+    if (g.turn() === userColorRef.current) return; // your move already
+    void (async () => {
+      setThinking(true);
+      try {
+        await playEngineMove();
+        finishIfOver();
+      } finally {
+        setThinking(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** After your move (normal mode): judge it + look up book, show that verdict
    *  while the board still shows *your* move, then — after a beat — the engine
@@ -211,23 +470,55 @@ export function PlayMode() {
    *  what stops it reading as a rating of the engine's move. */
   const runEngineTurn = async (fenBefore: string, playedSan: string) => {
     setThinking(true);
+    // On a clock, the engine's whole turn (judging + choosing + this pause) runs
+    // on its own clock, which is already ticking. Capture the human-time target
+    // up front so the compute counts toward it; off the clock, keep the fixed
+    // reply delay so nothing changes from today.
+    const clockOn = tcRef.current.base > 0;
+    const turnStart = performance.now();
     const bookP = lookupBook(fenBefore, playedSan); // in parallel with the engine
     try {
       const g = gameRef.current;
       if (finishIfOver()) {
+        // Your move ended the game — there's no rating to show; drop any lingering
+        // review so it doesn't sit under the game-over status.
+        setRatedSan(null);
+        clearVerdict();
         setBook(await bookP);
         return;
       }
       const before = await bestLine(fenBefore);
       const choice = await chooseEngineMove(g.fen(), eloRef.current);
+      // Swap the whole review at once — rating label, body, the position it refers
+      // to, and closing any stale best-move popup — replacing the previous move's
+      // review with no empty state between the two.
+      setRatedSan(playedSan);
+      setLineOpen(false);
       setVerdict(
-        judgeMove(before.cpWhite, before.san, before.uci, choice.bestCpWhite, userColorRef.current, playedSan),
+        judgeMove(
+          before.cpWhite,
+          before.san,
+          before.uci,
+          choice.bestCpWhite,
+          userColorRef.current,
+          playedSan,
+          before.pv,
+        ),
       );
+      setVerdictFen(fenBefore);
       setBook(await bookP);
-      await sleep(ENGINE_REPLY_DELAY);
+      // Surface the verdict first, then let the reply land after the human-time
+      // pause (or the fixed delay when Off) — so the rating still reads as yours.
+      // The pace is derived from the engine's own complexity read for this move.
+      if (clockOn) await paceEngine(turnStart, engineTargetMs(choice.complexity));
+      else await sleep(ENGINE_REPLY_DELAY);
       if (choice.uci) {
         const em = applyUci(g, choice.uci);
-        if (em) setLastMove({ from: em.from, to: em.to });
+        if (em) {
+          playMove(!!em.captured);
+          setLastMove({ from: em.from, to: em.to });
+          commitClock(em.color);
+        }
         setFen(g.fen());
       }
       finishIfOver();
@@ -243,9 +534,9 @@ export function PlayMode() {
     // from there (so the move list doubles as a multi-ply take-back).
     if (viewPly !== null && viewPly < g.history().length) {
       while (g.history().length > viewPly) g.undo();
-      setVerdict(null);
+      clearVerdict();
       setBook(null);
-      setResult(null);
+      setResultBoth(null);
     }
     setViewPly(null);
     const fenBefore = g.fen();
@@ -256,21 +547,29 @@ export function PlayMode() {
       return;
     }
     if (!played) return;
+    playMove(!!played.captured);
+    // Your move is complete: charge your clock, add the increment, hand the
+    // ticking clock to the side now to move (a no-op when Off / steering).
+    commitClock(played.color);
     setSelected(null);
     setLastMove({ from: played.from, to: played.to });
     setFen(g.fen());
-    // Clear the previous rating now so a stale verdict never lingers onto the new
-    // position or the engine's reply; the fresh one appears (board still on your
-    // move) from runEngineTurn.
-    setRatedSan(played.san);
-    setVerdict(null);
-    setBook(null);
 
     if (manualRef.current) {
-      // Steering the opening — just annotate book, no engine reply.
+      // Steering the opening — no engine reply will judge this move, so drop the
+      // previous rating and just annotate book.
+      setRatedSan(played.san);
+      clearVerdict();
+      setBook(null);
       finishIfOver();
       void lookupBook(fenBefore, played.san).then(setBook);
     } else {
+      // Deliberately DON'T clear the verdict here. Keeping the previous move's
+      // review on screen while the engine judges this one means the panel never
+      // drops to the empty hint state — runEngineTurn swaps the whole review
+      // (rating label + body + the position it refers to) in one shot the instant
+      // the new verdict is ready, so it goes straight from one move to the next
+      // with no empty, smaller-for-a-frame flash in between.
       void runEngineTurn(fenBefore, played.san);
     }
   };
@@ -297,12 +596,14 @@ export function PlayMode() {
     setFen(gameRef.current.fen());
     setSelected(null);
     setLastMove(null);
-    setVerdict(null);
+    clearVerdict();
     setBook(null);
-    setResult(null);
+    setResultBoth(null);
     setOpening(null);
     setViewPly(null);
     setRatedSan(null);
+    // Fresh clocks at the control's base — both sides start level.
+    resetClocks();
     // Engine opens only when you're Black and not steering moves yourself.
     if (color === 'b' && !manualRef.current) {
       void (async () => {
@@ -337,24 +638,16 @@ export function PlayMode() {
     }
   };
 
-  const takeBack = () => {
+  /** Switch time control. Persist it, then start a fresh game so both clocks
+   *  begin at the new base — same reset as "New game as White/Black". */
+  const setTimeControl = (tc: TimeControl) => {
     if (thinking) return;
-    const g = gameRef.current;
-    if (g.history().length === 0) return;
-    g.undo();
-    // In normal play, also undo your own move so it's your turn again.
-    if (!manualRef.current && g.turn() !== userColorRef.current && g.history().length > 0) g.undo();
-    const hist = g.history({ verbose: true });
-    const last = hist[hist.length - 1];
-    setLastMove(last ? { from: last.from, to: last.to } : null);
-    setSelected(null);
-    setVerdict(null);
-    setBook(null);
-    setResult(null);
-    setViewPly(null);
-    setRatedSan(null);
-    setFen(g.fen());
+    saveTimeControl(tc.id);
+    tcRef.current = tc;
+    setTcId(tc.id);
+    newGame(userColorRef.current);
   };
+
 
   const setElo = (next: number) => {
     const v = clampElo(next);
@@ -368,6 +661,19 @@ export function PlayMode() {
     setCustom(false);
   };
 
+  // Clock bar (only when a control is active). The running pill is the live
+  // side to move — paused (no highlight) when the game's over, steering both
+  // sides, or scrubbing history. `< 20s` on the running clock turns it urgent.
+  const oppColor: Color = userColor === 'w' ? 'b' : 'w';
+  const clockRunning: Color | null =
+    clockView && !result && !manual && !atPast && totalPlies > 0 ? sideToMove : null;
+  const clockPills = clockView
+    ? [
+        { key: 'engine', label: 'Engine', ms: clockView[oppColor], run: clockRunning === oppColor },
+        { key: 'you', label: 'You', ms: clockView[userColor], run: clockRunning === userColor },
+      ]
+    : null;
+
   // No abrupt "Thinking…" swap — the turn label ("Engine to move") covers it
   // calmly while the engine works, so the panel doesn't blink on every move.
   const statusHead = result
@@ -379,37 +685,11 @@ export function PlayMode() {
         : 'Engine to move';
 
   return (
-    <div className="play">
-      <div className="play-board">
-        <Board
-          chess={boardChess}
-          orientation={orientation === 'w' ? 'white' : 'black'}
-          selected={selected}
-          legalFrom={legalFrom}
-          lastFrom={hlFrom}
-          lastTo={hlTo}
-          flashOk={null}
-          flashFail={null}
-          bounceBack={null}
-          introMove={null}
-          revealed={!canMove}
-          onSquareClick={onSquareClick}
-          onDragMove={(mv) => applyUserMove(mv)}
-        />
-      </div>
-
-      <aside className="play-side">
-        <div className="ps-block ps-block-open">
-          <div className="ps-h">Opening</div>
-          <div className="ps-opening">
-            {opening
-              ? <><span className="ps-opening-name">{opening.name}</span> <span className="ps-opening-eco num">{opening.eco}</span></>
-              : <span className="ps-dim">Starting position</span>}
-          </div>
-        </div>
-
-        <div className="ps-block ps-block-elo">
-          <div className="ps-h">Opponent strength</div>
+    <>
+      {/* Settings live in the hamburger drawer, like the other modes. */}
+      <aside className="side">
+        <div className="side-block">
+          <div className="side-h">Opponent strength</div>
           <div className="ps-elo">
             <button className="ps-step" onClick={() => setElo(elo - ELO_STEP)} disabled={elo <= MIN_ELO} aria-label="Weaker">−</button>
             <span className="ps-elo-val num">{elo}</span>
@@ -424,76 +704,165 @@ export function PlayMode() {
           </div>
         </div>
 
-        <div className="ps-block ps-block-status">
-          <div className="ps-h">{statusHead}</div>
-          {result ? (
-            <div className="ps-result">{result}</div>
-          ) : (
-            <>
-              {verdict ? (
-                <div className={'ps-verdict q-' + (verdict.isBest ? 'best' : verdict.quality)}>
-                  <div className="ps-verdict-head">
-                    {ratedSan && <span className="ps-verdict-move">{ratedSan}</span>}
-                    {verdict.isBest
-                      ? 'Best move !'
-                      : verdict.quality === 'ok'
-                        ? 'Good move ✓'
-                        : QUALITY_LABEL[verdict.quality]}
-                  </div>
-                  {verdict.quality !== 'ok' && verdict.bestSan && (
-                    <div className="ps-verdict-body">
-                      Best was <b>{verdict.bestSan}</b> <span className="num">({fmtEval(verdict.evalAfterPawns)} after yours)</span>
-                    </div>
-                  )}
-                </div>
-              ) : !manual && !thinking && sideToMove === userColor && (
-                <div className="ps-hint">Make a move — I&apos;ll flag any mistakes and show the best reply.</div>
-              )}
-              {book && (
-                <div className={'ps-book b-' + book.status}>
-                  {book.status === 'offbook'
-                    ? <>Out of book — theory plays <b>{book.mainSan}</b></>
-                    : book.status === 'main'
-                      ? 'Main line ✓'
-                      : 'Book move'}
-                  {book.name && <div className="ps-book-name">{book.name}</div>}
-                </div>
-              )}
-              {manual && !book && (
-                <div className="ps-hint">Playing both sides — set up your line, then turn steering off to face the engine.</div>
-              )}
-            </>
-          )}
+        <div className="side-block">
+          <div className="side-h">Time control</div>
+          <div className="tc-grid">
+            {TIME_CONTROLS.map((tc) => (
+              <button
+                key={tc.id}
+                className={'ps-btn' + (tcId === tc.id ? ' on' : '')}
+                onClick={() => setTimeControl(tc)}
+                disabled={thinking}
+                aria-pressed={tcId === tc.id}
+              >
+                {tc.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="ps-block ps-controls">
-          <button className={'ps-btn' + (manual ? ' on' : '')} onClick={toggleManual} aria-pressed={manual}>
-            {manual ? 'Steering opponent · on' : 'Move for both sides'}
-          </button>
-          <div className="ps-btn-row">
-            <button className="ps-btn" onClick={takeBack} disabled={thinking || gameRef.current.history().length === 0}>
-              Take back
+        <div className="side-block">
+          <div className="side-h">Game</div>
+          <div className="ps-controls">
+            {/* Primary action: start a fresh game keeping your current side. */}
+            <button className="ps-btn prim" onClick={() => newGame(userColor)} disabled={thinking}>
+              New game
+            </button>
+            <button className={'ps-btn' + (manual ? ' on' : '')} onClick={toggleManual} aria-pressed={manual}>
+              {manual ? 'Steering opponent · on' : 'Move for both sides'}
             </button>
             <button className="ps-btn" onClick={() => setOrientation((o) => (o === 'w' ? 'b' : 'w'))}>
               Flip board
             </button>
-          </div>
-          <div className="ps-new">
-            <span className="ps-new-label">New game as</span>
-            <div className="seg-tabs">
-              <button className={'seg-tab' + (userColor === 'w' ? ' on' : '')} onClick={() => newGame('w')} disabled={thinking}>White</button>
-              <button className={'seg-tab' + (userColor === 'b' ? ' on' : '')} onClick={() => newGame('b')} disabled={thinking}>Black</button>
+            <div className="ps-new">
+              <span className="ps-new-label">Play as</span>
+              <div className="seg-tabs">
+                <button className={'seg-tab' + (userColor === 'w' ? ' on' : '')} onClick={() => newGame('w')} disabled={thinking}>White</button>
+                <button className={'seg-tab' + (userColor === 'b' ? ' on' : '')} onClick={() => newGame('b')} disabled={thinking}>Black</button>
+              </div>
             </div>
           </div>
         </div>
+      </aside>
 
-        {/* Move list is the lowest block so it can grow/scroll without nudging
-            the blocks above it; collapsible to get it out of the way. */}
-        <div className={'ps-block ps-moves-block' + (movesOpen ? '' : ' min')}>
+      {/* Main column: opening · board · move result · moves. */}
+      <div className="main play-mode">
+        <div className="play-col">
+          <div className="ps-block ps-block-open">
+            <div className="ps-open-body">
+              {/* Title line first (opening name), then the small label — same
+                  title-on-top layout as the puzzle and coords headers. */}
+              <div className="ps-opening">
+                {opening
+                  ? <span className="ps-opening-name">{opening.name}</span>
+                  : <span className="ps-opening-name">Starting position</span>}
+              </div>
+              <div className="ps-h">Opening</div>
+            </div>
+            {/* Menu (three-dash) lives in this top bracket, not the arrows. */}
+            <BoardTopSlot />
+          </div>
+
+          <div className="play-board">
+            <Board
+              chess={boardChess}
+              orientation={orientation === 'w' ? 'white' : 'black'}
+              selected={selected}
+              legalFrom={legalFrom}
+              lastFrom={hlFrom}
+              lastTo={hlTo}
+              flashOk={null}
+              flashFail={null}
+              bounceBack={null}
+              introMove={navTravel}
+              revealed={!canMove}
+              onSquareClick={onSquareClick}
+              onDragMove={(mv) => applyUserMove(mv)}
+              coords={coords}
+            />
+          </div>
+
+          {/* Control bracket right under the board (portal target). */}
+          <BoardControlsSlot />
+
+          {/* Clocks sit under the arrows — so the board and the arrows keep the
+              exact same position whether or not a time control is active. Shown
+              only when one is. */}
+          {clockPills && (
+            <div className="play-clocks">
+              {clockPills.map((p) => (
+                <div
+                  key={p.key}
+                  className={'pc' + (p.run ? ' run' : '') + (p.run && p.ms < 20000 ? ' low' : '')}
+                >
+                  <span className="pc-label">{p.label}</span>
+                  <span className="pc-time">{formatMs(p.ms)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="ps-block ps-block-status">
+            <div className="ps-h">{statusHead}</div>
+            {result ? (
+              <div className="ps-result">{result}</div>
+            ) : (
+              <>
+                {verdict ? (
+                  <div className={'ps-verdict q-' + (verdict.isBest ? 'best' : verdict.quality)}>
+                    <div className="ps-verdict-head">
+                      {ratedSan && <span className="ps-verdict-move">{figurine(ratedSan, userColor)}</span>}
+                      {verdict.isBest
+                        ? 'Best move !'
+                        : verdict.quality === 'ok'
+                          ? 'Good move ✓'
+                          : QUALITY_LABEL[verdict.quality]}
+                    </div>
+                    {/* Whenever your move wasn't the engine's pick — even a "good
+                        move" — name the best move. (Redundant only when you already
+                        played it, i.e. isBest.) */}
+                    {!verdict.isBest && verdict.bestSan && (
+                      <div className="ps-verdict-body">
+                        Best was{' '}
+                        {/* Tap the move to watch where it actually leads — the
+                            engine's own line, replayed on a small board. */}
+                        <button
+                          className="ps-best-link"
+                          onClick={() => setLineOpen(true)}
+                          disabled={!verdictFen}
+                          aria-label={`Show where ${verdict.bestSan} leads`}
+                        >
+                          {figurine(verdict.bestSan, userColor)}
+                        </button>{' '}
+                        <span className="num">({fmtEval(verdict.evalAfterPawns)} after yours)</span>
+                      </div>
+                    )}
+                  </div>
+                ) : !manual && !thinking && sideToMove === userColor && (
+                  <div className="ps-hint">Make a move. I&apos;ll flag any mistakes and show the best reply.</div>
+                )}
+                {book && (
+                  <div className={'ps-book b-' + book.status}>
+                    {book.status === 'offbook'
+                      ? <>Out of book. Theory plays <b>{figurine(book.mainSan, userColor)}</b></>
+                      : book.status === 'main'
+                        ? 'Main line ✓'
+                        : 'Book move'}
+                    {book.name && <div className="ps-book-name">{book.name}</div>}
+                  </div>
+                )}
+                {manual && !book && (
+                  <div className="ps-hint">Playing both sides. Set up your line, then turn steering off to face the engine.</div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className={'ps-block ps-moves-block' + (movesOpen ? '' : ' min')}>
           <div className="ps-h ps-moves-h">
             <button className="ps-moves-toggle" onClick={() => setMovesOpen((o) => !o)} aria-expanded={movesOpen}>
-              <span className="ps-moves-chevron">{movesOpen ? '▾' : '▸'}</span>
               Moves{totalPlies > 0 ? ` · ${Math.ceil(totalPlies / 2)}` : ''}
+              <span className="ps-moves-chevron">{movesOpen ? '▾' : '▸'}</span>
             </button>
             {movesOpen && atPast && (
               <button className="ps-live-link" onClick={() => setViewPly(null)}>● jump to latest</button>
@@ -501,7 +870,7 @@ export function PlayMode() {
           </div>
           {movesOpen && (
             moveRows.length === 0 ? (
-              <div className="ps-dim ps-moves-empty">No moves yet — your game will be listed here. Click any move to step back.</div>
+              <div className="ps-moves-empty">No moves yet. Your game will be listed here. Click any move to step back.</div>
             ) : (
               <ol className="ps-moves" ref={movesRef}>
                 {moveRows.map((r) => (
@@ -511,14 +880,14 @@ export function PlayMode() {
                       className={'ps-ply' + (curPly === r.wPly ? ' cur' : '')}
                       onClick={() => goPly(r.wPly)}
                     >
-                      {r.w.san}
+                      {figurine(r.w.san, 'w')}
                     </button>
                     {r.b ? (
                       <button
                         className={'ps-ply' + (curPly === r.bPly ? ' cur' : '')}
                         onClick={() => goPly(r.bPly)}
                       >
-                        {r.b.san}
+                        {figurine(r.b.san, 'b')}
                       </button>
                     ) : (
                       <span className="ps-ply ps-ply-empty" />
@@ -529,12 +898,40 @@ export function PlayMode() {
             )
           )}
           {movesOpen && atPast && (
-            <div className="ps-review-note">Reviewing an earlier position — play a move to continue from here.</div>
+            <div className="ps-review-note">Reviewing an earlier position. Play a move to continue from here.</div>
           )}
+          </div>
         </div>
-      </aside>
-    </div>
+      </div>
+
+      {/* Portalled overlay — the Play column behind it never moves. Keyed on the
+          position so reopening (or a new verdict) always starts a fresh replay. */}
+      {lineOpen && verdict && verdictFen && (
+        <BestLinePopup
+          key={verdictFen}
+          fen={verdictFen}
+          pvSan={
+            verdict.bestPv.san.length > 0
+              ? verdict.bestPv.san
+              : verdict.bestSan
+                ? [verdict.bestSan]
+                : []
+          }
+          orient={orientation}
+          onClose={() => setLineOpen(false)}
+        />
+      )}
+    </>
   );
+}
+
+/** Build a game from a FEN, falling back to the initial position if invalid. */
+function safeGame(fen: string): Chess {
+  try {
+    return new Chess(fen);
+  } catch {
+    return new Chess();
+  }
 }
 
 /** FEN after replaying the first `n` plies of a verbose move history. */

@@ -21,14 +21,26 @@ const CANDIDATES = 5;
 const OPPONENT_DEPTH = 12;
 /** Search depth for judging the user's move — a touch deeper for a fair verdict. */
 const JUDGE_DEPTH = 14;
+/** How much of the principal variation we keep: 8 plies = 4 moves a side, enough
+ *  to *show* where the best move leads without turning into an engine dump. */
+const PV_PLIES = 12; // 6 full moves
 
 export type MoveQuality = 'ok' | 'inaccuracy' | 'mistake' | 'blunder';
+
+/** The engine's principal variation from a position, best move first. */
+export interface Pv {
+  san: string[];
+  uci: string[];
+}
 
 export interface BestLine {
   san: string | null;
   uci: string | null;
   /** White-relative centipawns (mate clamped to ±100000). */
   cpWhite: number;
+  /** The whole continuation the engine expects, capped at `PV_PLIES`. `san[0]`
+   *  / `uci[0]` are the same move as `san` / `uci` above. */
+  pv: Pv;
 }
 
 export interface EngineChoice {
@@ -36,6 +48,10 @@ export interface EngineChoice {
   san: string | null;
   /** White-relative eval of the position with best play (the top candidate). */
   bestCpWhite: number;
+  /** How hard the choice is, for the clock model — read off the multiPv evals.
+   *  0 ≈ one dominant / forced / obvious move (play it fast); 1 ≈ several moves
+   *  within a whisker of each other (a genuine crossroads worth a long think). */
+  complexity: number;
 }
 
 export interface MoveVerdict {
@@ -45,6 +61,9 @@ export interface MoveVerdict {
   /** The engine's preferred move in the position the user faced. */
   bestSan: string | null;
   bestUci: string | null;
+  /** The continuation the best move leads to (best move first), so the UI can
+   *  play it out on a board instead of only naming the move. */
+  bestPv: Pv;
   /** Eval after the user's move, from the user's POV, in pawns. */
   evalAfterPawns: number;
   /** Drop in winning chances (0–1) the move cost vs. the best move. */
@@ -69,11 +88,15 @@ function tempFromElo(elo: number): number {
   return Math.max(18, (2200 - elo) * 0.22);
 }
 
-/** Best move + eval in a position, at judging strength. */
+/** Best move + eval + continuation in a position, at judging strength. */
 export async function bestLine(fen: string, depth = JUDGE_DEPTH): Promise<BestLine> {
   const res = await getWasmEngine().analyze({ fen, depth, multiPv: 1 });
   const top = res.lines[0];
-  return { san: top?.pvSan[0] ?? null, uci: top?.pvUci[0] ?? null, cpWhite: cpWhiteOf(top) };
+  // The search already produced the whole PV — keep a slice of it rather than
+  // throwing it away and re-searching later just to show the follow-up.
+  const san = (top?.pvSan ?? []).slice(0, PV_PLIES);
+  const uci = (top?.pvUci ?? []).slice(0, PV_PLIES);
+  return { san: san[0] ?? null, uci: uci[0] ?? null, cpWhite: cpWhiteOf(top), pv: { san, uci } };
 }
 
 /**
@@ -85,13 +108,23 @@ export async function bestLine(fen: string, depth = JUDGE_DEPTH): Promise<BestLi
 export async function chooseEngineMove(fen: string, elo: number, depth = OPPONENT_DEPTH): Promise<EngineChoice> {
   const res = await getWasmEngine().analyze({ fen, depth, multiPv: CANDIDATES });
   const lines = res.lines.filter((l) => l.pvUci.length > 0);
-  if (lines.length === 0) return { uci: null, san: null, bestCpWhite: 0 };
+  if (lines.length === 0) return { uci: null, san: null, bestCpWhite: 0, complexity: 0 };
 
   const stm = fen.split(' ')[1] === 'w' ? 1 : -1; // side-to-move sign
   const scored = lines.map((l) => {
     const cpWhite = cpWhiteOf(l);
     return { uci: l.pvUci[0], san: l.pvSan[0] ?? null, cpWhite, evalStm: cpWhite * stm };
   });
+
+  // Read position complexity off the candidate evals (best-first). A big gap from
+  // #1 to #2 means the top move is clearly forced/obvious; several moves within
+  // ~half a pawn mean a real choice. `complexity` ∈ [0,1] feeds the clock model.
+  const evalsStm = scored.map((s) => s.evalStm);
+  const gap = evalsStm.length > 1 ? evalsStm[0] - evalsStm[1] : 1000; // cp, #1 over #2
+  const nClose = evalsStm.filter((e) => evalsStm[0] - e <= 55).length; // within ~½ pawn
+  const forced = Math.max(0, Math.min(1, gap / 220)); // dominant top move → 1
+  const breadth = Math.max(0, Math.min(1, (nClose - 1) / 4)); // many close options → 1
+  const complexity = Math.max(0, Math.min(1, breadth * (1 - forced)));
   // lines are best-first, so scored[0] is the engine's top choice.
   const best = scored[0].evalStm;
   const T = tempFromElo(elo);
@@ -107,7 +140,7 @@ export async function chooseEngineMove(fen: string, elo: number, depth = OPPONEN
       break;
     }
   }
-  return { uci: pick.uci, san: pick.san, bestCpWhite: scored[0].cpWhite };
+  return { uci: pick.uci, san: pick.san, bestCpWhite: scored[0].cpWhite, complexity };
 }
 
 /**
@@ -124,6 +157,9 @@ export function judgeMove(
   afterCpWhite: number,
   userColor: 'w' | 'b',
   playedSan: string,
+  /** The best move's continuation, straight off the same search — optional, so
+   *  callers that only care about the grade can leave it out. */
+  bestPv: Pv = { san: [], uci: [] },
 ): MoveVerdict {
   const sign = userColor === 'w' ? 1 : -1;
   const evalAfterPawns = (afterCpWhite * sign) / 100;
@@ -138,5 +174,5 @@ export function judgeMove(
     else if (dropProb >= 0.15) quality = 'mistake';
     else if (dropProb >= 0.07) quality = 'inaccuracy';
   }
-  return { quality, isBest, bestSan, bestUci, evalAfterPawns, dropProb };
+  return { quality, isBest, bestSan, bestUci, bestPv, evalAfterPawns, dropProb };
 }

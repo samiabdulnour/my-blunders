@@ -25,7 +25,7 @@ import type { Puzzle } from './types';
  * Regenerate with build-famous.mjs (not shipped).
  */
 
-export const FAMOUS_PUZZLES: Puzzle[] = [
+const RAW_FAMOUS_PUZZLES: Puzzle[] = [
   {
     "id": "famous_opera_1858",
     "gameId": "famous-opera-1858",
@@ -5555,3 +5555,17 @@ export const FAMOUS_PUZZLES: Puzzle[] = [
     "type": "blunder"
   }
 ];
+
+/**
+ * The bundled set above was authored **white-positive** (a Black hero mating
+ * shows as −99), whereas `puzzle-generator.ts` emits **side-relative** evals
+ * (positive = good for whoever blundered). Normalise here so every `Puzzle` in
+ * the app obeys one convention and `evalBefore` / `evalAfter` can be shown
+ * as-is. Only the sign flips — `drop` is already a magnitude, so it is left
+ * alone, as is every other field.
+ */
+export const FAMOUS_PUZZLES: Puzzle[] = RAW_FAMOUS_PUZZLES.map((p) =>
+  p.abdulsColor === 'black'
+    ? { ...p, evalBefore: -p.evalBefore, evalAfter: -p.evalAfter }
+    : p,
+);

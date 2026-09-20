@@ -10,6 +10,7 @@ import type {
   SpeedFilter,
 } from '@/lib/types';
 import { ecoName } from '@/lib/eco-names';
+import type { SessionStats } from '@/lib/types';
 import { FilterChip } from './FilterChip';
 
 interface SidebarProps {
@@ -23,6 +24,12 @@ interface SidebarProps {
   solved: Record<string, SolveStatus>;
   /** Tab counts across the whole library (not narrowed by chips). */
   counts: { new: number; retry: number; all: number };
+  /** Session stats + unsolved-queue size, shown condensed at the top. */
+  stats: SessionStats;
+  queueSize: number;
+  /** Shuffle toggle, shown in the matched-count row. */
+  randomOrder: boolean;
+  onToggleRandom: () => void;
   onFilterChange: (f: Filter) => void;
   onEcoFilterChange: (e: EcoFilter) => void;
   onSpeedFilterChange: (s: SpeedFilter) => void;
@@ -57,12 +64,18 @@ export function Sidebar({
   current,
   solved,
   counts,
+  stats,
+  queueSize,
+  randomOrder,
+  onToggleRandom,
   onFilterChange,
   onEcoFilterChange,
   onSpeedFilterChange,
   onPhaseFilterChange,
   onSelect,
 }: SidebarProps) {
+  const answered = stats.correct + stats.wrong;
+  const accuracy = answered > 0 ? Math.round((stats.correct / answered) * 100) : 0;
   // Distinct ECO codes present, sorted, with full opening names attached.
   const ecoOptions = useMemo(() => {
     const set = new Set<string>();
@@ -88,6 +101,16 @@ export function Sidebar({
 
   return (
     <div className="side">
+      {/* Condensed session stats — visible at a glance above the queue. */}
+      <div className="side-block ps-session">
+        <div className="side-h">Session</div>
+        <div className="ps-stats-row">
+          <div className="ps-stat"><span className="ps-stat-v">{stats.correct}</span><span className="ps-stat-l">correct</span></div>
+          <div className="ps-stat"><span className="ps-stat-v num">{accuracy}%</span><span className="ps-stat-l">accuracy</span></div>
+          <div className="ps-stat"><span className="ps-stat-v">{stats.streak}</span><span className="ps-stat-l">streak</span></div>
+          <div className="ps-stat"><span className="ps-stat-v">{queueSize}</span><span className="ps-stat-l">queue</span></div>
+        </div>
+      </div>
       <div className="side-block">
         <div className="side-h">Queue</div>
         <div className="seg-tabs">
@@ -138,7 +161,19 @@ export function Sidebar({
       </div>
 
       <div className="qcount">
-        → <em>{filtered.length}</em> matched
+        <span>→ <em>{filtered.length}</em> matched</span>
+        <button
+          type="button"
+          className={'qcount-random' + (randomOrder ? ' on' : '')}
+          onClick={onToggleRandom}
+          title="Random puzzle order"
+          aria-pressed={randomOrder}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" /><polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" /><line x1="4" y1="4" x2="9" y2="9" />
+          </svg>
+          Random
+        </button>
       </div>
 
       <div className="queue">

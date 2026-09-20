@@ -90,6 +90,13 @@
   --track-caps: 0.14em; /* the single uppercase tracking */
   /* Motion — snap, not bounce. */
   --ease-snap: cubic-bezier(0.2, 0.9, 0.2, 1);
+  /* A travelling piece is the one thing on screen the eye tracks the whole
+     way, so it gets its own curve rather than the UI's snap: --ease-snap is
+     at full speed almost immediately and then brakes hard, which reads as
+     crisp on a button and as a lurch on a piece. This one leaves and lands
+     gently and spends its time in the middle, the way a hand moves. */
+  --ease-move: cubic-bezier(0.25, 0.8, 0.35, 1);
+  --move-anim: 190ms;
 }
 
 html[data-theme='dark'] {
@@ -1235,17 +1242,40 @@ html[data-theme='dark'] .sq.cap-ring {
    replays the opponent's move. Snap easing keeps it crisp, not springy. */
 @keyframes piece-slide-in {
   from {
-    transform: translate(
+    transform: translate3d(
       calc(var(--bx) * var(--sq-size, 60px)),
-      calc(var(--by) * var(--sq-size, 60px))
+      calc(var(--by) * var(--sq-size, 60px)),
+      0
     );
   }
   to {
-    transform: translate(0, 0);
+    transform: translate3d(0, 0, 0);
   }
 }
+/* The frame before the animation is armed: the piece is already at its origin
+   under an inline transform, and it must not be interactive or animated yet —
+   it exists purely so the compositor has something made by the time the clock
+   starts. */
+.piece-wrap.arming {
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  cursor: default;
+  pointer-events: none;
+}
+
 .piece-wrap.animating {
-  animation: piece-slide-in 220ms var(--ease-snap);
+  animation: piece-slide-in var(--move-anim) var(--ease-move);
+  /* The piece is an <img> of an SVG, and that is the whole reason this needs
+     saying out loud: with no layer of its own, WebKit re-rasterises the
+     vector on every frame of the slide, which on a phone is exactly the
+     judder this is meant to remove. translate3d + will-change hand the
+     element to the compositor, which then just moves a bitmap it has
+     already drawn. backface-visibility is the old Safari spelling of the
+     same request, kept because the iOS WebView still rewards it. */
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
   cursor: default;
   pointer-events: none;
 }
@@ -1260,6 +1290,20 @@ html[data-theme='dark'] .sq.cap-ring {
   transition: none;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
   pointer-events: none;
+  /* A drag repaints on every touchmove, and the drop-shadow above is a
+     filter, so each of those frames is re-rasterising the SVG *and*
+     re-blurring it. Its own layer makes that one cost at pick-up instead of
+     sixty a second while the finger is down. */
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* Respect the system setting: land the piece without the travel. */
+@media (prefers-reduced-motion: reduce) {
+  .piece-wrap.animating {
+    animation-duration: 1ms;
+  }
 }
 
 /* ─── Verdict-first result panel ─── */

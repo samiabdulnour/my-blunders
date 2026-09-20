@@ -61,8 +61,11 @@ export const THRESHOLDS = {
   blunderCp: 200,
 };
 
-/** Plies of the engine PV we keep as a puzzle's solution / continuation line. */
-const SOLUTION_MAX_PLIES = 8;
+/** Plies of the engine PV we keep as a puzzle's solution / continuation line.
+ *  12 plies ≈ 6 full moves, enough to show where the winning line actually
+ *  leads without dragging. (Only affects games analysed from here on — puzzles
+ *  already in storage keep the length they were generated with.) */
+const SOLUTION_MAX_PLIES = 12;
 
 /** Centipawns the engine line must favor the user by for a sac to count as a
  *  winning combination (mate always qualifies). */
@@ -178,6 +181,9 @@ export async function generatePuzzlesFromGame(
       line,
       combination,
       mistakeMove: mv.san,
+      // The real game from the mistake onward (mistakeMove first), same cap as
+      // the engine line — so the panel can replay how the game actually went.
+      playedLine: moves.slice(i, i + SOLUTION_MAX_PLIES).map((m) => m.san),
       evalBefore: evalBeforeSide / 100, // back to pawn units, side-relative
       evalAfter: evalAfterSide / 100,
       drop: dropCp / 100,
