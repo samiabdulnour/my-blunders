@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Importer } from '@/lib/useImporter';
+import { useImportStatus } from '@/lib/import-status';
 import { BoardThemePicker } from '@/components/BoardThemePicker';
 import type { BoardThemeId } from '@/lib/board-theme';
 
@@ -65,7 +66,8 @@ export function Onboarding({
     [onComplete]
   );
 
-  const { username, setUsername, source, setSource, status, runImport, importFile } = importer;
+  const { username, setUsername, source, setSource, runImport, importFile } = importer;
+  const status = useImportStatus();
 
   // Hand off the moment the first real puzzle is ready, landing the user
   // straight on one of their own blunders. Until then they wait on the progress
@@ -289,7 +291,7 @@ export function Onboarding({
             <>
               {/* Live detail so it's clear work is happening, plus the working
                   "play while it loads" escape into the famous library. */}
-              <div className="progress-note">{status.message ?? 'analysing your recent games…'}</div>
+              <div className="progress-note">{status.message ?? 'Looking through your recent games…'}</div>
               <div className="onb-alt">
                 <a onClick={() => enterApp(username.trim())}>
                   play famous blunders while this loads →

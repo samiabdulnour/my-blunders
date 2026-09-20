@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { BATCH_SIZE, type Importer } from '@/lib/useImporter';
+import { BATCH_SIZE, QUEUE_TARGET, type Importer } from '@/lib/useImporter';
+import { useImportStatus } from '@/lib/import-status';
 import { useAutoImport, setAutoImport } from '@/lib/use-auto-import';
 
 interface ImportBarProps {
@@ -26,18 +27,18 @@ export function ImportBar({ importer, onClearAll }: ImportBarProps) {
     setUsername,
     source,
     setSource,
-    status,
     setStatus,
     oldestMs,
     fetchedCount,
     exhausted,
-    working,
     runImport,
     importFile,
     resetCursor,
   } = importer;
 
   const autoImportEnabled = useAutoImport();
+  const status = useImportStatus();
+  const working = status.kind === 'working';
 
   const fileRef = useRef<HTMLInputElement>(null);
   // Two-step clear: avoids window.confirm (unreliable in mobile / in-app
@@ -53,16 +54,28 @@ export function ImportBar({ importer, onClearAll }: ImportBarProps) {
   const doClear = () => {
     onClearAll();
     resetCursor();
-    setStatus({ kind: 'ok', message: 'cache cleared' });
+    setStatus({ kind: 'ok', message: 'Everything cleared. Tap Import to start again.' });
     setConfirmClear(false);
   };
+
+  // How far through the current batch: whole games done, plus the fraction of
+  // the game being scanned. Unknown while downloading — the stripe travels then.
+  const batchFraction =
+    status.progress && status.progress.total > 0
+      ? (status.progress.current +
+          (status.moveProgress && status.moveProgress.total > 0
+            ? status.moveProgress.done / status.moveProgress.total
+            : 0)) /
+        status.progress.total
+      : null;
 
   // Status caption: the live action + running count while working, then a clear
   // resting summary. Auto-import keeps pulling in the background with no cap, so
   // there's no "target" — just how many games have been turned into puzzles.
   let caption: React.ReactNode = null;
   if (working) {
-    caption = `${status.message ?? 'analysing your games…'} · ${fetchedCount} games`;
+    // The importer's own words: which game, how far through it, what it found.
+    caption = status.message ?? 'Looking through your games…';
   } else if (status.kind === 'error') {
     caption = status.message;
   } else if (exhausted) {
@@ -147,12 +160,16 @@ export function ImportBar({ importer, onClearAll }: ImportBarProps) {
             : 'Auto-import off — pull each batch with “Import more”'
         }
       >
-        Auto-import: {autoImportEnabled ? <>on<span className="auto-btn-sub"> · no limit</span></> : 'off'}
+        Auto-import: {autoImportEnabled ? <>on<span className="auto-btn-sub"> · keeps {QUEUE_TARGET} ready</span></> : 'off'}
       </button>
 
       {working && (
         <div className="imp-progress">
-          <div className="bar indeterminate" />
+          {batchFraction == null ? (
+            <div className="bar indeterminate" />
+          ) : (
+            <div className="bar" style={{ width: Math.round(batchFraction * 100) + '%' }} />
+          )}
         </div>
       )}
 

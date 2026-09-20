@@ -588,7 +588,8 @@ select {
   background: var(--green);
   transition: width 0.3s;
 }
-/* No fixed target while auto-import runs — a travelling stripe shows "working". */
+/* Progress unknown (downloading) — a travelling stripe shows "working". Once
+   games are being checked the bar is a real fraction of the batch. */
 .imp-progress .bar.indeterminate {
   width: 34%;
   transition: none;

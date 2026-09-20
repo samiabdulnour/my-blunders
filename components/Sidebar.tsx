@@ -180,7 +180,7 @@ export function Sidebar({
         {filtered.length === 0 && (
           <div className="queue-empty">
             {all.length === 0
-              ? 'No puzzles yet. Import games from Lichess above.'
+              ? 'No puzzles yet. Tap Settings above to import your games.'
               : 'No puzzles match your filters.'}
           </div>
         )}

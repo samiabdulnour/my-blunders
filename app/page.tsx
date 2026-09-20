@@ -13,6 +13,7 @@ import { ClinicProvider } from '@/lib/clinic-context';
 import { Sidebar } from '@/components/Sidebar';
 import { ResultPanel } from '@/components/ResultPanel';
 import { Onboarding } from '@/components/Onboarding';
+import { EmptyPuzzles } from '@/components/EmptyPuzzles';
 import { useImporter } from '@/lib/useImporter';
 import { boardThemeById, DEFAULT_BOARD_LIGHT, DEFAULT_BOARD_DARK, type BoardThemeId } from '@/lib/board-theme';
 import { BrandMark } from '@/components/BrandMark';
@@ -1119,10 +1120,7 @@ export default function Page() {
 
           <div className="main" ref={mainRef} onMouseDown={handlePanStart}>
             {!current ? (
-          <div className="empty">
-            <div>No puzzles loaded.</div>
-            <div>Import games from Lichess in the sidebar to begin.</div>
-          </div>
+          <EmptyPuzzles importer={importer} />
         ) : (
           <div className="board-col">
             {/* Puzzle name + info in a white bracket, with the menu on the right. */}
