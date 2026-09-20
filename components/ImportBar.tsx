@@ -1,20 +1,15 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import type { Puzzle } from '@/lib/types';
-import { useImporter, BATCH_SIZE } from '@/lib/useImporter';
+import { BATCH_SIZE, type Importer } from '@/lib/useImporter';
 import { useAutoImport, setAutoImport } from '@/lib/use-auto-import';
 
 interface ImportBarProps {
-  /** Called as puzzles arrive from an import. */
-  onImport: (newPuzzles: Puzzle[]) => void;
-  /** Fired when the user's own games are fetched (before analysis produces
-   *  puzzles), so the app can drop the famous-blunder placeholders at once. */
-  onGamesFetched?: () => void;
+  /** The page-level importer. Owned by the page rather than this bar so the
+   *  auto-import loop keeps running while the settings panel is closed. */
+  importer: Importer;
   /** Wipe all imported puzzles and solved progress from cache. */
   onClearAll: () => void;
-  /** Unsolved puzzle count (passed through for API compatibility). */
-  unseenCount: number;
 }
 
 /**
@@ -22,9 +17,10 @@ interface ImportBarProps {
  * auto-import switch, and quiet links for PGN upload / cache-clear. With
  * auto-import on, the app keeps pulling + analysing games in the background
  * toward a target library; off, the user pulls each batch with "Import more".
- * All the import machinery lives in the shared `useImporter` hook.
+ * All the import machinery lives in the shared `useImporter` hook, which the
+ * page creates once and passes in — this component is only its controls.
  */
-export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }: ImportBarProps) {
+export function ImportBar({ importer, onClearAll }: ImportBarProps) {
   const {
     username,
     setUsername,
@@ -39,7 +35,7 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
     runImport,
     importFile,
     resetCursor,
-  } = useImporter({ onImport, onGamesFetched, unseenCount });
+  } = importer;
 
   const autoImportEnabled = useAutoImport();
 
@@ -72,8 +68,10 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
   } else if (exhausted) {
     caption = `${fetchedCount} games · all your history imported`;
   } else if (fetchedCount > 0) {
+    // Auto-import idles once plenty of unsolved puzzles are waiting (see
+    // QUEUE_TARGET) and picks up again as they're solved.
     caption = autoImportEnabled
-      ? `${fetchedCount} games analysed · importing more in the background`
+      ? `${fetchedCount} games analysed · more load as you solve`
       : `${fetchedCount} games analysed — “Import more” for the next ${BATCH_SIZE}`;
   } else if (status.kind === 'ok' && status.message) {
     caption = status.message;
@@ -145,7 +143,7 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
         onClick={() => setAutoImport(!autoImportEnabled)}
         title={
           autoImportEnabled
-            ? 'Auto-import on — pulling your whole history in the background, no limit'
+            ? 'Auto-import on — keeps a stock of unsolved puzzles ready, through your whole history'
             : 'Auto-import off — pull each batch with “Import more”'
         }
       >

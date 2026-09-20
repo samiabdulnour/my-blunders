@@ -13,6 +13,7 @@ import { ClinicProvider } from '@/lib/clinic-context';
 import { Sidebar } from '@/components/Sidebar';
 import { ResultPanel } from '@/components/ResultPanel';
 import { Onboarding } from '@/components/Onboarding';
+import { useImporter } from '@/lib/useImporter';
 import { boardThemeById, DEFAULT_BOARD_LIGHT, DEFAULT_BOARD_DARK, type BoardThemeId } from '@/lib/board-theme';
 import { BrandMark } from '@/components/BrandMark';
 import { apiUrl } from '@/lib/api';
@@ -148,6 +149,9 @@ export default function Page() {
    *  mount effect then reads the real value from localStorage — a genuine
    *  first run flips this to `false` and shows onboarding (a one-time swap). */
   const [onboarded, setOnboarded] = useState(true);
+  /** True once the saved/seed puzzles have been read into `all`. Until then an
+   *  empty `all` means "not loaded yet", not "the queue is drained". */
+  const [puzzlesLoaded, setPuzzlesLoaded] = useState(false);
   /** When true, `next()` picks a random unsolved puzzle. Persisted. */
   const [randomOrder, setRandomOrder] = useState(false);
   /** Color theme. Drives a `data-theme` attribute on <html>. Persisted. */
@@ -251,7 +255,8 @@ export default function Page() {
           const first = pickInitialPuzzle(FAMOUS_PUZZLES, initialSolved);
           if (!currentRef.current && first) loadPuzzle(first);
         }
-      });
+      })
+      .finally(() => setPuzzlesLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -899,6 +904,29 @@ export default function Page() {
     }
   }, []);
 
+  /* ── The one importer ──
+     Created here, at the page root, so it is mounted for the whole session and
+     shared by onboarding and the settings-panel import bar. It used to live
+     inside those two components: onboarding's instance died at hand-off (taking
+     the unsaved cursor with it) and the import bar's only existed while the
+     settings panel was open — so with the panel closed nothing was running, and
+     no puzzles ever auto-loaded. The loop stays off during onboarding, where the
+     CTA drives the import. */
+  /** The user's own puzzles (famous placeholders excluded) — total + unsolved. */
+  const ownPuzzleCount = useMemo(() => all.filter((p) => !isFamous(p)).length, [all]);
+  const ownUnseenCount = useMemo(
+    () => all.filter((p) => !isFamous(p) && !solved[p.id]).length,
+    [all, solved]
+  );
+  const importer = useImporter({
+    onImport: handleImport,
+    onGamesFetched: handleGamesFetched,
+    // Drives the loop's backpressure. Withheld until the saved puzzles are in,
+    // or every launch would read the still-empty store as a drained queue.
+    unseenCount: puzzlesLoaded ? ownUnseenCount : undefined,
+    autoImport: onboarded,
+  });
+
   /* ── Wipe imported puzzles + progress, reset to seed state ── */
   const handleClearAll = useCallback(() => {
     clearAll();
@@ -1009,8 +1037,8 @@ export default function Page() {
         <div className="body-row">
           <div className="main">
             <Onboarding
-              onImport={handleImport}
-              onGamesFetched={handleGamesFetched}
+              importer={importer}
+              ownPuzzleCount={ownPuzzleCount}
               onComplete={completeOnboarding}
               boardLight={boardLight}
               boardDark={boardDark}
@@ -1044,10 +1072,8 @@ export default function Page() {
       onToggleSound={() => setSound((v) => { const n = !v; saveSound(n); return n; })}
       mode={mode}
       onModeChange={setMode}
-      onImport={handleImport}
-      onGamesFetched={handleGamesFetched}
+      importer={importer}
       onClearAll={handleClearAll}
-      unseenCount={unseenCount}
     >
       {mode === 'opening' ? (
         <ClinicProvider key={clinicEpoch}>

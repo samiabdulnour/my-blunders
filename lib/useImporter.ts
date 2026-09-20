@@ -24,6 +24,7 @@ import {
   loadOpeningGames,
   saveOpeningGames,
   mergeOpeningGames,
+  loadPuzzles,
 } from './storage';
 
 /** PGN proxy for each source. */
@@ -38,6 +39,34 @@ function persistOpeningGames(games: ParsedGame[], username: string): void {
     .map((g) => summarizeGame(g, username))
     .filter((s): s is OpeningGame => s !== null);
   if (summaries.length) saveOpeningGames(mergeOpeningGames(loadOpeningGames(), summaries));
+}
+
+/**
+ * Rebuild a lost pagination cursor from the puzzles already on disk.
+ *
+ * Builds before the importer moved to the page root ran the first import inside
+ * the onboarding screen, which unmounts at hand-off — and the cursor was saved
+ * from inside a state updater, which React never runs on an unmounted
+ * component. Those installs hold puzzles but no cursor, and the auto-import loop
+ * refuses to start without one. Puzzles only carry a day-granular date, so the
+ * cursor is the *end* of the oldest puzzle's day: a few games get re-fetched,
+ * which `mergePuzzles` de-dupes by id — better than skipping part of that day.
+ *
+ * Returns null when there is nothing to recover from (a genuine first run).
+ */
+function recoverCursorFromPuzzles(src: GameSource): { oldestMs: number; games: number } | null {
+  const host = src === 'chesscom' ? 'chess.com' : 'lichess.org';
+  const own = loadPuzzles().filter((p) => !p.id.startsWith('famous_') && p.site.includes(host));
+  let oldest: number | null = null;
+  for (const p of own) {
+    const m = /^(\d{4})\.(\d{2})\.(\d{2})$/.exec(p.date);
+    if (!m) continue;
+    const dayEnd = Date.UTC(+m[1], +m[2] - 1, +m[3]) + 86_400_000;
+    if (oldest == null || dayEnd < oldest) oldest = dayEnd;
+  }
+  if (oldest == null) return null;
+  // Games that yielded a puzzle — a floor on how many were really analysed.
+  return { oldestMs: oldest, games: new Set(own.map((p) => p.gameId)).size };
 }
 
 export interface ImportStatus {
@@ -56,6 +85,14 @@ export interface ImportStatus {
  *  out — there is no game cap, on any platform. */
 export const BATCH_SIZE = 20;
 
+/** Backpressure for the auto-import loop: it pauses once this many unsolved
+ *  puzzles are waiting and resumes as they get solved. Not a cap — the whole
+ *  history is still reachable, the loop just stays one step ahead of the user
+ *  instead of racing through thousands of games. Racing would fill localStorage
+ *  (~5 MB in WebKit), at which point new puzzles AND solve progress silently
+ *  stop saving, while the cursor keeps advancing past games that were lost. */
+export const QUEUE_TARGET = 100;
+
 /**
  * One import event. Both the native NDJSON stream and the web WASM pipeline
  * emit these so they can share a single handler (`processEvent`) and drive the
@@ -72,8 +109,9 @@ interface ImportCtx {
 interface UseImporterOptions {
   /** Called as puzzles arrive. May be called many times during a streamed import. */
   onImport: (newPuzzles: Puzzle[]) => void;
-  /** How many unsolved puzzles are in the store. Kept for callers; auto-import
-   *  now builds toward a fixed target rather than gating on this. */
+  /** How many of the user's own puzzles are unsolved. Auto-import pauses while
+   *  this is at or above QUEUE_TARGET. Leave undefined until the saved puzzles
+   *  have loaded — an unknown queue must not read as an empty one. */
   unseenCount?: number;
   /** When false, the auto-import effect is suppressed (e.g. during onboarding,
    *  where the import is driven explicitly by the CTA). Defaults to true. */
@@ -107,6 +145,7 @@ interface UseImporterOptions {
  */
 export function useImporter({
   onImport,
+  unseenCount,
   autoImport = true,
   onGamesFetched,
 }: UseImporterOptions) {
@@ -156,10 +195,24 @@ export function useImporter({
   const cancelRef = useRef(false);
 
   useEffect(() => {
-    setUsername(loadUsername());
-    setSourceState(loadSource());
-    setOldestMs(loadOldestFetchedMs());
-    setFetchedCount(loadFetchedGameCount());
+    const savedName = loadUsername();
+    const savedSource = loadSource();
+    let cursor = loadOldestFetchedMs();
+    let fetched = loadFetchedGameCount();
+    // Heal installs whose first import never got to save its cursor.
+    if (cursor == null && savedName.trim()) {
+      const recovered = recoverCursorFromPuzzles(savedSource);
+      if (recovered) {
+        cursor = recovered.oldestMs;
+        fetched = Math.max(fetched, recovered.games);
+        saveOldestFetchedMs(cursor);
+        saveFetchedGameCount(fetched);
+      }
+    }
+    setUsername(savedName);
+    setSourceState(savedSource);
+    setOldestMs(cursor);
+    setFetchedCount(fetched);
     setHydrated(true);
   }, []);
 
@@ -485,10 +538,14 @@ export function useImporter({
 
   /* ── Auto-import loop ──
      When auto-import is on, keep pulling + analysing batches in the background
-     until the user runs out of history — there's no game cap. Each finished
-     batch advances oldestMs / fetchedCount, which re-triggers this effect for
-     the next batch. Only fires once a first import has established a cursor
-     (kicked off manually or by onboarding). */
+     until the user runs out of history — there's no game cap, only backpressure
+     (QUEUE_TARGET) so the loop stays ahead of the solver rather than racing.
+     Each finished batch advances oldestMs / fetchedCount, and each solve lowers
+     unseenCount; either re-triggers this effect. Only fires once a first import
+     has established a cursor (kicked off manually or by onboarding).
+
+     This hook must stay mounted for the loop to run: it lives at the page root,
+     NOT inside the settings panel (which unmounts whenever it's closed). */
   useEffect(() => {
     if (!autoImport) return; // context gate (suppressed during onboarding)
     if (!autoImportEnabled || !autoImportEnabledRef.current) return; // user toggle
@@ -496,9 +553,11 @@ export function useImporter({
     if (workingRef.current) return;
     if (exhausted) return; // paginated to the start of history — nothing left
     if (oldestMs == null) return; // need a first import to set the cursor
+    if (unseenCount == null) return; // saved puzzles not loaded yet — queue unknown
+    if (unseenCount >= QUEUE_TARGET) return; // plenty waiting; resume as they're solved
     if (!username.trim()) return;
     runImport(oldestMs);
-  }, [autoImport, autoImportEnabled, hydrated, oldestMs, fetchedCount, username, exhausted, runImport]);
+  }, [autoImport, autoImportEnabled, hydrated, oldestMs, fetchedCount, unseenCount, username, exhausted, runImport]);
 
   /** Reset the pagination cursor + counters after a cache clear, and abort any
    *  in-flight import so it doesn't write puzzles/openings back post-clear. */
@@ -525,3 +584,7 @@ export function useImporter({
     resetCursor,
   };
 }
+
+/** The shared importer instance, created once at the page root and handed to
+ *  the onboarding screen and the settings-panel import bar. */
+export type Importer = ReturnType<typeof useImporter>;

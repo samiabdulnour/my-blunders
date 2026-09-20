@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import type { HistoryEntry, Puzzle, SessionStats } from '@/lib/types';
+import type { HistoryEntry, SessionStats } from '@/lib/types';
 import type { ThemeMode } from '@/lib/storage';
+import type { Importer } from '@/lib/useImporter';
 import { BrandMark } from './BrandMark';
 import { ImportBar } from './ImportBar';
 import { BoardThemePicker } from './BoardThemePicker';
@@ -33,10 +34,9 @@ interface AppShellProps {
   mode: 'puzzle' | 'opening' | 'play' | 'coords';
   onModeChange: (mode: 'puzzle' | 'opening' | 'play' | 'coords') => void;
   /** Import controls live in a top-bar dropdown (one hub for every mode). */
-  onImport: (newPuzzles: Puzzle[]) => void;
-  onGamesFetched?: () => void;
+  /** Created by the page (not here) so it outlives this panel. */
+  importer: Importer;
   onClearAll: () => void;
-  unseenCount: number;
   /** Sidebar + main, supplied by the page. */
   children: React.ReactNode;
 }
@@ -68,10 +68,8 @@ export function AppShell({
   onToggleSound,
   mode,
   onModeChange,
-  onImport,
-  onGamesFetched,
+  importer,
   onClearAll,
-  unseenCount,
   children,
 }: AppShellProps) {
   const [sideOpen, setSideOpen] = useState(true);
@@ -317,12 +315,7 @@ export function AppShell({
             </Link>
           </div>
           <div className="settings-import">
-            <ImportBar
-              onImport={onImport}
-              onGamesFetched={onGamesFetched}
-              onClearAll={onClearAll}
-              unseenCount={unseenCount}
-            />
+            <ImportBar importer={importer} onClearAll={onClearAll} />
           </div>
             </>
           )}

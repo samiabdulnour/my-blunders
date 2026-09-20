@@ -2,17 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import type { Puzzle } from '@/lib/types';
-import { useImporter } from '@/lib/useImporter';
+import type { Importer } from '@/lib/useImporter';
 import { BoardThemePicker } from '@/components/BoardThemePicker';
 import type { BoardThemeId } from '@/lib/board-theme';
 
 interface OnboardingProps {
-  /** Feed imported puzzles into the app as they arrive. */
-  onImport: (newPuzzles: Puzzle[]) => void;
-  /** Fired when the user's own games have been fetched (before analysis), so
-   *  the app can drop the famous-blunder placeholders right away. */
-  onGamesFetched?: () => void;
+  /** The page-level importer. Shared with the settings panel so the batch
+   *  started here keeps its cursor + "working" state after this screen hands
+   *  off (a private instance died with the screen, stranding auto-import). */
+  importer: Importer;
+  /** How many of the user's own puzzles the app holds. Growth during an import
+   *  means the first real puzzle is ready — the cue to hand off. */
+  ownPuzzleCount: number;
   /** Called once onboarding is finished (with the username, or '' if skipped).
    *  `showFamous` asks the app to show the famous-blunder library to play while
    *  a real import is still streaming in (or as the guest fallback). */
@@ -33,8 +34,8 @@ type Phase = 'idle' | 'board' | 'running' | 'done' | 'error';
  * into the app.
  */
 export function Onboarding({
-  onImport,
-  onGamesFetched,
+  importer,
+  ownPuzzleCount,
   onComplete,
   boardLight,
   boardDark,
@@ -48,9 +49,9 @@ export function Onboarding({
   // Hand off to the app exactly once — whether that's triggered by the first
   // puzzle, the batch finishing with none, or a skip link.
   const enteredRef = useRef(false);
-  // Latest username, read inside the import callback (which is created before
-  // useImporter returns `username`).
-  const usernameRef = useRef('');
+  // Own-puzzle count when the import started, so the hand-off keys on puzzles
+  // *this* import produced rather than anything already in the store.
+  const baselineRef = useRef(0);
 
   // Always enter with the famous library available: real puzzles replace it as
   // they stream in, and the app's own guard keeps famous from clobbering real
@@ -64,26 +65,19 @@ export function Onboarding({
     [onComplete]
   );
 
+  const { username, setUsername, source, setSource, status, runImport, importFile } = importer;
+
   // Hand off the moment the first real puzzle is ready, landing the user
   // straight on one of their own blunders. Until then they wait on the progress
   // screen — or tap "play famous blunders while this loads" to start solving the
-  // famous library immediately while the rest analyses behind them. (autoImport
-  // off: the import is driven by the CTA, not the queue-drain loop.)
-  const handleImport = useCallback(
-    (puzzles: Puzzle[]) => {
-      onImport(puzzles);
-      if (puzzles.length > 0) enterApp(usernameRef.current.trim());
-    },
-    [onImport, enterApp]
-  );
-
-  const { username, setUsername, source, setSource, status, runImport, importFile } = useImporter({
-    onImport: handleImport,
-    onGamesFetched,
-    unseenCount: 0,
-    autoImport: false,
-  });
-  usernameRef.current = username;
+  // famous library immediately while the rest analyses behind them. (The page
+  // keeps the auto-import loop off until onboarding completes: the import here
+  // is driven by the CTA.)
+  useEffect(() => {
+    if (phase !== 'running') return;
+    if (ownPuzzleCount > baselineRef.current) enterApp(username.trim());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownPuzzleCount, phase]);
 
   // Fetching-window progress: a real bar that fills as the engine works through
   // the current game's moves; falls back to an indeterminate sweep before the
@@ -122,6 +116,7 @@ export function Onboarding({
       enterApp('');
       return;
     }
+    baselineRef.current = ownPuzzleCount;
     setPhase('running');
     runImport();
   };
@@ -135,6 +130,7 @@ export function Onboarding({
       await importFile(file);
       return;
     }
+    baselineRef.current = ownPuzzleCount;
     setPhase('running');
     await importFile(file);
   };
