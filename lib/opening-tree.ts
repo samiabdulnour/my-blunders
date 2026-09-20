@@ -313,20 +313,26 @@ export function buildOpeningTree(
  *  readable board size, and a safe bound on resolve() memory. */
 export const POSTER_MAX_NODES = 1400;
 
-/** How much tree each A1 sheet shape can hold at the SAME board size (~65pt).
- *  A tidy layout gives every leaf its own column, so lines set the width and
- *  plies set the height: a sheet W pt wide inside its margins fits
- *  (W / scale - 108) / 116 columns, and H pt tall fits (H / scale - 18) / 140
- *  rows. Inside the margins and the move-number gutter that's 1476 x 2199
- *  portrait → 18 long lines; 2176 x 1498 landscape → 27 shorter ones. Same board size either way, each sheet filled — a landscape
- *  poster is simply broader and shallower, which is the shape it wants.
+/** How much tree each A1 sheet shape holds. A tidy layout gives every leaf its
+ *  own column, so lines set the width and plies set the height: `n` lines draw
+ *  116n - 12 units wide (the boards' own bounding box — what the poster fits),
+ *  and `p` plies draw 18 + 140p units tall. Inside the margins, the move-number
+ *  gutter and the header that is 1476 x 2221pt portrait, 2176 x 1521pt landscape.
+ *
+ *    portrait  19 x 24 → height-bound, boards ~63pt
+ *    landscape 28 x 16 → both axes bound within 0.2%, boards ~64.5pt
+ *
+ *  Both grew by one line and one ply in the designer's review of 2026-09-20: the
+ *  header was compacted (freeing height) and the fit stopped reserving a phantom
+ *  trailing column (freeing width). The extra ply also means each sheet now ends
+ *  on a COMPLETE move — Black's 12th / 8th — instead of half of one.
  *
  *  `maxPly` must match the rows the poster actually draws: a line budget spent
  *  on branches that diverge below the last drawn row buys columns you can't
- *  see, which is what left landscape two-thirds empty. */
+ *  see, which is what once left landscape two-thirds empty. */
 export const POSTER_BUDGET = {
-  portrait: { maxLines: 18, maxPly: 23 },
-  landscape: { maxLines: 27, maxPly: 15 },
+  portrait: { maxLines: 19, maxPly: 24 },
+  landscape: { maxLines: 28, maxPly: 16 },
 } as const;
 
 export type PosterShape = keyof typeof POSTER_BUDGET;

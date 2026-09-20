@@ -46,29 +46,41 @@ const C_PAPER = '#ffffff'; // pure white — this gets printed
 const C_HEAD_DIM = '#929291'; // neutral grey for the header table, rules and move numbers
 
 /* ── Poster furniture ──────────────────────────────────────────────────────
- * Measured from the InDesign layout this poster is set to (A1 portrait,
- * 1683.78 x 2383.94pt). All y values are from the PAGE TOP, matching jsPDF.
- * The header is a two-row stats table on the left, three headings plus the
- * legend on the right, under one rule; move numbers run down a left gutter.  */
+ * Set to the InDesign layout this poster follows (A1 portrait, 1683.78 x
+ * 2383.94pt), as revised in the designer's review of 2026-09-20. All y values
+ * are from the PAGE TOP, matching jsPDF. The three headings sit top-right; one
+ * band of small grey text runs beneath them on a shared two-line grid — the
+ * stats table at the left, the legend at the right — closed by one rule. Move
+ * numbers run down a left gutter.
+ *
+ * The review's changes, all here: the stats dropped from heading size to the
+ * legend's; the legend and rule moved up under the headings (the freed height
+ * goes to the tree — see POSTER_BUDGET); the rules took the tree's line weight. */
 const PAGE_MARGIN = 36;
 /** Move-number column; the tree starts at PAGE_MARGIN + this. */
 const GUTTER_W = 136;
-/** Layout origin for the tree — puts row 0's board top at ~176pt, clear of the
- *  header rule at 129pt. */
-const TREE_TOP = 149.3;
 
 const HEAD_SIZE = 24;
 const LEG_SIZE = 12;
 const HEAD_TITLE_BASE = 55.2027; // bold headings
-const HEAD_STAT1_BASE = 59.2027; // nickname / games / overall
-const HEAD_STAT2_BASE = 105.191; // W / D / L
-const HEAD_LEG1_BASE = 101.3116;
-const HEAD_LEG2_BASE = 115.7115;
-const HEAD_COL_X = [40, 204.3596, 368.7191]; // left stats columns
-const HEAD_DIV_X = [195.1181, 359]; // rules between them
-const HEAD_DIV_TOP = 36.003;
-const HEAD_RULE_Y = 128.9796; // the rule under the whole header
-const RULE_W = 2;
+/** The small-text grid: one heading line (24pt) under the headings, then the
+ *  legend's own 14.4pt leading. Stats and legend share these two baselines. */
+const HEAD_LEG1_BASE = HEAD_TITLE_BASE + HEAD_SIZE; // 79.2
+const HEAD_LEG2_BASE = HEAD_LEG1_BASE + 14.4; // 93.6
+/** Clearance the layout keeps under the last text line — and, mirrored, above
+ *  the first: the stat dividers span exactly that band. */
+const HEAD_RULE_CLEAR = 13.27;
+const HEAD_RULE_Y = HEAD_LEG2_BASE + HEAD_RULE_CLEAR; // the rule under the whole header
+/** Layout origin for the tree: the same 20.3pt under the rule as the original
+ *  layout, so row 0's board top clears it by about a name band. */
+const TREE_TOP = HEAD_RULE_Y + 20.3;
+/** Stats table, at the legend's size. Columns keep the original layout's pitch
+ *  and divider offset at half scale (the text is half the size), and widen for
+ *  a long nickname rather than letting it run into the next cell. */
+const STAT_X = 40;
+const STAT_PITCH = 82.18;
+const STAT_DIV_LEAD = 4.62; // a divider sits this far left of the next column's text
+const STAT_MIN_GAP = 16; // least air between a cell's text and its divider
 /** Right-hand block, held as offsets from the right content edge so it stays
  *  anchored to the margin whatever the sheet width. */
 const HEAD_R_TITLE = 912.75; // "<COLOUR> REPERTOIRE" + the legend below it
@@ -343,12 +355,68 @@ async function renderPoster(
       }
     } catch { /* keep the default face */ }
   }
+  // ── Title, measured up front ───────────────────────────────────────────────
+  // The title owns the room up to "OPENING TREE". A long opening name — and
+  // ECO's run long — used to print straight through that label, so it wraps to
+  // a second row instead, and only shrinks if two rows still won't hold it.
+  // Measured with the tracking added by hand: jsPDF's getTextWidth ignores char
+  // spacing, and the canvas backend would otherwise count it twice.
+  // It is measured BEFORE the tree is fitted because the small-text band now
+  // sits directly under the headings: a second title row pushes that band, the
+  // rule and the tree down by one title lead, and the fit has to know.
+  const title = focusNode
+    ? opts.focusName || focusNode.name || 'Opening line'
+    : `${color === 'w' ? 'White' : 'Black'} repertoire`;
+  doc.setFont(FONT, 'bold');
+  const width = (str: string, size: number) => {
+    doc.setFontSize(size);
+    doc.setCharSpace(0);
+    return doc.getTextWidth(str) + HEAD_TRACK * size * str.length;
+  };
+  const wrap = (str: string, size: number): string[] => {
+    const out: string[] = [];
+    let line = '';
+    for (const w of str.split(' ').filter(Boolean)) {
+      const next = line ? `${line} ${w}` : w;
+      if (line && width(next, size) > TITLE_SLOT) { out.push(line); line = w; } else line = next;
+    }
+    if (line) out.push(line);
+    return out.length ? out : [str];
+  };
+  const caps = title.toUpperCase();
+  let titleSize = HEAD_SIZE;
+  let titleRows = [caps];
+  if (width(caps, titleSize) > TITLE_SLOT) {
+    titleRows = wrap(caps, titleSize);
+    while (titleRows.length > 2 && titleSize > TITLE_MIN_SIZE) {
+      titleSize = Math.max(TITLE_MIN_SIZE, titleSize * 0.92);
+      titleRows = wrap(caps, titleSize);
+    }
+    if (titleRows.length > 2) titleRows = [titleRows[0], `${titleRows[1]}…`];
+  }
+  doc.setCharSpace(0);
+  const headDrop = (titleRows.length - 1) * TITLE_LEAD;
+  const leg1Y = HEAD_LEG1_BASE + headDrop;
+  const leg2Y = HEAD_LEG2_BASE + headDrop;
+  const ruleY = HEAD_RULE_Y + headDrop;
+  const treeTop = TREE_TOP + headDrop;
+
   // The tree sits right of the move-number gutter and below the header rule.
   const treeLeft = PAGE_MARGIN + GUTTER_W;
-  const avail = { w: pageW - PAGE_MARGIN - treeLeft, h: pageH - PAGE_MARGIN - TREE_TOP };
+  const avail = { w: pageW - PAGE_MARGIN - treeLeft, h: pageH - PAGE_MARGIN - treeTop };
 
-  const scaleFit = (lay: { width: number; height: number }) =>
-    Math.min(avail.w / (LEFT_PAD + lay.width), avail.h / (TOP_PAD + lay.height));
+  // Fit what is actually DRAWN: the boards' own bounding box. `layout.width`
+  // carries a trailing card of padding (and LEFT_PAD leads it) that the drawing
+  // never uses — the tree is centred on its boards, below — so fitting to it
+  // reserved a phantom column and kept a real one off the sheet.
+  const boardsWidth = (lay: { nodes: { x: number }[]; width: number }) => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const n of lay.nodes) { if (n.x < lo) lo = n.x; if (n.x > hi) hi = n.x; }
+    return Number.isFinite(lo) ? hi - lo + CARD_W : lay.width;
+  };
+  const scaleFit = (lay: { nodes: { x: number }[]; width: number; height: number }) =>
+    Math.min(avail.w / boardsWidth(lay), avail.h / (TOP_PAD + lay.height));
 
   // Fill the sheet. Board size is chosen to fit the shaped tree as large as it
   // will go, so a poster is never half-empty. Shape the tree to the sheet first:
@@ -392,9 +460,6 @@ async function renderPoster(
   const pieces = await rasterizePieces();
 
   const named = layout.nodes.filter((n) => n.name).length;
-  const title = focusNode
-    ? opts.focusName || focusNode.name || 'Opening line'
-    : `${color === 'w' ? 'White' : 'Black'} repertoire`;
   const legendLine1 =
     'Under each board: the move, the engine eval in pawns (+ favours White), then your record from that position as wins/draws/losses. Games played is top-left.';
   const legendLine2 =
@@ -405,14 +470,12 @@ async function renderPoster(
   // centring on it leaves visibly different margins. Centre the BOARDS' own
   // bounding box on the page instead, for equal borders left and right.
   const nodeMinX = layout.nodes.reduce((m, n) => Math.min(m, n.x), Infinity);
-  const nodeMaxX = layout.nodes.reduce((m, n) => Math.max(m, n.x), -Infinity);
-  const contentW = Number.isFinite(nodeMinX) ? nodeMaxX - nodeMinX + CARD_W : layout.width;
-  const treeW = LEFT_PAD + layout.width;
-  const treeH = TOP_PAD + layout.height;
+  const contentW = boardsWidth(layout);
   // Scale-to-fit fills the binding axis; centre the slack on the other so the
   // tree sits balanced on the sheet.
-  const offX = treeLeft + Math.max(0, (avail.w - contentW * S) / 2) - (LEFT_PAD + nodeMinX) * S;
-  const offY = TREE_TOP;
+  const offX =
+    treeLeft + Math.max(0, (avail.w - contentW * S) / 2) - (LEFT_PAD + (Number.isFinite(nodeMinX) ? nodeMinX : 0)) * S;
+  const offY = treeTop;
   const X = (lx: number) => offX + lx * S;
   const Y = (ly: number) => offY + ly * S;
   const L = (len: number) => len * S;
@@ -436,54 +499,35 @@ async function renderPoster(
   doc.rect(0, 0, pageW, pageH, 'F');
 
   // ── Header ────────────────────────────────────────────────────────────────
-  // Left: a two-row stats table, three columns divided by rules. Right: the
-  // headings, with the legend beneath. One rule closes the band.
+  // Top-right: the three headings. Beneath, one band of small grey text on a
+  // shared two-line grid — stats table left, legend right — closed by one rule.
   const contentRight = pageW - PAGE_MARGIN;
+  // Every rule on the sheet is one weight: the tree's connector line.
+  const ruleW = Math.max(0.4, L(1.6));
+
+  // Stats: three cells of two rows (who / how many / how well, over W-D-L),
+  // set like the legend. A cell is the layout's pitch wide, or as wide as its
+  // text needs, so a long nickname pushes the next cell along instead of
+  // running into it. Dividers stand in the band the two rows occupy.
   doc.setFont(FONT, 'normal');
-  doc.setFontSize(HEAD_SIZE);
+  doc.setFontSize(LEG_SIZE);
   text(C_HEAD_DIM);
+  const dividerX: number[] = [];
+  let cellX = STAT_X;
   statCells.forEach(([top, bottom], i) => {
-    doc.text(top, HEAD_COL_X[i], HEAD_STAT1_BASE);
-    doc.text(bottom, HEAD_COL_X[i], HEAD_STAT2_BASE);
+    doc.text(top, cellX, leg1Y);
+    doc.text(bottom, cellX, leg2Y);
+    const textW = Math.max(doc.getTextWidth(top), doc.getTextWidth(bottom));
+    const pitch = Math.max(STAT_PITCH, textW + STAT_MIN_GAP + STAT_DIV_LEAD);
+    if (i < statCells.length - 1) dividerX.push(cellX + pitch - STAT_DIV_LEAD);
+    cellX += pitch;
   });
 
   doc.setFont(FONT, 'bold');
   text(C_TEXT);
   // The heading block keeps its spacing from the layout and hangs off the right
-  // margin, the same on both orientations.
+  // margin, the same on both orientations. (Title rows were measured up front.)
   const blockLeft = contentRight - HEAD_R_TITLE;
-
-  // The title owns the room up to "OPENING TREE". A long opening name — and
-  // ECO's run long — used to print straight through that label, so it wraps to
-  // a second row instead, and only shrinks if two rows still won't hold it.
-  // Measured with the tracking added by hand: jsPDF's getTextWidth ignores char
-  // spacing, and the canvas backend would otherwise count it twice.
-  const width = (s: string, size: number) => {
-    doc.setFontSize(size);
-    doc.setCharSpace(0);
-    return doc.getTextWidth(s) + HEAD_TRACK * size * s.length;
-  };
-  const wrap = (s: string, size: number): string[] => {
-    const out: string[] = [];
-    let line = '';
-    for (const w of s.split(' ').filter(Boolean)) {
-      const next = line ? `${line} ${w}` : w;
-      if (line && width(next, size) > TITLE_SLOT) { out.push(line); line = w; } else line = next;
-    }
-    if (line) out.push(line);
-    return out.length ? out : [s];
-  };
-  const caps = title.toUpperCase();
-  let titleSize = HEAD_SIZE;
-  let titleRows = [caps];
-  if (width(caps, titleSize) > TITLE_SLOT) {
-    titleRows = wrap(caps, titleSize);
-    while (titleRows.length > 2 && titleSize > TITLE_MIN_SIZE) {
-      titleSize = Math.max(TITLE_MIN_SIZE, titleSize * 0.92);
-      titleRows = wrap(caps, titleSize);
-    }
-    if (titleRows.length > 2) titleRows = [titleRows[0], `${titleRows[1]}…`];
-  }
   doc.setFontSize(titleSize);
   doc.setCharSpace(HEAD_TRACK * titleSize);
   titleRows.forEach((row, i) => doc.text(row, blockLeft, HEAD_TITLE_BASE + i * TITLE_LEAD));
@@ -494,29 +538,32 @@ async function renderPoster(
   doc.text(`${named} NAMED LINE${named === 1 ? '' : 'S'}`, contentRight, HEAD_TITLE_BASE, { align: 'right' });
   doc.setCharSpace(0);
 
-  // Legend, wrapped to the width the headings span.
+  // Legend, on the same two baselines as the stats.
   doc.setFont(FONT, 'normal');
   doc.setFontSize(LEG_SIZE);
   text(C_HEAD_DIM);
-  doc.text(legendLine1, blockLeft, HEAD_LEG1_BASE);
-  doc.text(legendLine2, blockLeft, HEAD_LEG2_BASE);
+  doc.text(legendLine1, blockLeft, leg1Y);
+  doc.text(legendLine2, blockLeft, leg2Y);
 
   stroke(C_HEAD_DIM);
-  doc.setLineWidth(RULE_W);
-  for (const dx of HEAD_DIV_X) doc.line(dx, HEAD_DIV_TOP, dx, HEAD_RULE_Y);
-  doc.line(PAGE_MARGIN, HEAD_RULE_Y, contentRight, HEAD_RULE_Y);
+  doc.setLineWidth(ruleW);
+  for (const dx of dividerX) doc.line(dx, leg1Y - HEAD_RULE_CLEAR, dx, ruleY);
+  doc.line(PAGE_MARGIN, ruleY, contentRight, ruleY);
 
   // ── Move numbers ──────────────────────────────────────────────────────────
   // One per full move, down the gutter: the cap sits on that row's board top.
-  // Flush left at the margin, in the face's TABULAR figures: every digit is one
-  // 600-unit column wide, so the numbers line up down the gutter and "10" grows
+  // Set at the small-text size, like the stats and legend (review of
+  // 2026-09-20 — they were heading size), and on the stats' left edge, so the
+  // margin carries ONE column of small grey text rather than two edges 4pt
+  // apart. Bold, in the face's TABULAR figures: every digit is one 600-unit
+  // column wide, so the numbers line up down the gutter and "10" grows
   // rightwards from the same axis as "1" — no alignment trick needed.
   doc.setFont(FONT, 'bold');
-  doc.setFontSize(HEAD_SIZE);
+  doc.setFontSize(LEG_SIZE);
   text(C_HEAD_DIM);
   for (let r = 0; r <= layout.maxDepth; r += 2) {
     const boardTop = Y(TOP_PAD + r * ROW_H + TOP_INSET);
-    doc.text(tabular(`${r / 2 + 1}.`), PAGE_MARGIN, boardTop + CAP_RATIO * HEAD_SIZE);
+    doc.text(tabular(`${r / 2 + 1}.`), STAT_X, boardTop + CAP_RATIO * LEG_SIZE);
   }
 
   // ── Edges ─────────────────────────────────────────────────────────────────
@@ -537,7 +584,12 @@ async function renderPoster(
     const aw = Math.max(1.4, L(2.6));
     const ah = Math.max(2, L(4));
 
-    const busY = py + (cy - py) * 0.5;
+    // ONE bus level per parent, in the clear strip between its card and the
+    // children's name band. It used to sit halfway to each child's own landing
+    // point — and an unnamed child lands lower (at its board, not above a name),
+    // so its bus ran lower too: straight through the names of every sibling it
+    // passed on the way.
+    const busY = Y(TOP_PAD + a.y + CARD_BOTTOM + (ROW_H - CARD_BOTTOM) / 2);
     stroke(col);
     doc.setLineWidth(Math.max(0.4, L(1.6)));
     doc.setLineDashPattern(b.deviation ? [L(5), L(4)] : [], 0);
