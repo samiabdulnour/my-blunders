@@ -57,8 +57,12 @@ const C_HEAD_DIM = '#929291'; // neutral grey for the header table, rules and mo
  * legend's; the legend and rule moved up under the headings (the freed height
  * goes to the tree — see POSTER_BUDGET); the rules took the tree's line weight. */
 const PAGE_MARGIN = 36;
-/** Move-number column; the tree starts at PAGE_MARGIN + this. */
-const GUTTER_W = 136;
+/** Move-number column; the tree starts at PAGE_MARGIN + this. It was 136pt while
+ *  the numbers were heading size; at the small-text size ("12." is ~22pt wide)
+ *  that left 127pt of air before the first board — more than a whole column
+ *  (~76pt). 94pt is what lets one more column fit at the SAME board size, and
+ *  still leaves ~68pt (nearly a board's width) between numbers and tree. */
+const GUTTER_W = 94;
 
 const HEAD_SIZE = 24;
 const LEG_SIZE = 12;
@@ -81,6 +85,10 @@ const STAT_X = 40;
 const STAT_PITCH = 82.18;
 const STAT_DIV_LEAD = 4.62; // a divider sits this far left of the next column's text
 const STAT_MIN_GAP = 16; // least air between a cell's text and its divider
+/** How far down White's board a move number's optical middle sits, as a
+ *  fraction of the board's height: 0 = top edge, 0.5 = centre. 0.275 is 5 mm
+ *  above centre at the portrait sheet's 63pt boards. */
+const MOVE_NO_AT = 0.275;
 /** Right-hand block, held as offsets from the right content edge so it stays
  *  anchored to the margin whatever the sheet width. */
 const HEAD_R_TITLE = 912.75; // "<COLOUR> REPERTOIRE" + the legend below it
@@ -338,6 +346,9 @@ async function renderPoster(
       minGames: o.mg,
       maxChildren: o.maxChildren,
       branchDepth: o.branchDepth,
+      // Packed by outline, so the tree's stubs sit in its empty corners and
+      // deep lines run underneath them — never wider than the line budget.
+      pack: { maxCols: POSTER_BUDGET[opts.orientation === 'landscape' ? 'landscape' : 'portrait'].maxLines },
     });
 
   const orient: 'portrait' | 'landscape' = opts.orientation === 'landscape' ? 'landscape' : 'portrait';
@@ -551,19 +562,27 @@ async function renderPoster(
   doc.line(PAGE_MARGIN, ruleY, contentRight, ruleY);
 
   // ── Move numbers ──────────────────────────────────────────────────────────
-  // One per full move, down the gutter: the cap sits on that row's board top.
-  // Set at the small-text size, like the stats and legend (review of
-  // 2026-09-20 — they were heading size), and on the stats' left edge, so the
-  // margin carries ONE column of small grey text rather than two edges 4pt
-  // apart. Bold, in the face's TABULAR figures: every digit is one 600-unit
-  // column wide, so the numbers line up down the gutter and "10" grows
-  // rightwards from the same axis as "1" — no alignment trick needed.
+  // One per full move, down the gutter, beside that move's first board —
+  // White's move — so the number reads as the label of the row it starts.
+  // Where beside it was settled by eye in the review of 2026-09-20: hanging
+  // from the board's top edge read as belonging to the name above; centred on
+  // the board was "too much"; 5 mm above centre on the A1 portrait sheet is
+  // right. Held as a FRACTION of the board (MOVE_NO_AT) so it lands the same on
+  // landscape and on a small repertoire's larger boards. Positioned by cap
+  // height: the figures have no descenders, so the optical middle of "12." is
+  // half a cap above its baseline.
+  // Set at the small-text size, like the stats and legend (they were heading
+  // size), and on the stats' left edge, so the margin carries ONE column of
+  // small grey text rather than two edges 4pt apart. Bold, in the face's
+  // TABULAR figures: every digit is one 600-unit column wide, so the numbers
+  // line up down the gutter and "10" grows rightwards from the same axis as
+  // "1" — no alignment trick needed.
   doc.setFont(FONT, 'bold');
   doc.setFontSize(LEG_SIZE);
   text(C_HEAD_DIM);
   for (let r = 0; r <= layout.maxDepth; r += 2) {
-    const boardTop = Y(TOP_PAD + r * ROW_H + TOP_INSET);
-    doc.text(tabular(`${r / 2 + 1}.`), STAT_X, boardTop + CAP_RATIO * LEG_SIZE);
+    const anchor = Y(TOP_PAD + r * ROW_H + TOP_INSET + BOARD * MOVE_NO_AT);
+    doc.text(tabular(`${r / 2 + 1}.`), STAT_X, anchor + (CAP_RATIO * LEG_SIZE) / 2);
   }
 
   // ── Edges ─────────────────────────────────────────────────────────────────

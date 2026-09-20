@@ -9,9 +9,9 @@ import { fillPosterEvals } from '@/lib/opening-engine';
 /**
  * Print dialog for the opening-tree poster. Shows a fit-to-page preview image
  * and one choice before you commit: orientation (portrait or landscape).
- * The whole repertoire is drawn on ONE A1 sheet; if it's too large to fit at a
- * readable board size, the least-played lines are pruned so the main lines stay
- * legible. The preview is a rasterised page-1 image (not an embedded PDF), so it
+ * The whole repertoire is drawn on ONE A1 sheet: full-depth columns for the
+ * lines played most, short stubs for the rest where there is room (see
+ * POSTER_BUDGET). The preview is a rasterised page-1 image (not an embedded PDF), so it
  * fits reliably everywhere. "Save / share" builds the real PDF and hands it off
  * (share sheet on iOS, download on web). Re-renders whenever a choice changes.
  */
@@ -191,8 +191,8 @@ export function PrintDialog({ games, color, focusPath, focusName, onClose }: Pri
             </div>
           )}
           <div className="pd-note">
-            One A1 sheet. If your repertoire is too large to fit, the least-played lines are
-            dropped so your main lines stay readable.
+            One A1 sheet. The columns go to the lines you play most; openings you only
+            tried appear as a few boards where there is room.
           </div>
         </div>
 
