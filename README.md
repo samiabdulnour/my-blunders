@@ -68,9 +68,18 @@ Next.js 15 · React 19 · TypeScript · chess.js · Stockfish (native + WASM)
 
 ## Licensing
 
+Copyright © 2026 Sami Abdulnour <hi@samiabdulnour.com>
+
+**GNU General Public License v3 or later.** See [`LICENSE`](LICENSE) for the full
+terms. You may use, study, share and modify this software; if you distribute it,
+or a modified version, you must pass on the same freedoms and make the source
+available under the same licence.
+
 This project bundles the **Stockfish** chess engine compiled to WebAssembly for
 the web build. Stockfish is licensed under the **GNU General Public License v3**.
 Serving it to the browser is "conveying" under the GPL; the license text, source
 offer, and version details are in [`public/stockfish/README.md`](public/stockfish/README.md).
 The engine binaries are redistributed unmodified from the
 [`stockfish`](https://www.npmjs.com/package/stockfish) npm package.
+
+For licensing enquiries, contact <hi@samiabdulnour.com>.
