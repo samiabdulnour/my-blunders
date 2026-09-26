@@ -4,6 +4,11 @@
    condensed type family (Gruezi), three flat play-colors (coral, mint,
    lemon). No gradients, no shadows beyond hairline-offset floating UI,
    sharp corners. Theme is toggled by `data-theme="dark"` on <html>.
+
+   Hover: every :hover rule in this file sits inside `@media (hover: hover)`,
+   with the pressed look on :active. iOS leaves :hover stuck on whatever sat
+   under the last tap — a control would keep its hover look until the next
+   tap somewhere else. Keep new rules to the same pattern (see .btn).
    ────────────────────────────────────────────────────────────────────── */
 
 @font-face {
@@ -255,9 +260,17 @@ select {
   cursor: pointer;
   transition: all 0.12s var(--ease-snap);
 }
-.bc-btn:hover:not(:disabled) {
+/* Same split as .bc-menu below: pressed inverts everywhere, hover only on a
+   real pointer, so an arrow doesn't stay inverted after a tap. */
+.bc-btn:active:not(:disabled) {
   background: var(--contour);
   color: var(--bg2);
+}
+@media (hover: hover) {
+  .bc-btn:hover:not(:disabled) {
+    background: var(--contour);
+    color: var(--bg2);
+  }
 }
 .bc-btn:disabled {
   opacity: 0.4;
@@ -277,10 +290,19 @@ select {
   cursor: pointer;
   transition: all 0.12s var(--ease-snap);
 }
-.bc-menu:hover,
-.bc-menu.on {
+/* Inverted while the drawer is open, and while pressed. Hover only where a
+   pointer can actually hover: iOS leaves :hover stuck on whatever sat under the
+   last tap, which kept the ☰ solid after the drawer had closed. */
+.bc-menu.on,
+.bc-menu:active {
   background: var(--contour);
   color: var(--bg2);
+}
+@media (hover: hover) {
+  .bc-menu:hover {
+    background: var(--contour);
+    color: var(--bg2);
+  }
 }
 /* Mode switcher injected into the bracket (Coordinates): a compact segmented
    button group sharing the same paper/contour treatment as the arrows. */
@@ -303,7 +325,10 @@ select {
 }
 .bc-mode-btn:first-child { border-radius: 2px 0 0 2px; }
 .bc-mode-btn:last-child { border-radius: 0 2px 2px 0; border-right-width: 1px; }
-.bc-mode-btn:hover:not(.on) { background: var(--bg3); }
+.bc-mode-btn:active:not(.on) { background: var(--bg3); }
+@media (hover: hover) {
+  .bc-mode-btn:hover:not(.on) { background: var(--bg3); }
+}
 .bc-mode-btn.on { background: var(--contour); color: var(--bg2); }
 
 .topbar {
@@ -348,10 +373,17 @@ select {
   align-items: center;
   justify-content: center;
 }
-.topbar-toggle:hover {
+.topbar-toggle:active {
   color: var(--txt);
   border-color: var(--border);
   background: var(--bg2);
+}
+@media (hover: hover) {
+  .topbar-toggle:hover {
+    color: var(--txt);
+    border-color: var(--border);
+    background: var(--bg2);
+  }
 }
 
 /* Pushes the prefs cluster to the right; the topbar is now identical in both
@@ -369,9 +401,15 @@ select {
   border-radius: 3px;
   cursor: pointer;
 }
-.stats-strip:hover {
+.stats-strip:active {
   border-color: var(--border);
   background: var(--bg2);
+}
+@media (hover: hover) {
+  .stats-strip:hover {
+    border-color: var(--border);
+    background: var(--bg2);
+  }
 }
 .stat {
   display: flex;
@@ -416,10 +454,17 @@ select {
   gap: 6px;
   font-size: var(--fs-micro);
 }
-.icon-btn:hover {
+.icon-btn:active {
   color: var(--txt);
   border-color: var(--border);
   background: var(--bg2);
+}
+@media (hover: hover) {
+  .icon-btn:hover {
+    color: var(--txt);
+    border-color: var(--border);
+    background: var(--bg2);
+  }
 }
 .icon-btn.on {
   color: #16140f;
@@ -547,9 +592,15 @@ select {
   white-space: nowrap;
   transition: all 0.12s var(--ease-snap);
 }
-.imp-btn:hover:not(:disabled) {
+.imp-btn:active:not(:disabled) {
   background: var(--contour);
   color: var(--bg2);
+}
+@media (hover: hover) {
+  .imp-btn:hover:not(:disabled) {
+    background: var(--contour);
+    color: var(--bg2);
+  }
 }
 .imp-btn:disabled {
   opacity: 0.5;
@@ -571,9 +622,15 @@ select {
   cursor: pointer;
   transition: all 0.12s var(--ease-snap);
 }
-.imp-more-btn:hover {
+.imp-more-btn:active {
   background: var(--contour);
   color: var(--bg2);
+}
+@media (hover: hover) {
+  .imp-more-btn:hover {
+    background: var(--contour);
+    color: var(--bg2);
+  }
 }
 .imp-progress {
   height: 3px;
@@ -624,11 +681,21 @@ select {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.imp-link:hover:not(:disabled) {
+.imp-link:active:not(:disabled) {
   color: var(--txt);
 }
-.imp-link.danger:hover:not(:disabled) {
+@media (hover: hover) {
+  .imp-link:hover:not(:disabled) {
+    color: var(--txt);
+  }
+}
+.imp-link.danger:active:not(:disabled) {
   color: var(--red);
+}
+@media (hover: hover) {
+  .imp-link.danger:hover:not(:disabled) {
+    color: var(--red);
+  }
 }
 .imp-link:disabled {
   opacity: 0.5;
@@ -657,7 +724,10 @@ select {
   cursor: pointer;
   transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
-.auto-btn:hover { border-color: var(--contour); }
+.auto-btn:active { border-color: var(--contour); }
+@media (hover: hover) {
+  .auto-btn:hover { border-color: var(--contour); }
+}
 .auto-btn.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 .auto-btn-sub { font-weight: var(--fw-reg); opacity: 0.8; }
 
@@ -678,7 +748,10 @@ select {
   color: var(--txt-dim);
 }
 .imp-confirm-btn.yes { background: var(--red); border-color: var(--red); color: #fff; }
-.imp-confirm-btn.no:hover { color: var(--txt); border-color: var(--contour); }
+.imp-confirm-btn.no:active { color: var(--txt); border-color: var(--contour); }
+@media (hover: hover) {
+  .imp-confirm-btn.no:hover { color: var(--txt); border-color: var(--contour); }
+}
 
 /* Queue segmented tabs */
 .seg-tabs {
@@ -708,8 +781,13 @@ select {
 .seg-tab:last-child {
   border-right: 0;
 }
-.seg-tab:hover:not(.on) {
+.seg-tab:active:not(.on) {
   background: var(--bg3);
+}
+@media (hover: hover) {
+  .seg-tab:hover:not(.on) {
+    background: var(--bg3);
+  }
 }
 .seg-tab.on {
   background: var(--coral);
@@ -772,8 +850,13 @@ select {
   gap: 6px;
   transition: all 0.1s;
 }
-.chip:hover {
+.chip:active {
   background: var(--bg3);
+}
+@media (hover: hover) {
+  .chip:hover {
+    background: var(--bg3);
+  }
 }
 .chip.on {
   background: var(--coral);
@@ -825,9 +908,15 @@ select {
   overflow-wrap: anywhere;
   line-height: 1.3;
 }
-.filter-popover .opt:hover {
+.filter-popover .opt:active {
   background: var(--contour);
   color: var(--bg2);
+}
+@media (hover: hover) {
+  .filter-popover .opt:hover {
+    background: var(--contour);
+    color: var(--bg2);
+  }
 }
 .filter-popover .opt.on {
   color: #16140f;
@@ -873,7 +962,10 @@ select {
   letter-spacing: var(--track-caps);
   cursor: pointer;
 }
-.qcount-random:hover { border-color: var(--contour); color: var(--txt); }
+.qcount-random:active { border-color: var(--contour); color: var(--txt); }
+@media (hover: hover) {
+  .qcount-random:hover { border-color: var(--contour); color: var(--txt); }
+}
 .qcount-random.on { color: #16140f; background: var(--lemon); border-color: var(--contour); }
 /* Condensed session stats at the top of the sidebar. */
 .ps-stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
@@ -920,8 +1012,13 @@ select {
   gap: 10px;
   transition: background 0.08s;
 }
-.qcard:hover {
+.qcard:active {
   background: var(--bg2);
+}
+@media (hover: hover) {
+  .qcard:hover {
+    background: var(--bg2);
+  }
 }
 .qcard.cur {
   background: rgba(232, 227, 115, 0.32);
@@ -1573,7 +1670,10 @@ html[data-theme='dark'] .sq.cap-ring {
   background: none; border: 0; padding: 1px 5px; border-radius: 3px;
   font: inherit; font-weight: var(--fw-bold); color: var(--txt); cursor: pointer;
 }
-.el-move:hover { background: var(--bg3); }
+.el-move:active { background: var(--bg3); }
+@media (hover: hover) {
+  .el-move:hover { background: var(--bg3); }
+}
 .el-move.cur { background: var(--contour); color: var(--bg); }
 
 .actions {
@@ -1804,9 +1904,15 @@ html[data-theme='dark'] .sq.cap-ring {
   border-radius: 2px;
   transition: all 0.12s var(--ease-snap);
 }
-.onb-go:hover:not(:disabled) {
+.onb-go:active:not(:disabled) {
   background: var(--contour);
   color: var(--bg2);
+}
+@media (hover: hover) {
+  .onb-go:hover:not(:disabled) {
+    background: var(--contour);
+    color: var(--bg2);
+  }
 }
 .onb-go:disabled {
   opacity: 0.5;
@@ -1849,8 +1955,13 @@ html[data-theme='dark'] .sq.cap-ring {
   cursor: pointer;
   transition: filter 0.12s var(--ease-snap);
 }
-.onb-famous:hover {
+.onb-famous:active {
   filter: brightness(1.06);
+}
+@media (hover: hover) {
+  .onb-famous:hover {
+    filter: brightness(1.06);
+  }
 }
 .onb-famous .sub {
   font-size: var(--fs-base);
@@ -1869,8 +1980,13 @@ html[data-theme='dark'] .sq.cap-ring {
   text-decoration: none;
   cursor: pointer;
 }
-.onb-alt a:hover {
+.onb-alt a:active {
   text-decoration: underline;
+}
+@media (hover: hover) {
+  .onb-alt a:hover {
+    text-decoration: underline;
+  }
 }
 .onb-running {
   display: flex;
@@ -1981,9 +2097,15 @@ html[data-theme='dark'] .sq.cap-ring {
   letter-spacing: var(--track-caps);
   cursor: pointer;
 }
-.err-btn:hover { border-color: var(--contour); }
+.err-btn:active { border-color: var(--contour); }
+@media (hover: hover) {
+  .err-btn:hover { border-color: var(--contour); }
+}
 .err-btn.primary { background: var(--coral); color: #fff; border-color: var(--coral); }
-.err-btn.primary:hover { filter: brightness(1.05); }
+.err-btn.primary:active { filter: brightness(1.05); }
+@media (hover: hover) {
+  .err-btn.primary:hover { filter: brightness(1.05); }
+}
 
 /* ─── Stats sheet (slide-in) ─── */
 /* Import games — top-bar dropdown (one hub for every mode) */
@@ -2051,7 +2173,10 @@ html[data-theme='dark'] .sq.cap-ring {
   letter-spacing: var(--track-caps);
   cursor: pointer;
 }
-.settings-back:hover { color: var(--txt); }
+.settings-back:active { color: var(--txt); }
+@media (hover: hover) {
+  .settings-back:hover { color: var(--txt); }
+}
 .settings-toggles { display: flex; flex-direction: column; gap: 6px; }
 .settings-row {
   display: flex;
@@ -2069,7 +2194,10 @@ html[data-theme='dark'] .sq.cap-ring {
   cursor: pointer;
   text-align: left;
 }
-.settings-row:hover { border-color: var(--contour); }
+.settings-row:active { border-color: var(--contour); }
+@media (hover: hover) {
+  .settings-row:hover { border-color: var(--contour); }
+}
 .settings-row-label { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
 .settings-row-label svg { color: var(--txt-dim); flex-shrink: 0; }
 .settings-link { text-decoration: none; }
@@ -2494,8 +2622,13 @@ body.panning * {
   letter-spacing: var(--track-caps);
   font-weight: var(--fw-bold);
 }
-.about-back:hover {
+.about-back:active {
   color: var(--coral);
+}
+@media (hover: hover) {
+  .about-back:hover {
+    color: var(--coral);
+  }
 }
 .about-scroll {
   flex: 1;
@@ -2646,8 +2779,13 @@ body.panning * {
   text-decoration: none;
   font-weight: var(--fw-bold);
 }
-.about-link:hover {
+.about-link:active {
   text-decoration: underline;
+}
+@media (hover: hover) {
+  .about-link:hover {
+    text-decoration: underline;
+  }
 }
 .about-foot {
   font-size: var(--fs-base);
@@ -2711,9 +2849,15 @@ body.panning * {
   border-radius: 2px;
   transition: all 0.12s var(--ease-snap);
 }
-.contact-send:hover:not(:disabled) {
+.contact-send:active:not(:disabled) {
   background: var(--contour);
   color: var(--bg2);
+}
+@media (hover: hover) {
+  .contact-send:hover:not(:disabled) {
+    background: var(--contour);
+    color: var(--bg2);
+  }
 }
 .contact-send:disabled {
   opacity: 0.5;
@@ -2800,7 +2944,10 @@ body.panning * {
   position: relative; width: max-content; margin: 0 auto; padding: 3px; border-radius: 4px;
   border: 2px solid var(--border2); background: var(--bg2); transition: transform 0.12s var(--ease-snap), box-shadow 0.12s ease;
 }
-.cnode-btn:hover .cnode-frame { transform: translateY(-1px); }
+.cnode-btn:active .cnode-frame { transform: translateY(-1px); }
+@media (hover: hover) {
+  .cnode-btn:hover .cnode-frame { transform: translateY(-1px); }
+}
 .cnode-frame.perf-green { border-color: var(--green); }
 .cnode-frame.perf-amber { border-color: var(--yellow); }
 .cnode-frame.perf-red { border-color: var(--red); }
@@ -2836,7 +2983,10 @@ body.panning * {
   color: var(--txt-dim); background: var(--bg2); border: 1px solid var(--border); border-radius: 4px;
   cursor: pointer; transition: color 0.12s ease, border-color 0.12s ease;
 }
-.cd-close:hover { color: var(--txt); border-color: var(--border2); }
+.cd-close:active { color: var(--txt); border-color: var(--border2); }
+@media (hover: hover) {
+  .cd-close:hover { color: var(--txt); border-color: var(--border2); }
+}
 .cd-empty { margin: auto; padding: 40px 24px; text-align: center; color: var(--txt-dim); font-size: var(--fs-base); }
 .cd-board-sec { padding: 8px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
 .cd-board { display: flex; justify-content: center; }
@@ -2872,7 +3022,10 @@ body.panning * {
 .cd-verdict b.bad { color: var(--red); }
 .cont-list { list-style: none; display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; }
 .cont-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 0; background: var(--bg); color: var(--txt); cursor: pointer; transition: border-color 0.12s ease; }
-.cont-row:hover { border-color: var(--border2); }
+.cont-row:active { border-color: var(--border2); }
+@media (hover: hover) {
+  .cont-row:hover { border-color: var(--border2); }
+}
 .cont-row.bad { border-color: var(--red); }
 .cont-row .c-san { font-size: var(--fs-base); font-weight: var(--fw-bold); }
 .cont-row .c-meta { font-size: var(--fs-base); color: var(--txt-dim); display: inline-flex; align-items: center; gap: 6px; }
@@ -2887,7 +3040,9 @@ body.panning * {
   letter-spacing: var(--track-caps); color: var(--txt-dim); background: transparent; border: 0;
   border-bottom: 2px solid transparent; cursor: pointer; transition: color 0.12s ease, border-color 0.12s ease;
 }
-.mode-seg button:hover { color: var(--txt); }
+@media (hover: hover) {
+  .mode-seg button:hover { color: var(--txt); }
+}
 .mode-seg button.on { color: var(--txt); border-bottom-color: var(--coral); }
 
 /* Opening mode fills the main area (the clinic manages its own scroll/panes). */
@@ -2903,7 +3058,10 @@ body.panning * {
 /* Openings filter list (left panel, Opening mode) */
 .op-item { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg2); cursor: pointer; text-align: left; transition: border-color 0.12s ease, background 0.12s ease; }
 .op-item + .op-item { margin-top: 6px; }
-.op-item:hover { border-color: var(--border2); }
+.op-item:active { border-color: var(--border2); }
+@media (hover: hover) {
+  .op-item:hover { border-color: var(--border2); }
+}
 .op-item.cur { border-color: var(--contour); background: var(--bg3); }
 .op-name { font-size: var(--fs-base); font-weight: var(--fw-bold); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-ct { font-size: var(--fs-base); color: var(--txt-dim); font-variant-numeric: tabular-nums; flex-shrink: 0; }
@@ -2911,7 +3069,10 @@ body.panning * {
 /* Openings list wrapper + focus-clear chip (Opening mode) */
 .op-list { padding: 12px 16px; }
 .clinic-clear { margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border: 1px solid var(--border2); border-radius: 3px; background: var(--bg); color: var(--txt-dim); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
-.clinic-clear:hover { color: var(--txt); border-color: var(--contour); }
+.clinic-clear:active { color: var(--txt); border-color: var(--contour); }
+@media (hover: hover) {
+  .clinic-clear:hover { color: var(--txt); border-color: var(--contour); }
+}
 
 /* Drill breadcrumb (Opening mode) */
 /* -6px cancels the first crumb's left padding so the title text lines up with
@@ -2920,7 +3081,10 @@ body.panning * {
 /* Crumb is the Opening tab's title line — 14px bold dark regular-case, matching
    the puzzle name and the Play opening name (same style in every tab). */
 .crumb { padding: 0 6px; border-radius: 3px; background: none; border: 0; color: var(--txt); font-size: var(--fs-base); font-weight: var(--fw-bold); letter-spacing: normal; line-height: 16px; cursor: pointer; white-space: nowrap; }
-.crumb:hover { color: var(--txt); background: var(--bg3); }
+.crumb:active { color: var(--txt); background: var(--bg3); }
+@media (hover: hover) {
+  .crumb:hover { color: var(--txt); background: var(--bg3); }
+}
 .crumb.on { color: var(--txt); }
 
 /* Win-rate, shown as a secondary stat (correct continuation stays primary) */
@@ -2960,7 +3124,10 @@ body.panning * {
   font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt-dim); background: var(--bg2);
   border: 0; cursor: pointer; transition: color 0.12s ease, background 0.12s ease;
 }
-.clinic-zoom button:hover:not(:disabled) { color: var(--txt); background: var(--bg3); }
+.clinic-zoom button:active:not(:disabled) { color: var(--txt); background: var(--bg3); }
+@media (hover: hover) {
+  .clinic-zoom button:hover:not(:disabled) { color: var(--txt); background: var(--bg3); }
+}
 .clinic-zoom button:disabled { opacity: 0.35; cursor: default; }
 .clinic-zoom .num { min-width: 40px; text-align: center; font-size: var(--fs-base); color: var(--txt-dim); border-left: 1px solid var(--border); border-right: 1px solid var(--border); padding: 0 2px; }
 
@@ -2991,7 +3158,10 @@ body.panning * {
 /* Leaving the drill is an icon glyph (chevron), so the header keeps to the
    title + label pair instead of spending a row on a "back" word. */
 .od-back { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-left: -7px; padding: 0; background: none; border: 0; color: var(--txt-dim); cursor: pointer; }
-.od-back:hover { color: var(--txt); }
+.od-back:active { color: var(--txt); }
+@media (hover: hover) {
+  .od-back:hover { color: var(--txt); }
+}
 
 /* The column scrolls (long reveal text, landscape) but is budgeted to fit. */
 .od-body {
@@ -3024,9 +3194,15 @@ body.panning * {
 .od-actions { display: flex; gap: 8px; }
 .od-btn { flex: 1; padding: 9px; border-radius: 0; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); border: 1px solid var(--contour); cursor: pointer; transition: filter 0.1s ease, background 0.1s ease; }
 .od-btn.primary { background: var(--contour); color: var(--bg2); }
-.od-btn.primary:hover { filter: brightness(1.1); }
+.od-btn.primary:active { filter: brightness(1.1); }
+@media (hover: hover) {
+  .od-btn.primary:hover { filter: brightness(1.1); }
+}
 .od-btn.ghost { background: var(--bg); color: var(--txt); }
-.od-btn.ghost:hover { background: var(--bg3); }
+.od-btn.ghost:active { background: var(--bg3); }
+@media (hover: hover) {
+  .od-btn.ghost:hover { background: var(--bg3); }
+}
 .od-btn:disabled { opacity: 0.4; cursor: default; }
 .od-reveal { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.45; }
 .od-reveal b { color: var(--green); font-weight: var(--fw-bold); }
@@ -3040,7 +3216,10 @@ body.panning * {
 
 /* Drill entry buttons (clinic bar + detail panel) */
 .od-start { flex-shrink: 0; padding: 7px 12px; border-radius: 0; background: var(--coral); color: #16140f; border: 1px solid var(--contour); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; white-space: nowrap; }
-.od-start:hover { filter: brightness(1.08); }
+.od-start:active { filter: brightness(1.08); }
+@media (hover: hover) {
+  .od-start:hover { filter: brightness(1.08); }
+}
 .cd-drill { width: 100%; margin-top: 6px; }
 
 /* ── Opening Clinic + Drill: mobile (stack the panes, keep tabs on-screen) ── */
@@ -3175,7 +3354,10 @@ body.panning * {
 .play-side .ps-block { padding: 11px 14px; }
 .ps-moves-block .ps-h { display: flex; align-items: baseline; justify-content: space-between; }
 .ps-live-link { background: none; border: 0; padding: 0; color: var(--coral); cursor: pointer; font: inherit; font-size: var(--fs-base); text-transform: none; letter-spacing: 0; }
-.ps-live-link:hover { color: var(--contour); }
+.ps-live-link:active { color: var(--contour); }
+@media (hover: hover) {
+  .ps-live-link:hover { color: var(--contour); }
+}
 /* position:relative so the auto-scroll effect's cur.offsetTop is measured
    against this scroll container, not some distant positioned ancestor. */
 .ps-moves { position: relative; min-height: 88px; max-height: 240px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
@@ -3184,9 +3366,12 @@ body.panning * {
 .ps-move-row { display: grid; grid-template-columns: 30px 1fr 1fr; gap: 4px; align-items: center; }
 .ps-move-no { color: var(--txt-dim); font-size: var(--fs-base); text-align: right; }
 .ps-ply { text-align: left; background: none; border: 0; padding: 3px 7px; border-radius: 3px; color: var(--txt); font: inherit; font-size: var(--fs-base); font-weight: var(--fw-bold); cursor: pointer; font-variant-numeric: tabular-nums; }
-.ps-ply:hover { background: var(--bg3); }
+.ps-ply:active { background: var(--bg3); }
+@media (hover: hover) {
+  .ps-ply:hover { background: var(--bg3); }
+}
 .ps-ply.cur { background: var(--contour); color: var(--bg); }
-.ps-ply-empty, .ps-ply-empty:hover { cursor: default; background: none; }
+.ps-ply-empty, .ps-ply-empty:hover, .ps-ply-empty:active { cursor: default; background: none; }
 .ps-review-note { margin-top: 8px; font-size: var(--fs-base); color: var(--coral); line-height: 1.4; }
 .ps-h { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); margin-bottom: 10px; }
 /* The status header reads as a bracket title, matching the puzzle/coords prompts. */
@@ -3198,11 +3383,17 @@ body.panning * {
    at the right edge (no dead space) and the value stays centred. */
 .ps-elo-val { flex: 1; font-size: var(--fs-title); font-weight: var(--fw-bold); text-align: center; font-variant-numeric: tabular-nums; }
 .ps-step { width: 34px; height: 34px; border: 1px solid var(--contour); border-radius: 2px; background: var(--bg); color: var(--txt); font-size: 18px; line-height: 1; cursor: pointer; }
-.ps-step:hover:not(:disabled) { border-color: var(--contour); }
+.ps-step:active:not(:disabled) { border-color: var(--contour); }
+@media (hover: hover) {
+  .ps-step:hover:not(:disabled) { border-color: var(--contour); }
+}
 .ps-step:disabled { opacity: 0.4; cursor: default; }
 .ps-elo-note { margin-top: 9px; font-size: var(--fs-base); color: var(--txt-dim); }
 .ps-link { background: none; border: 0; padding: 0; color: var(--coral); cursor: pointer; text-decoration: underline; font: inherit; }
-.ps-link:hover { color: var(--contour); }
+.ps-link:active { color: var(--contour); }
+@media (hover: hover) {
+  .ps-link:hover { color: var(--contour); }
+}
 .ps-hint { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.5; }
 .ps-result { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
 .ps-verdict { border-radius: 4px; padding: 10px 12px; background: var(--bg3); }
@@ -3234,7 +3425,10 @@ body.panning * {
   border-bottom: 1px dashed var(--border2);
   font-variant-numeric: tabular-nums;
 }
-.ps-best-link:hover:not(:disabled) { border-bottom-color: var(--coral); }
+.ps-best-link:active:not(:disabled) { border-bottom-color: var(--coral); }
+@media (hover: hover) {
+  .ps-best-link:hover:not(:disabled) { border-bottom-color: var(--coral); }
+}
 .ps-best-link:disabled { cursor: default; border-bottom-color: transparent; }
 
 /* ── "Where the best move leads" popup (portalled to <body>) ───────────── */
@@ -3273,7 +3467,10 @@ body.panning * {
   background: none; border: 1px solid transparent; border-radius: 3px;
   color: var(--txt-dim); font-size: 14px; cursor: pointer;
 }
-.pv-x:hover { color: var(--txt); border-color: var(--border); }
+.pv-x:active { color: var(--txt); border-color: var(--border); }
+@media (hover: hover) {
+  .pv-x:hover { color: var(--txt); border-color: var(--border); }
+}
 .pv-board { line-height: 0; }
 /* Engine eval bar to the left of the popup board — its height matches the board
    via the stretched flex row; the fill is bottom-anchored and animates. */
@@ -3301,7 +3498,10 @@ body.panning * {
 
 .ps-controls { display: flex; flex-direction: column; gap: 10px; }
 .ps-btn { padding: 9px 12px; border: 1px solid var(--contour); border-radius: 2px; background: var(--bg); color: var(--txt); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; }
-.ps-btn:hover:not(:disabled) { border-color: var(--contour); }
+.ps-btn:active:not(:disabled) { border-color: var(--contour); }
+@media (hover: hover) {
+  .ps-btn:hover:not(:disabled) { border-color: var(--contour); }
+}
 .ps-btn:disabled { opacity: 0.4; cursor: default; }
 
 /* Print-poster dialog — live preview + orientation / coverage options. */
@@ -3346,7 +3546,10 @@ body.panning * {
 .ps-btn.on { border-color: var(--coral); color: var(--coral); }
 /* Primary action (New game): filled coral, so it reads as the main button. */
 .ps-btn.prim { background: var(--coral); color: #16140f; border-color: var(--contour); }
-.ps-btn.prim:hover:not(:disabled) { filter: brightness(1.05); border-color: var(--contour); }
+.ps-btn.prim:active:not(:disabled) { filter: brightness(1.05); border-color: var(--contour); }
+@media (hover: hover) {
+  .ps-btn.prim:hover:not(:disabled) { filter: brightness(1.05); border-color: var(--contour); }
+}
 .ps-new-label { display: block; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: var(--track-caps); }
 
 /* Time-control picker — a 3×2 grid of .ps-btn chips (Label-styled, coral .on
@@ -3400,7 +3603,10 @@ body.panning * {
   transition: background 0.1s;
 }
 .ct-nav-btn.on { background: var(--coral); color: #16140f; border-color: var(--contour); }
-.ct-nav-btn:hover:not(.on) { background: var(--bg3); }
+.ct-nav-btn:active:not(.on) { background: var(--bg3); }
+@media (hover: hover) {
+  .ct-nav-btn:hover:not(.on) { background: var(--bg3); }
+}
 
 /* Session stats (no button — Start/Finish lives in the result card) */
 .ct-inline-stats { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: baseline; margin-top: 4px; }
@@ -3494,13 +3700,17 @@ body.panning * {
   cursor: pointer;
   transition: all 0.12s var(--ease-snap);
 }
-.ct-color-btn:hover:not(:disabled) { background: var(--contour); color: var(--bg2); }
+@media (hover: hover) {
+  .ct-color-btn:hover:not(:disabled) { background: var(--contour); color: var(--bg2); }
+}
 .ct-color-btn:active { transform: translateY(1px); }
 .ct-color-btn:disabled { opacity: 0.4; cursor: default; }
 .ct-color-btn:disabled:active { transform: none; }
 /* The Dark button is tinted the dark-square green as a colour cue. */
 .ct-color-btn.dark { background: var(--sq-d); color: #fff; }
-.ct-color-btn.dark:hover:not(:disabled) { background: var(--sq-d); color: #fff; filter: brightness(0.94); }
+@media (hover: hover) {
+  .ct-color-btn.dark:hover:not(:disabled) { background: var(--sq-d); color: #fff; filter: brightness(0.94); }
+}
 
 /* Find-mode board — sized to exactly match the regular chess board. Like that
    board, the 1px contour sits *outside* the 8 squares (content-box), so the
@@ -3511,7 +3721,10 @@ body.panning * {
 .ct-board.idle .ct-sq { cursor: default; }
 .ct-sq.l { background: var(--sq-l); }
 .ct-sq.d { background: var(--sq-d); }
-.ct-sq:hover { filter: brightness(1.06); }
+.ct-sq:active { filter: brightness(1.06); }
+@media (hover: hover) {
+  .ct-sq:hover { filter: brightness(1.06); }
+}
 .ct-sq.ok { box-shadow: inset 0 0 0 5px var(--green); }
 .ct-sq.fail { box-shadow: inset 0 0 0 5px var(--red); }
 
