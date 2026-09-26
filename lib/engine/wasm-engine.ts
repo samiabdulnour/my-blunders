@@ -32,6 +32,9 @@ const ENGINE_URL = '/stockfish/stockfish-18-lite-single.js';
 const BOOT_TIMEOUT_MS = 30_000;
 /** Per-search ceiling, mirroring the server engine's safety timeout. */
 const SEARCH_TIMEOUT_MS = 30_000;
+/** After a timed-out search is told to `stop`, how long to wait for it to
+ *  acknowledge with `bestmove` before releasing the queue anyway. */
+const STOP_DRAIN_MS = 3_000;
 
 class WasmEngine implements ChessEngine {
   private worker: Worker | null = null;
@@ -115,8 +118,23 @@ class WasmEngine implements ChessEngine {
         }
         const search = new UciSearch(fen, depth);
         const timer = setTimeout(() => {
-          this.onLine = null;
-          reject(new Error(`Stockfish timed out at depth ${depth}`));
+          // Halt the search before giving up the queue slot. Stockfish keeps
+          // thinking until told otherwise, and its late `bestmove` would land in
+          // the *next* search's handler — answering a different position. (Easy
+          // to hit on a phone: iOS suspends the WebView mid-search, and on resume
+          // this timer has long expired.) So: `stop`, swallow output until that
+          // `bestmove` arrives, then reject. The drain is itself bounded in case
+          // the worker is wedged.
+          const fail = () => {
+            clearTimeout(drain);
+            this.onLine = null;
+            reject(new Error(`Stockfish timed out at depth ${depth}`));
+          };
+          const drain = setTimeout(fail, STOP_DRAIN_MS);
+          this.onLine = (line) => {
+            if (line.startsWith('bestmove')) fail();
+          };
+          worker.postMessage('stop');
         }, SEARCH_TIMEOUT_MS);
 
         this.onLine = (line) => {

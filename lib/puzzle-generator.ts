@@ -61,8 +61,11 @@ export const THRESHOLDS = {
   blunderCp: 200,
 };
 
-/** Plies of the engine PV we keep as a puzzle's solution / continuation line. */
-const SOLUTION_MAX_PLIES = 8;
+/** Plies of the engine PV we keep as a puzzle's solution / continuation line.
+ *  12 plies ≈ 6 full moves, enough to show where the winning line actually
+ *  leads without dragging. (Only affects games analysed from here on — puzzles
+ *  already in storage keep the length they were generated with.) */
+const SOLUTION_MAX_PLIES = 12;
 
 /** Centipawns the engine line must favor the user by for a sac to count as a
  *  winning combination (mate always qualifies). */
@@ -88,25 +91,76 @@ function evalToCp(m: ParsedMove): number {
   return m.evalCp ?? 0;
 }
 
+/** Depth of the shallow pass that *finds* candidate mistakes in a game that
+ *  ships no evals (chess.com, un-analysed Lichess games, uploads). Every
+ *  candidate is then confirmed at VERIFY_DEPTH, so this only decides *where to
+ *  look*, never what a puzzle says.
+ *
+ *  Chosen by measurement, not taste (lite single-thread WASM build, 8 real
+ *  games / 401 plies, against the old score-every-ply-at-18 pipeline):
+ *    per position: depth 12 ≈ 12 ms · 14 ≈ 31 ms · 16 ≈ 86 ms · 18 ≈ 227 ms
+ *    scan 12 → 16 of the old 18 puzzles, 29.5 s, first puzzle at 3.3 s
+ *    scan 14 → 16 of 18 as well,         40.0 s, first puzzle at 4.6 s
+ *    old     → 18,                     128–162 s, first puzzle at ~11 s
+ *  Depth 14 bought no recall — the misses are mistakes only a depth-17+ search
+ *  sees, plus coin-flips sitting on the 1.00-pawn line (which also differ
+ *  between two runs of the old pipeline). A depth-16 "second opinion" stage was
+ *  tried and removed: it threw out real mistakes (13 of 18). */
+export const SCAN_DEPTH = 12;
+
+/** Depth that confirms a candidate and computes its solution line. Every puzzle
+ *  that is emitted carries verdicts from this depth, scanned game or not. */
+export const VERIFY_DEPTH = 18;
+
+/** A scan-depth drop this big earns a deep look. Deliberately below
+ *  `THRESHOLDS.mistakeCp`: a shallow search under-reads some mistakes, and a
+ *  false candidate only costs two deep searches before it is thrown out. */
+const SCAN_CANDIDATE_CP = 60;
+
+export interface AnalyseGameOptions {
+  /** Called the moment a puzzle is confirmed — mid-game, not at the end — so
+   *  the first puzzle reaches the UI seconds after an import starts. */
+  onPuzzle?: (puzzle: Puzzle) => void;
+  /** Scan progress through the game, in plies. Only fires for scanned games. */
+  onProgress?: (done: number, total: number) => void;
+  /** Polled before every engine search; return true to abandon the game (the
+   *  import was cleared or superseded). Stops within one search, not one game. */
+  shouldStop?: () => boolean;
+  /** Score eval-less games with the engine first. Default true. With false, a
+   *  game without evals yields nothing (the pre-scan behaviour). */
+  scan?: boolean;
+}
+
 /**
- * Walk a parsed game and turn each critical mistake by `username` into a
- * Puzzle. For each critical position we ask the engine for the best move
- * and store it as the puzzle's answer.
+ * Turn each critical mistake `username` made in `game` into a Puzzle, streaming
+ * every puzzle out as soon as it is confirmed.
  *
- * "Critical" means: the user's move dropped the eval (from their POV) by
- * at least `THRESHOLDS.mistakeCp` centipawns.
+ * "Critical" means the user's move dropped the eval (from their POV) by at least
+ * `THRESHOLDS.mistakeCp`. Where the evals come from decides the cost:
  *
- * The `engine` is injected so this runs unchanged on the server (native
- * Stockfish) or entirely in the browser (WASM worker). Note that *detecting*
- * mistakes needs no engine at all — that comes from the `[%eval]` annotations
- * Lichess ships in the PGN; the engine is only consulted to find the best-move
- * answer at each critical position.
+ *   · Games that ship `[%eval]` (Lichess server analysis) need no scan — their
+ *     evals are authoritative, so each mistake costs one deep search (its line).
+ *   · Everything else is scanned ply by ply at SCAN_DEPTH, and a candidate is
+ *     confirmed on the spot with two deep searches (the position faced → best
+ *     line + eval before; the position reached → eval after). The deep numbers
+ *     replace the shallow ones, so the stored drop is a VERIFY_DEPTH verdict.
+ *
+ * The old pipeline scored *every* ply at depth 18 before looking for a single
+ * mistake: ~19× the engine work, and nothing to show until a whole game was
+ * done — minutes per game on a phone.
+ *
+ * Mutates `game.moves` evals in place (like `annotateEvalsIfMissing`), so the
+ * opening-tree summaries downstream still see an annotated game. The `engine`
+ * is injected so this runs unchanged on native Stockfish or the WASM worker.
  */
-export async function generatePuzzlesFromGame(
+export async function analyseGame(
   game: ParsedGame,
   username: string,
-  engine: ChessEngine
+  engine: ChessEngine,
+  opts: AnalyseGameOptions = {}
 ): Promise<Puzzle[]> {
+  const { onPuzzle, onProgress, shouldStop, scan = true } = opts;
+
   // Identify which color the user played in this game.
   let userColor: 'w' | 'b' | null = null;
   if (isUser(game.white, username)) userColor = 'w';
@@ -117,33 +171,43 @@ export async function generatePuzzlesFromGame(
   const moves = game.moves;
   const speed = deriveSpeed(game.headers);
   const timeControl = formatTimeControl(game.headers['timecontrol'] ?? '');
+  // Eval is white-positive; flip to side-relative so a drop is always positive.
+  const sideSign = userColor === 'w' ? 1 : -1;
+  const scanned = scan && !moves.some((m) => m.evalCp !== null || m.mate !== null);
 
   for (let i = 0; i < moves.length; i++) {
     const mv = moves[i];
+
+    if (scanned) {
+      if (shouldStop?.()) break;
+      try {
+        const res = await engine.analyze({ fen: mv.fenAfter, depth: SCAN_DEPTH });
+        const top = res.lines[0];
+        if (top) {
+          mv.evalCp = top.cp;
+          mv.mate = top.mate;
+        }
+      } catch {
+        // Leave this ply null — it just won't be eligible to spawn a puzzle.
+      }
+      onProgress?.(i + 1, moves.length);
+    }
+
     if (mv.color !== userColor) continue; // only the user's moves
     if (i === 0) continue; // need an "eval before" reference
-
-    const prev = moves[i - 1];
-    const evalBeforeCp = evalToCp(prev); // eval at the position the user faced
-    const evalAfterCp = evalToCp(mv);
-
-    // Eval is white-positive; flip to side-relative so a drop is always
-    // positive regardless of color.
-    const sideSign = userColor === 'w' ? 1 : -1;
-    const evalBeforeSide = evalBeforeCp * sideSign;
-    const evalAfterSide = evalAfterCp * sideSign;
-    const dropCp = evalBeforeSide - evalAfterSide;
-
-    if (dropCp < THRESHOLDS.mistakeCp) continue;
-
     // Skip the opening (first 6 plies) — almost always book noise.
     if (mv.ply <= 6) continue;
 
+    const prev = moves[i - 1]; // its eval is the position the user faced
+    let dropCp = (evalToCp(prev) - evalToCp(mv)) * sideSign;
+    if (dropCp < (scanned ? SCAN_CANDIDATE_CP : THRESHOLDS.mistakeCp)) continue;
+
     // Ask the engine for the best *line* at the position the user faced — we
     // keep the whole principal variation, not just the first move.
+    if (shouldStop?.()) break;
     let analysis;
     try {
-      analysis = await engine.analyze({ fen: mv.fenBefore, depth: 18 });
+      analysis = await engine.analyze({ fen: mv.fenBefore, depth: VERIFY_DEPTH });
     } catch (err) {
       console.warn(`Skipping puzzle at ply ${mv.ply}: ${(err as Error).message}`);
       continue;
@@ -153,6 +217,29 @@ export async function generatePuzzlesFromGame(
     const best = pv[0] ?? null;
     if (!best) continue;
     if (best === mv.san) continue; // engine agrees with the user — no puzzle
+    if (!isLegalSan(mv.fenBefore, best)) continue; // never ship an unsolvable puzzle
+
+    if (scanned) {
+      // Confirm the shallow verdict at depth. `fenBefore` is the position after
+      // `prev`, so the search above already is its deep eval; one more search
+      // scores the position the user's move reached.
+      if (top && (top.cp !== null || top.mate !== null)) {
+        prev.evalCp = top.cp;
+        prev.mate = top.mate;
+      }
+      if (shouldStop?.()) break;
+      try {
+        const after = (await engine.analyze({ fen: mv.fenAfter, depth: VERIFY_DEPTH })).lines[0];
+        if (after && (after.cp !== null || after.mate !== null)) {
+          mv.evalCp = after.cp;
+          mv.mate = after.mate;
+        }
+      } catch {
+        // Keep the scan eval for this ply.
+      }
+      dropCp = (evalToCp(prev) - evalToCp(mv)) * sideSign;
+      if (dropCp < THRESHOLDS.mistakeCp) continue; // the scan over-read it
+    }
 
     // Keep a capped slice of the PV as the solution / continuation line, and
     // flag combinations (sacrifices that only pay off because of the follow-up).
@@ -164,7 +251,7 @@ export async function generatePuzzlesFromGame(
 
     const opponent = userColor === 'w' ? game.black : game.white;
     const player = userColor === 'w' ? game.white : game.black;
-    puzzles.push({
+    const puzzle: Puzzle = {
       id: `${game.gameId ?? 'unknown'}_${mv.ply}`,
       gameId: game.gameId ?? 'unknown',
       site: game.site ?? 'https://lichess.org',
@@ -178,22 +265,49 @@ export async function generatePuzzlesFromGame(
       line,
       combination,
       mistakeMove: mv.san,
-      evalBefore: evalBeforeSide / 100, // back to pawn units, side-relative
-      evalAfter: evalAfterSide / 100,
+      // The real game from the mistake onward (mistakeMove first), same cap as
+      // the engine line — so the panel can replay how the game actually went.
+      playedLine: moves.slice(i, i + SOLUTION_MAX_PLIES).map((m) => m.san),
+      evalBefore: (evalToCp(prev) * sideSign) / 100, // pawn units, side-relative
+      evalAfter: (evalToCp(mv) * sideSign) / 100,
       drop: dropCp / 100,
       type: dropCp >= THRESHOLDS.blunderCp ? 'blunder' : 'mistake',
       speed,
       timeControl,
-    });
+    };
+    puzzles.push(puzzle);
+    onPuzzle?.(puzzle);
   }
 
   return puzzles;
 }
 
-/** Depth for the eval-annotation pass on engine-less PGNs (chess.com / uploads).
- *  Matches the best-move search depth so the detected drop and the best-move
- *  verdict are computed at the same strength — no depth mismatch that could let
- *  a subtler mistake slip through. Tune for the time vs. quality ratio. */
+/** True when `san` can be played in `fen`. */
+function isLegalSan(fen: string, san: string): boolean {
+  try {
+    return !!new Chess(fen).move(san);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * All of a game's puzzles at once, from the evals the game already carries —
+ * no scan, so a game without evals yields nothing. Kept for the server import
+ * routes, which feed it Lichess-annotated games; the in-app importer uses
+ * `analyseGame` directly (scan + streaming).
+ */
+export function generatePuzzlesFromGame(
+  game: ParsedGame,
+  username: string,
+  engine: ChessEngine
+): Promise<Puzzle[]> {
+  return analyseGame(game, username, engine, { scan: false });
+}
+
+/** Depth for a *full* eval-annotation pass (every ply, same strength as the
+ *  best-move search). Thorough but slow — ~19× a SCAN_DEPTH pass — so the in-app
+ *  importer no longer uses it; see `analyseGame`. */
 export const ANNOTATE_DEPTH = 18;
 
 /**

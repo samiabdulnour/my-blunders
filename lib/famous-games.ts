@@ -3,9 +3,9 @@
  * game" mode: you replay the moves on the board for both sides, which trains
  * board vision and pattern memory on canonical games.
  *
- * Moves are space-separated SAN from the start. Every game is validated against
- * chess.js (scripts/validate-games) — an illegal move would break the replay, so
- * the list only ships fully-legal games.
+ * Moves are space-separated SAN from the start. Every game has been replayed
+ * through chess.js. An illegal move would break the replay, so the list only
+ * ships fully-legal games.
  */
 export interface FamousGame {
   id: string;
@@ -30,7 +30,7 @@ export const FAMOUS_GAMES: FamousGame[] = [
     year: 1858,
     result: '1-0',
     context:
-      'Morphy played this in a private box at the Paris Opera, reportedly while watching the performance. It is the textbook example of rapid development and open lines — every piece joins a hunt that ends in a model back-rank mate.',
+      'Morphy played this in a private box at the Paris Opera, reportedly while watching the performance. It is the textbook example of rapid development and open lines. Every piece joins a hunt that ends in a model back-rank mate.',
     san: 'e4 e5 Nf3 d6 d4 Bg4 dxe5 Bxf3 Qxf3 dxe5 Bc4 Nf6 Qb3 Qe7 Nc3 c6 Bg5 b5 Nxb5 cxb5 Bxb5+ Nbd7 O-O-O Rd8 Rxd7 Rxd7 Rd1 Qe6 Bxd7+ Nxd7 Qb8+ Nxb8 Rd8#',
   },
   {
@@ -41,7 +41,7 @@ export const FAMOUS_GAMES: FamousGame[] = [
     year: 1851,
     result: '1-0',
     context:
-      'A casual game during the first international tournament in London. Anderssen gave up a bishop, both rooks and the queen, then mated with his three remaining minor pieces — the defining masterpiece of Romantic-era chess.',
+      'A casual game during the first international tournament in London. Anderssen gave up a bishop, both rooks and the queen, then mated with his three remaining minor pieces. The defining masterpiece of Romantic-era chess.',
     san: 'e4 e5 f4 exf4 Bc4 Qh4+ Kf1 b5 Bxb5 Nf6 Nf3 Qh6 d3 Nh5 Nh4 Qg5 Nf5 c6 g4 Nf6 Rg1 cxb5 h4 Qg6 h5 Qg5 Qf3 Ng8 Bxf4 Qf6 Nc3 Bc5 Nd5 Qxb2 Bd6 Bxg1 e5 Qxa1+ Ke2 Na6 Nxg7+ Kd8 Qf6+ Nxf6 Be7#',
   },
   {
@@ -52,7 +52,7 @@ export const FAMOUS_GAMES: FamousGame[] = [
     year: 1852,
     result: '1-0',
     context:
-      'Anderssen again, against his student Dufresne. The cascading sacrifices that finish with a queen offer and a minor-piece mate were called "evergreen" by Wilhelm Steinitz — a brilliancy that never fades.',
+      'Anderssen again, against his student Dufresne. The cascading sacrifices that finish with a queen offer and a minor-piece mate were called "evergreen" by Wilhelm Steinitz. A brilliancy that never fades.',
     san: 'e4 e5 Nf3 Nc6 Bc4 Bc5 b4 Bxb4 c3 Ba5 d4 exd4 O-O d3 Qb3 Qf6 e5 Qg6 Re1 Nge7 Ba3 b5 Qxb5 Rb8 Qa4 Bb6 Nbd2 Bb7 Ne4 Qf5 Bxd3 Qh5 Nf6+ gxf6 exf6 Rg8 Rad1 Qxf3 Rxe7+ Nxe7 Qxd7+ Kxd7 Bf5+ Ke8 Bd7+ Kf8 Bxe7#',
   },
   {
@@ -63,7 +63,7 @@ export const FAMOUS_GAMES: FamousGame[] = [
     year: 1910,
     result: '1-0',
     context:
-      'A nine-move Caro-Kann miniature from Vienna that ends with a queen sacrifice drawing the king into a minor-piece mating net — one of the most quoted short games in chess.',
+      'A nine-move Caro-Kann miniature from Vienna that ends with a queen sacrifice drawing the king into a minor-piece mating net. One of the most quoted short games in chess.',
     san: 'e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nf6 Qd3 e5 dxe5 Qa5+ Bd2 Qxe5 O-O-O Nxe4 Qd8+ Kxd8 Bg5+ Kc7 Bd8#',
   },
   {
@@ -74,7 +74,7 @@ export const FAMOUS_GAMES: FamousGame[] = [
     year: 1750,
     result: '1-0',
     context:
-      'The oldest game here. Légal sacrifices his queen to mate with three minor pieces — the origin of the "Légal trap" that still catches players who carelessly pin the f3-knight with a bishop.',
+      'The oldest game here. Légal sacrifices his queen to mate with three minor pieces. The origin of the "Légal trap" that still catches players who carelessly pin the f3-knight with a bishop.',
     san: 'e4 e5 Bc4 d6 Nf3 Bg4 Nc3 g6 Nxe5 Bxd1 Bxf7+ Ke7 Nd5#',
   },
   {
@@ -107,7 +107,7 @@ export const FAMOUS_GAMES: FamousGame[] = [
     year: 1972,
     result: '1-0',
     context:
-      'Reykjavík 1972, the Cold War "Match of the Century". Fischer — almost always a 1.e4 player — opened 1.c4 and produced a flawless positional masterpiece; Spassky reportedly joined the audience in applauding at the end.',
+      'Reykjavík 1972, the Cold War "Match of the Century". Fischer, almost always a 1.e4 player, opened 1.c4 and produced a flawless positional masterpiece; Spassky reportedly joined the audience in applauding at the end.',
     san: 'c4 e6 Nf3 d5 d4 Nf6 Nc3 Be7 Bg5 O-O e3 h6 Bh4 b6 cxd5 Nxd5 Bxe7 Qxe7 Nxd5 exd5 Rc1 Be6 Qa4 c5 Qa3 Rc8 Bb5 a6 dxc5 bxc5 O-O Ra7 Be2 Nd7 Nd4 Qf8 Nxe6 fxe6 e4 d4 f4 Qe7 e5 Rb8 Bc4 Kh8 Qh3 Nf8 b3 a5 f5 exf5 Rxf5 Nh7 Rcf1 Qd8 Qg3 Re7 h4 Rbb7 e6 Rbc7 Qe5 Qe8 a4 Qd8 R1f2 Qe8 R2f3 Qd8 Bd3 Qe8 Qe4 Nf6 Rxf6 gxf6 Rxf6 Kg8 Bc4 Kh8 Qf4',
   },
   {
@@ -118,7 +118,7 @@ export const FAMOUS_GAMES: FamousGame[] = [
     year: 1907,
     result: '0-1',
     context:
-      'Łódź 1907. Rubinstein answered Rotlewi\'s kingside build-up with a storm of sacrifices — queen, then both bishops and a rook — leaving the white king mated by the bare pieces. One of the most beautiful combinations ever played.',
+      'Łódź 1907. Rubinstein answered Rotlewi\'s kingside build-up with a storm of sacrifices, queen, then both bishops and a rook, leaving the white king mated by the bare pieces. One of the most beautiful combinations ever played.',
     san: 'd4 d5 Nf3 e6 e3 c5 c4 Nc6 Nc3 Nf6 dxc5 Bxc5 a3 a6 b4 Bd6 Bb2 O-O Qd2 Qe7 Bd3 dxc4 Bxc4 b5 Bd3 Rd8 Qe2 Bb7 O-O Ne5 Nxe5 Bxe5 f4 Bc7 e4 Rac8 e5 Bb6+ Kh1 Ng4 Be4 Qh4 g3 Rxc3 gxh4 Rd2 Qxd2 Bxe4+ Qg2 Rh3',
   },
   {
@@ -140,7 +140,7 @@ export const FAMOUS_GAMES: FamousGame[] = [
     year: 1938,
     result: '1-0',
     context:
-      'AVRO 1938. Botvinnik\'s knight sacrifice on h5 and the storming e-pawn against the legendary Capablanca produced one of the most famous combinations in chess history — a future World Champion overcoming a past one.',
+      'AVRO 1938. Botvinnik\'s knight sacrifice on h5 and the storming e-pawn against the legendary Capablanca produced one of the most famous combinations in chess history. A future World Champion overcoming a past one.',
     san: 'd4 Nf6 c4 e6 Nc3 Bb4 e3 d5 a3 Bxc3+ bxc3 c5 cxd5 exd5 Bd3 O-O Ne2 b6 O-O Ba6 Bxa6 Nxa6 Bb2 Qd7 a4 Rfe8 Qd3 c4 Qc2 Nb8 Rae1 Nc6 Ng3 Na5 f3 Nb3 e4 Qxa4 e5 Nd7 Qf2 g6 f4 f5 exf6 Nxf6 f5 Rxe1 Rxe1 Re8 Re6 Rxe6 fxe6 Kg7 Qf4 Qe8 Qe5 Qe7 Ba3 Qxa3 Nh5+ gxh5 Qg5+ Kf8 Qxf6+ Kg8 e7 Qc1+ Kf2 Qc2+ Kg3 Qd3+ Kh4 Qe4+ Kxh5 Qe2+ Kh4 Qe4+ g4 Qe1+ Kh5',
   },
   {
@@ -162,7 +162,7 @@ export const FAMOUS_GAMES: FamousGame[] = [
     year: 1912,
     result: '0-1',
     context:
-      'Breslau 1912. Marshall\'s queen sacrifice Qg3!! is one of the most celebrated moves ever played — legend has it the audience showered the board with gold coins. The queen cannot be captured without immediate mate.',
+      'Breslau 1912. Marshall\'s queen sacrifice Qg3!! is one of the most celebrated moves ever played. Legend has it the audience showered the board with gold coins. The queen cannot be captured without immediate mate.',
     san: 'd4 e6 e4 d5 Nc3 c5 Nf3 Nc6 exd5 exd5 Be2 Nf6 O-O Be7 Bg5 O-O dxc5 Be6 Nd4 Bxc5 Nxe6 fxe6 Bg4 Qd6 Bh3 Rae8 Qd2 Bb4 Bxf6 Rxf6 Rad1 Qc5 Qe2 Bxc3 bxc3 Qxc3 Rxd5 Nd4 Qh5 Ref8 Re5 Rh6 Qg5 Rxh3 Rc5 Qg3',
   },
   {
@@ -173,7 +173,7 @@ export const FAMOUS_GAMES: FamousGame[] = [
     year: 1970,
     result: '0-1',
     context:
-      'USSR vs Rest of the World, Belgrade 1970. Spassky sacrificed a rook on h1 then promoted a pawn, demolishing Larsen in 19 moves — a thunderbolt attack that has been called one of the most spectacular short games of the 20th century.',
+      'USSR vs Rest of the World, Belgrade 1970. Spassky sacrificed a rook on h1 then promoted a pawn, demolishing Larsen in 19 moves. A thunderbolt attack that has been called one of the most spectacular short games of the 20th century.',
     san: 'b3 e5 Bb2 Nc6 c4 Nf6 Nf3 e4 Nd4 Bc5 Nxc6 dxc6 e3 Bf5 Qc2 Qe7 Be2 O-O-O f4 Ng4 g3 h5 h3 h4 hxg4 hxg3 Rg1 Rh1 Rxh1 g2 Rf1 Qh4+ Kd1 gxf1=Q+ Bxf1 Bxg4+ Be2 Qh1',
   },
 ];

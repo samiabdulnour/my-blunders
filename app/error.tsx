@@ -29,7 +29,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
   return (
     <div className="err-page">
       <div className="err-card">
-        <div className="err-eyebrow">my·blunders</div>
+        <div className="err-eyebrow">My Blunders</div>
         <h1 className="err-title">Something went wrong.</h1>
         <p className="err-sub">
           The app hit an unexpected error. Try again — if it keeps happening, resetting your local

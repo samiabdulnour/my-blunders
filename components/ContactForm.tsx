@@ -25,7 +25,7 @@ export function ContactForm() {
 
   const send = () => {
     if (!canSend) return;
-    const subject = `my·blunders — question${name.trim() ? ` from ${name.trim()}` : ''}`;
+    const subject = `My Blunders — question${name.trim() ? ` from ${name.trim()}` : ''}`;
     const body = [
       message.trim(),
       '',

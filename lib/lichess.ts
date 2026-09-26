@@ -36,7 +36,7 @@ export interface FetchLichessPgnOpts {
 }
 
 /** Absolute upper bound we enforce on the server, regardless of client input. */
-export const LICHESS_MAX_GAMES = 50;
+export const LICHESS_MAX_GAMES = 100;
 
 /**
  * Fetch up to `max` games for `username` from Lichess as a single PGN blob.

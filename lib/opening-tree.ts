@@ -26,11 +26,13 @@ const PERF = { green: 52, amber: 44 };
 /** A node becomes a "hotspot" at this many blundered visits. */
 const HOTSPOT_BLUNDERS = 3;
 /** Pruning / collapsing knobs that keep the tree legible. */
-const MAX_CHILDREN = 3; // siblings rendered per node; the rest fold into +N
+const MAX_CHILDREN = 8; // siblings kept per node in the data; the rest fold into +N
+// (the poster shows up to this many variations per position for a dense, busy
+//  map; the on-screen clinic caps display lower via its own layout maxChildren)
 const MIN_NODE_GAMES = 2; // drop branches seen fewer times than this
 /** Rows (plies) drawn at once before deeper lines fold into a drill badge.
  *  20 plies ≈ move 10 for both colours; the trie holds OPENING_PLIES total. */
-const RENDER_ROWS = 20;
+export const RENDER_ROWS = 20;
 /** A sibling played less than this fraction of the main line is a "gap". */
 const GAP_RATIO = 0.5;
 
@@ -97,6 +99,10 @@ export interface TreeNode {
   gap: GapKind | null;
   /** Branches folded away under this node (renders as a +N badge). */
   collapsed: number;
+  /** Set on the first node of a STUB: a line that didn't earn a column of its
+   *  own, kept only as a few boards so the sheet still says "you tried this".
+   *  Only a packed layout (`layoutTree({ pack })`) knows how to place one. */
+  stub?: boolean;
   children: TreeNode[];
 }
 
@@ -197,8 +203,19 @@ const emptyRaw = (san: string, ply: number): RawNode => ({
  * Build the opening tree for one colour from the game summaries: a trie of
  * positions with per-node tallies, then pruned/collapsed and laid out as
  * `TreeNode`s (FENs + move labels resolved with chess.js).
+ *
+ * `focusPath` (a `pathId`, i.e. a slash-joined SAN path) narrows the poster to
+ * one opening: the tree still runs from the initial position, but every line in
+ * the budget is opened below that node.
  */
-export function buildOpeningTree(games: OpeningGame[], color: 'w' | 'b'): TreeNode {
+export function buildOpeningTree(
+  games: OpeningGame[],
+  color: 'w' | 'b',
+  minNodeGames: number = MIN_NODE_GAMES,
+  maxNodes?: number,
+  budget: PosterBudget = POSTER_BUDGET.portrait,
+  focusPath?: string | null,
+): TreeNode {
   const root = emptyRaw('', 0);
   for (const g of games) {
     if (g.color !== color) continue;
@@ -218,9 +235,181 @@ export function buildOpeningTree(games: OpeningGame[], color: 'w' | 'b'): TreeNo
       node = child;
     }
   }
+  // Optional poster budget. A tidy tree gives every LEAF its own column, so
+  // what fits an A1 at a readable board size is a LINE budget (~two dozen
+  // columns), not a node count — and an unbounded once-played trie also runs to
+  // thousands of nodes (each resolve() below spins up a chess.js instance,
+  // which blew the WebView's memory). So spend the budget on LONG lines,
+  // best-first: always extend the most-played branch point next, and when a
+  // line is opened follow its principal continuation to the very end — the
+  // once-played tail included, so main lines run to move 6, 7, 8, 9 … A couple
+  // of dozen long parallel lines, breadth only where they part: dense and
+  // readable. `maxNodes` stays as a hard memory cap.
+  // `focusPath` posters one opening. The sheet still starts from the initial
+  // position, so the line down to that opening is kept as a trunk — but the
+  // budget is spent entirely BELOW it. Budgeting the whole repertoire and only
+  // then narrowing gave a focused poster whatever share of the lines happened
+  // to fall inside it, which for a side line was one.
+  let focus: RawNode | null = null;
+  const trunk: RawNode[] = [];
+  if (focusPath) {
+    let n: RawNode | undefined = root;
+    for (const san of focusPath.split('/')) {
+      n = n.children.get(san);
+      if (!n) break;
+      trunk.push(n);
+    }
+    focus = n ?? null;
+    if (!focus) trunk.length = 0; // unknown path — poster the whole colour
+  }
+
+  let keep: Set<RawNode> | undefined;
+  let stubRoots: Set<RawNode> | undefined;
+  if (maxNodes && maxNodes > 0) {
+    const kept = new Set<RawNode>([root, ...trunk]);
+    keep = kept;
+    const kidsOf = (n: RawNode) =>
+      [...n.children.values()]
+        .filter((k) => k.games >= minNodeGames)
+        .sort((a, b) => b.games - a.games)
+        .slice(0, MAX_CHILDREN);
+    // First moves follow the poster's own trivia rule (≥2% of games), so a
+    // line is never spent on an oddity the layout would drop anyway.
+    const topFloor = Math.max(minNodeGames, Math.round(root.games * 0.02));
+    const nextIdx = new Map<RawNode, number>(); // per branch point: next child to open
+    // Only the focused node (or the root) may start a line, so nothing above it
+    // competes for the budget.
+    const start = focus ?? root;
+    const frontier: RawNode[] = [start];
+    let lines = 0;
+    const openLine = (start: RawNode) => {
+      let n = start;
+      for (;;) {
+        kept.add(n);
+        frontier.push(n);
+        if (n.ply >= budget.maxPly) break; // past the last drawn row
+        const ks = kidsOf(n);
+        if (!ks.length) break;
+        nextIdx.set(n, 1); // this walk takes the principal child
+        n = ks[0];
+      }
+      lines++;
+    };
+    // Which branch gets the next column. 'parent' (the default) asks "which
+    // branch POINT is busiest?" and opens its next child whatever that child's
+    // own count — so a 600-game 1.e4 opens every reply ever tried, one-offs
+    // included, before a 565-game Sicilian gets its second line. 'branch' asks
+    // "which BRANCH was played most?" and ranks by the child itself.
+    const byBranch = budget.rank === 'branch';
+    /** The next branch in rank order, consumed from its branch point. */
+    const nextBranch = (): RawNode | null => {
+      let best: RawNode | null = null;
+      let bestKids: RawNode[] = [];
+      let bestScore = -1;
+      for (const f of frontier) {
+        if (f.ply >= budget.maxPly) continue; // a split here would be invisible
+        const ks = f === root ? kidsOf(f).filter((k) => k.games >= topFloor) : kidsOf(f);
+        const i = nextIdx.get(f) ?? 0;
+        if (i >= ks.length) continue;
+        const score = byBranch ? ks[i].games : f.games;
+        // Ties: 'parent' keeps its first-found order (unchanged behaviour);
+        // 'branch' prefers the earlier split, which shapes more of the tree.
+        if (!best || score > bestScore || (byBranch && score === bestScore && f.ply < best.ply)) {
+          best = f; bestKids = ks; bestScore = score;
+        }
+      }
+      if (!best) return null;
+      const i = nextIdx.get(best) ?? 0;
+      nextIdx.set(best, i + 1);
+      return bestKids[i];
+    };
+    while (lines < budget.maxLines && kept.size < maxNodes) {
+      const k = nextBranch();
+      if (!k) break;
+      openLine(k);
+    }
+    // Stubs: every branch that didn't earn a column, a few boards each — EARLIEST
+    // split first, then most played. Early splits are whole openings (the
+    // Nimzowitsch you tried once); deep ones are a sideline of something already
+    // on the sheet. They only ever fill free space, so this order decides who
+    // gets it, not what the frequent lines lose. A stub never joins the
+    // frontier — nothing branches off one. (First moves keep the poster's own
+    // ≥2% rule, so no stubs at ply 1.)
+    if (budget.stubs) {
+      stubRoots = new Set<RawNode>();
+      const spare: RawNode[] = [];
+      for (const f of frontier) {
+        if (f === root || f.ply >= budget.maxPly) continue;
+        for (const k of kidsOf(f)) if (!kept.has(k)) spare.push(k);
+      }
+      spare.sort((a, b) => a.ply - b.ply || b.games - a.games);
+      for (const k of spare.slice(0, budget.stubs.count)) {
+        if (kept.size >= maxNodes) break;
+        stubRoots.add(k);
+        let n = k;
+        for (let len = 1; ; len++) {
+          kept.add(n);
+          if (len >= budget.stubs.plies || n.ply >= budget.maxPly) break;
+          const ks = kidsOf(n);
+          if (!ks.length) break;
+          n = ks[0];
+        }
+      }
+    }
+  }
   // Resolve to TreeNodes with FEN/highlight, pruning + collapsing as we go.
-  return resolve(root, new Chess());
+  return resolve(root, new Chess(), '', minNodeGames, keep, stubRoots);
 }
+
+/** Node budget for the poster tree: the most an A1 can meaningfully show at a
+ *  readable board size, and a safe bound on resolve() memory. */
+export const POSTER_MAX_NODES = 1400;
+
+/** A sheet's budget — see POSTER_BUDGET for the shipped values and the why. */
+export interface PosterBudget {
+  maxLines: number;
+  maxPly: number;
+  /** Which branch gets the next column: 'branch' = the most PLAYED branch,
+   *  'parent' = the next child of the busiest branch point (the original rule,
+   *  kept for comparison). See the selection loop in buildOpeningTree. */
+  rank?: 'parent' | 'branch';
+  /** After the line budget is spent, keep up to `count` of the next-ranked
+   *  branches as stubs `plies` boards long (5 from a first reply = "stops after
+   *  move 3"). They cost no column: a packed layout tucks them into the sheet's
+   *  empty corners and drops any that would widen it. */
+  stubs?: { count: number; plies: number };
+}
+
+/** What each A1 sheet shape holds, and how it is chosen.
+ *
+ *  SIZE. A full-depth line needs a column, so lines set the width and plies the
+ *  height: `n` lines draw 116n - 12 units wide (the boards' own bounding box —
+ *  what the poster fits) and `p` plies draw 18 + 140p units tall. Inside the
+ *  margins, the 94pt move-number gutter and the header that is 1518 x 2221pt
+ *  portrait, 2218 x 1521pt landscape:
+ *
+ *    portrait  20 x 24 → height-bound, boards ~63pt, width filled to within 1pt
+ *    landscape 29 x 16 → width-bound,  boards ~63.5pt
+ *
+ *  Same board size either way; each ends on a COMPLETE move (12th / 8th).
+ *  `maxPly` must match the rows the poster actually draws: a line budget spent
+ *  on branches that diverge below the last drawn row buys columns you can't see.
+ *
+ *  CHOICE. `rank: 'branch'` gives the columns to the branches PLAYED most. The
+ *  old rule ranked by how busy the branch POINT was, which on a real 1000-game
+ *  Black repertoire spent 5 of 19 columns on replies tried once — each run to
+ *  move 12 — and left out 1.d4 d5 (69 games) and 1.d4 c5 (63) entirely.
+ *
+ *  STUBS. What doesn't earn a column still appears, a few boards long ("the
+ *  Nimzowitsch you tried once stops after move 3"). They cost no width: see
+ *  packedLayout. 5 boards from a first reply reaches move 3; 40 is simply more
+ *  candidates than ever fit. */
+export const POSTER_BUDGET = {
+  portrait: { maxLines: 20, maxPly: 24, rank: 'branch', stubs: { count: 40, plies: 5 } },
+  landscape: { maxLines: 29, maxPly: 16, rank: 'branch', stubs: { count: 40, plies: 5 } },
+} as const;
+
+export type PosterShape = keyof typeof POSTER_BUDGET;
 
 function bump(n: RawNode, r: 'win' | 'loss' | 'draw') {
   if (r === 'win') n.wins++;
@@ -228,7 +417,7 @@ function bump(n: RawNode, r: 'win' | 'loss' | 'draw') {
   else n.draws++;
 }
 
-function resolve(raw: RawNode, chess: Chess, parentName = ''): TreeNode {
+function resolve(raw: RawNode, chess: Chess, parentName = '', minNodeGames: number = MIN_NODE_GAMES, keep?: Set<RawNode>, stubRoots?: Set<RawNode>): TreeNode {
   const score = raw.games ? ((raw.wins + raw.draws / 2) / raw.games) * 100 : 0;
   let hl: [string, string] | null = null;
   if (raw.san) {
@@ -267,17 +456,18 @@ function resolve(raw: RawNode, chess: Chess, parentName = ''): TreeNode {
     blunders: raw.blunders, hotspot: raw.blunders >= HOTSPOT_BLUNDERS,
     gap: null, collapsed: 0, children: [],
   };
+  if (stubRoots?.has(raw)) node.stub = true;
 
   // Build the full trie to OPENING_PLIES; the render-depth limit lives in
   // layoutTree, so deeper lines stay in the data and are revealed by drilling.
   const kids = [...raw.children.values()].sort((a, b) => b.games - a.games);
-  const kept = kids.filter((k) => k.games >= MIN_NODE_GAMES).slice(0, MAX_CHILDREN);
+  const kept = kids.filter((k) => (keep ? keep.has(k) : k.games >= minNodeGames)).slice(0, MAX_CHILDREN);
   node.collapsed = kids.length - kept.length;
   const mainGames = kept.length ? kept[0].games : 0; // kept is sorted desc
   for (const k of kept) {
     // Children inherit this node's effective opening, so a name only re-appears
     // when the line enters a genuinely different variation.
-    const child = resolve(k, new Chess(chess.fen()), effName);
+    const child = resolve(k, new Chess(chess.fen()), effName, minNodeGames, keep, stubRoots);
     // Gap = a side branch played far less than the main line from this
     // position (a repertoire hole): leaky if it also scores poorly, else
     // just unmapped. The main line itself is never a gap.
@@ -304,8 +494,8 @@ function resolve(raw: RawNode, chess: Chess, parentName = ''): TreeNode {
 /* ── Tidy top-down layout: depth = row, leaves packed left→right, parents
  *    centered over their children. Connectors are parent-bottom → child-top. ── */
 export const CARD_W = 120;
-const COL_GAP = 22;
-const ROW_H = 188;
+export const COL_GAP = 22;
+export const ROW_H = 188;
 
 /** `more` = lines hidden below this node (pruned siblings + plies past the
  *  render limit) — drill into the node (re-root) to reveal them. pathId is the
@@ -322,6 +512,27 @@ export interface LayoutOpts {
   basePath?: string;
   /** Plies to draw before deeper lines fold into a drill badge. */
   maxRows?: number;
+  /** Spacing overrides (the PDF poster packs tighter than the on-screen clinic).
+   *  Default to the module constants, so the clinic layout is unchanged. */
+  cardW?: number;
+  colGap?: number;
+  rowH?: number;
+  /** Drop children played fewer than this many games (the poster prunes
+   *  insignificant lines; the clinic passes 0 = keep all). */
+  minGames?: number;
+  /** Cap the siblings drawn per node (most-played first). The poster narrows
+   *  this for portrait ("longer lines, fewer branches"); the clinic leaves it
+   *  unset = show all kept children. */
+  maxChildren?: number;
+  /** Past this depth (ply), follow only the single most-played child, so main
+   *  lines keep running deep (move 6, 7, 8 …) instead of fanning out. The poster
+   *  lowers this to make a tall, narrow tree that fills a PORTRAIT sheet without
+   *  dropping depth; unset = branch at every level (landscape / clinic). */
+  branchDepth?: number;
+  /** Pack subtrees by their OUTLINES instead of giving every leaf a column, and
+   *  place the tree's stubs (see PosterBudget.stubs) wherever they fit without
+   *  making the sheet wider than `maxCols`. See packedLayout. */
+  pack?: { maxCols: number };
 }
 
 /**
@@ -333,6 +544,15 @@ export function layoutTree(root: TreeNode, opts: LayoutOpts = {}): Layout {
   const topNodes = opts.topNodes ?? root.children;
   const basePath = opts.basePath ?? '';
   const maxRows = opts.maxRows ?? RENDER_ROWS;
+  const cardW = opts.cardW ?? CARD_W;
+  const colGap = opts.colGap ?? COL_GAP;
+  const rowH = opts.rowH ?? ROW_H;
+  const minGames = opts.minGames ?? 0;
+  const maxChildren = opts.maxChildren ?? Infinity;
+  const branchDepth = opts.branchDepth ?? Infinity;
+  if (opts.pack) {
+    return packedLayout(topNodes, basePath, { maxRows, cardW, colGap, rowH, minGames, maxChildren, branchDepth, maxCols: opts.pack.maxCols });
+  }
   const nodes: LaidNode[] = [];
   const edges: LaidEdge[] = [];
   let cursor = 0; // next free leaf column (in card+gap units)
@@ -341,17 +561,25 @@ export function layoutTree(root: TreeNode, opts: LayoutOpts = {}): Layout {
   const place = (node: TreeNode, depth: number, path: string): number => {
     const pathId = path ? `${path}/${node.san}` : node.san || 'root';
     maxDepth = Math.max(maxDepth, depth);
-    const renderKids = depth + 1 < maxRows ? node.children : [];
+    // Branch (up to maxChildren) only while shallow; past branchDepth follow just
+    // the single main line, so long continuations run on without widening the
+    // tree. Lines only include moves played ≥ minGames (once-played moves aren't
+    // significant enough for the poster).
+    const cap = depth < branchDepth ? maxChildren : 1;
+    const renderKids =
+      depth + 1 < maxRows
+        ? node.children.filter((c) => c.games >= minGames).slice(0, cap)
+        : [];
     let x: number;
     if (renderKids.length === 0) {
-      x = cursor * (CARD_W + COL_GAP);
+      x = cursor * (cardW + colGap);
       cursor++;
     } else {
       const xs = renderKids.map((c) => place(c, depth + 1, pathId));
       x = (xs[0] + xs[xs.length - 1]) / 2;
     }
     const more = node.collapsed + (node.children.length - renderKids.length);
-    const laid: LaidNode = { ...node, x, y: depth * ROW_H, pathId, more, children: node.children };
+    const laid: LaidNode = { ...node, x, y: depth * rowH, pathId, more, children: node.children };
     nodes.push(laid);
     for (const c of renderKids) edges.push({ from: pathId, to: `${pathId}/${c.san}` });
     return x;
@@ -359,9 +587,131 @@ export function layoutTree(root: TreeNode, opts: LayoutOpts = {}): Layout {
 
   for (const c of topNodes) place(c, 0, basePath);
 
-  const width = Math.max(CARD_W, cursor * (CARD_W + COL_GAP) - COL_GAP) + CARD_W;
-  const height = (maxDepth + 1) * ROW_H;
+  const width = Math.max(cardW, cursor * (cardW + colGap) - colGap) + cardW;
+  const height = (maxDepth + 1) * rowH;
   return { nodes, edges, width, height, maxDepth };
+}
+
+/** One laid-out subtree: where each child sits relative to its parent, and the
+ *  subtree's outline — leftmost/rightmost x at every row below the root, in
+ *  columns, relative to the root. */
+interface Shape { node: TreeNode; kids: Shape[]; rel: number[]; left: number[]; right: number[] }
+
+/**
+ * Tidy layout that packs by OUTLINE (Reingold–Tilford's idea) rather than
+ * handing every leaf its own full-height column.
+ *
+ * In the column layout a line that stops early still owns its column to the
+ * bottom of the sheet — the space under it is dead. Here a subtree is pushed
+ * left until its outline meets its neighbour's, row by row; rows the neighbour
+ * doesn't reach put up no resistance, so a deep line slides UNDER a short one.
+ * Nothing ever crosses: subtrees keep their left-to-right order on every row
+ * they share, and a parent sits within its own children's span.
+ *
+ * That is what makes stubs free. The most-played line is always the leftmost
+ * child, so it steps left at every split and leaves an empty triangle at the
+ * sheet's top-left — dead space on every poster. Stubs are ordered FIRST among
+ * their siblings, which drops them into that triangle, and the main subtree
+ * slides back underneath. Each stub is tried at its full length, then 3 boards,
+ * then 1, and dropped if even that would widen the sheet past `maxCols`.
+ */
+function packedLayout(
+  topNodes: TreeNode[],
+  basePath: string,
+  o: { maxRows: number; cardW: number; colGap: number; rowH: number; minGames: number; maxChildren: number; branchDepth: number; maxCols: number },
+): Layout {
+  /** Active stubs → how many boards of each to draw. */
+  const stubLen = new Map<TreeNode, number>();
+
+  // `room`: boards still allowed below this node — Infinity on a normal line,
+  // counting down along a stub.
+  const shape = (node: TreeNode, depth: number, room: number): Shape => {
+    let kids: TreeNode[] = [];
+    if (depth + 1 < o.maxRows && room > 0) {
+      const cap = depth < o.branchDepth ? o.maxChildren : 1;
+      const regular = node.children.filter((c) => !c.stub && c.games >= o.minGames).slice(0, cap);
+      const stubs = room === Infinity ? node.children.filter((c) => c.stub && stubLen.has(c)) : [];
+      kids = [...stubs, ...regular];
+    }
+    const subs = kids.map((k) => shape(k, depth + 1, k.stub ? (stubLen.get(k) ?? 1) - 1 : room === Infinity ? Infinity : room - 1));
+    if (!subs.length) return { node, kids: [], rel: [], left: [0], right: [0] };
+    const offs: number[] = [];
+    const accL: number[] = [];
+    const accR: number[] = [];
+    subs.forEach((sb, i) => {
+      let off = 0;
+      if (i > 0) {
+        off = -Infinity;
+        for (let d = 0; d < sb.left.length && d < accR.length; d++) off = Math.max(off, accR[d] - sb.left[d] + 1);
+      }
+      offs.push(off);
+      for (let d = 0; d < sb.left.length; d++) {
+        accL[d] = Math.min(accL[d] ?? Infinity, sb.left[d] + off);
+        accR[d] = Math.max(accR[d] ?? -Infinity, sb.right[d] + off);
+      }
+    });
+    const mid = (offs[0] + offs[offs.length - 1]) / 2; // parent centred over first…last child
+    return { node, kids: subs, rel: offs.map((v) => v - mid), left: [0, ...accL.map((v) => v - mid)], right: [0, ...accR.map((v) => v - mid)] };
+  };
+
+  // A virtual root holds the first moves so they pack against each other too.
+  const virtualRoot = { children: topNodes, stub: false } as unknown as TreeNode;
+  const build = () => shape(virtualRoot, -1, Infinity);
+  const colsOf = (sh: Shape) => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let d = 1; d < sh.left.length; d++) { lo = Math.min(lo, sh.left[d]); hi = Math.max(hi, sh.right[d]); }
+    return Number.isFinite(lo) ? hi - lo + 1 : 1;
+  };
+
+  // Stubs, earliest split first (then most played) — the builder's own order:
+  // each kept only if the sheet stays within the width it already had.
+  const found: { node: TreeNode; depth: number }[] = [];
+  const hunt = (n: TreeNode, depth: number) => {
+    for (const c of n.children) {
+      if (c.stub) found.push({ node: c, depth: depth + 1 });
+      else hunt(c, depth + 1);
+    }
+  };
+  hunt(virtualRoot, -1);
+  found.sort((a, b) => a.depth - b.depth || b.node.games - a.node.games);
+  const limit = Math.max(o.maxCols, colsOf(build())) + 1e-6;
+  for (const st of found) {
+    let full = 1;
+    for (let n = st.node; n.children.length; n = n.children[0]) full++;
+    for (const len of [...new Set([full, 3, 1])].filter((l) => l <= full)) {
+      stubLen.set(st.node, len);
+      if (colsOf(build()) <= limit) break;
+      stubLen.delete(st.node);
+    }
+  }
+
+  const top = build();
+  const nodes: LaidNode[] = [];
+  const edges: LaidEdge[] = [];
+  const unit = o.cardW + o.colGap;
+  let maxDepth = 0;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  const emit = (sh: Shape, x: number, depth: number, path: string) => {
+    const pathId = path ? `${path}/${sh.node.san}` : sh.node.san || 'root';
+    maxDepth = Math.max(maxDepth, depth);
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    const more = sh.node.collapsed + (sh.node.children.length - sh.kids.length);
+    nodes.push({ ...sh.node, x, y: depth * o.rowH, pathId, more, children: sh.node.children });
+    sh.kids.forEach((k, i) => {
+      edges.push({ from: pathId, to: `${pathId}/${k.node.san}` });
+      emit(k, x + sh.rel[i], depth + 1, pathId);
+    });
+  };
+  top.kids.forEach((k, i) => emit(k, top.rel[i], 0, basePath));
+  // Columns → layout units, shifted so the leftmost board sits at x = 0.
+  const shift = Number.isFinite(minX) ? minX : 0;
+  for (const n of nodes) n.x = (n.x - shift) * unit;
+  const cols = Number.isFinite(minX) ? maxX - minX + 1 : 1;
+  const width = Math.max(o.cardW, cols * unit - o.colGap) + o.cardW;
+  return { nodes, edges, width, height: (maxDepth + 1) * o.rowH, maxDepth };
 }
 
 /** Pull every blunder hotspot out of the tree, worst first — feeds the drill queue. */

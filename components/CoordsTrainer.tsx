@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chess, type Move } from 'chess.js';
 import { Board } from './Board';
+import { BoardControlsSlot, BoardTopSlot, useRegisterBoardNav, useRegisterBoardExtras } from '@/lib/board-nav';
 import { FAMOUS_GAMES } from '@/lib/famous-games';
+import { figurine } from '@/lib/figurine';
 
 /**
  * Coordinate / board-vision trainer (Lichess-style), three modes:
@@ -49,48 +51,65 @@ function useSession() {
   return { running, over, elapsed, correct, wrong, setCorrect, setWrong, start, finish };
 }
 
-/** Shared left sidebar using the same .side class as Puzzle mode. */
-function CoordsPanel({ sub, onChangeSub, children }: {
+/** Shared left sidebar using the same .side class as Puzzle mode. The mode
+ *  switcher now lives in the board-control bracket, so this is just a frame for
+ *  each mode's own controls. */
+function CoordsPanel({ children }: {
   sub: SubMode;
   onChangeSub: (s: SubMode) => void;
   children?: React.ReactNode;
 }) {
-  return (
-    <div className="side">
-      <div className="side-block">
-        <div className="side-h">Coordinates</div>
-        <div className="ct-mode-list">
-          <button type="button" className={'ct-nav-btn' + (sub === 'find' ? ' on' : '')} onClick={() => onChangeSub('find')}>Find the square</button>
-          <button type="button" className={'ct-nav-btn' + (sub === 'color' ? ' on' : '')} onClick={() => onChangeSub('color')}>Square colour</button>
-          <button type="button" className={'ct-nav-btn' + (sub === 'replay' ? ' on' : '')} onClick={() => onChangeSub('replay')}>Play famous games</button>
-        </div>
-      </div>
-      {children}
-    </div>
-  );
+  return <div className="side">{children}</div>;
 }
 
-export function CoordsTrainer() {
+export function CoordsTrainer({ coords = false }: { coords?: boolean }) {
   const [sub, setSub] = useState<SubMode>('find');
-  return sub === 'find' ? <FindMode sub={sub} onChangeSub={setSub} />
+  // The three modes live in the board-control bracket as a button block (like
+  // the arrows), so they're reachable in every sub-mode without the sidebar.
+  useRegisterBoardExtras(
+    <div className="bc-modes">
+      <button type="button" className={'bc-mode-btn' + (sub === 'find' ? ' on' : '')} onClick={() => setSub('find')}>Find</button>
+      <button type="button" className={'bc-mode-btn' + (sub === 'color' ? ' on' : '')} onClick={() => setSub('color')}>Colour</button>
+      <button type="button" className={'bc-mode-btn' + (sub === 'replay' ? ' on' : '')} onClick={() => setSub('replay')}>Games</button>
+    </div>,
+    [sub],
+  );
+  return sub === 'find' ? <FindMode sub={sub} onChangeSub={setSub} coords={coords} />
        : sub === 'color' ? <ColorMode sub={sub} onChangeSub={setSub} />
-       : <ReplayMode sub={sub} onChangeSub={setSub} />;
+       : <ReplayMode sub={sub} onChangeSub={setSub} coords={coords} />;
 }
 
-function FindMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode) => void }) {
+function FindMode({ sub, onChangeSub, coords }: { sub: SubMode; onChangeSub: (s: SubMode) => void; coords: boolean }) {
   const { running, over, elapsed, correct, wrong, setCorrect, setWrong, start, finish } = useSession();
-  const [target, setTarget] = useState('e4');
+  // A scrolling strip of coordinates with the live target dead-centre. `seq`
+  // holds every coordinate generated; `pos` indexes the current target. We show
+  // a 5-wide window centred on `pos` — upcoming to the left, already-guessed to
+  // the right — and on each hit roll the strip one cell right so the next target
+  // slides into the middle while a fresh coordinate rolls in from the left.
+  const [seq, setSeq] = useState<string[]>([]);
+  const [pos, setPos] = useState(0);
+  const [rolling, setRolling] = useState(false);
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
-  const [showCoords, setShowCoords] = useState(false);
   const [flash, setFlash] = useState<{ sq: string; ok: boolean } | null>(null);
+  const nextAfter = (prev: string) => { let s = randomSquare(); while (s === prev) s = randomSquare(); return s; };
 
-  const begin = () => { setTarget(randomSquare()); setFlash(null); start(); };
+  const begin = () => {
+    const s: string[] = [];
+    while (s.length < 7) s.push(nextAfter(s[s.length - 1] ?? ''));
+    setSeq(s); setPos(0); setFlash(null); setRolling(false); start();
+  };
   const pick = (sq: string) => {
-    if (!running || flash) return;
-    if (sq === target) {
+    if (!running || flash || rolling) return;
+    if (sq === seq[pos]) {
       setCorrect((s) => s + 1);
       setFlash({ sq, ok: true });
-      window.setTimeout(() => { setFlash(null); setTarget(randomSquare()); }, 320);
+      setRolling(true); // slide the strip one cell right
+      window.setTimeout(() => {
+        setFlash(null);
+        setRolling(false);
+        setSeq((s) => [...s, nextAfter(s[s.length - 1])]);
+        setPos((p) => p + 1);
+      }, 320);
     } else {
       setWrong((w) => w + 1);
       setFlash({ sq, ok: false });
@@ -111,35 +130,50 @@ function FindMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode
             >
               Flip — from {orientation === 'white' ? "White" : "Black"}&apos;s side
             </button>
-            <label className="ct-toggle">
-              <input type="checkbox" checked={showCoords} onChange={(e) => setShowCoords(e.target.checked)} />
-              Show coordinates
-            </label>
           </div>
         </div>
       </CoordsPanel>
 
       <div className="main">
         <div className="board-col">
-          <div className="ct-above-board">
-            {running
-              ? <span className="ct-coord-above">{target}</span>
-              : <span className="ct-coord-above ct-coord-idle">{over ? '—' : '?'}</span>
-            }
-          </div>
           <div className="board-row">
-            <CoordBoard orientation={orientation} onPick={running ? pick : () => {}} flash={flash} interactive={running} showCoords={showCoords} />
+            <div className="board-stack">
+              {/* Mode switcher (+ menu) portals in here, above the board. */}
+              <BoardTopSlot className="ct-switcher-head" />
+              <CoordBoard orientation={orientation} onPick={running ? pick : () => {}} flash={flash} interactive={running} showCoords={coords} />
+              {/* Row of coordinates under the board with the square to guess dead
+                  centre (black); upcoming ones dimmed to its left, guessed ones to
+                  its right. Each hit rolls the strip right so the next target slides
+                  into the middle and a fresh coord rolls in from the left. Seven
+                  cells (5 shown + a buffer each side) make the roll seamless. */}
+              {running && (
+                <div className="ct-coord-row">
+                  <div className={'ct-coord-track' + (rolling ? ' rolling' : '')}>
+                    {[3, 2, 1, 0, -1, -2, -3].map((off) => {
+                      const c = seq[pos + off];
+                      // While the strip rolls, the cell one step to the left is the
+                      // one sliding into the centre. Mark it current the instant you
+                      // answer, so the next coordinate reads as active immediately
+                      // rather than only once the animation lands.
+                      const cur = off === (rolling ? 1 : 0);
+                      return (
+                        <span key={off} className={'ct-coord-cell' + (cur ? ' cur' : '') + (c ? '' : ' blank')}>
+                          {c ?? ''}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="result-slot">
               <div className="pre-result">
                 <div className="verdict idle">
-                  <div className="verdict-ico">
-                    {running ? (flash ? (flash.ok ? '✓' : '✗') : '→') : over ? '★' : '?'}
-                  </div>
                   <div>
                     {running ? (
                       <>
                         <div className="verdict-title">{correct} correct · {wrong} missed</div>
-                        <div className="verdict-sub">Click the square on the board.</div>
+                        <div className="verdict-sub">Tap the square named below the board.</div>
                       </>
                     ) : over ? (
                       <>
@@ -149,19 +183,14 @@ function FindMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode
                         </div>
                       </>
                     ) : (
-                      <>
-                        <div className="verdict-title">Find the square</div>
-                        <div className="verdict-sub">The coordinate appears above the board — click it.</div>
-                      </>
+                      <div className="verdict-title">Find the square</div>
                     )}
                   </div>
                 </div>
                 {!running && !over && (
                   <p className="ct-mode-note">
-                    Knowing every square by name is the foundation of chess study. It lets you follow
-                    game notation, understand engine analysis, discuss tactics with other players, and
-                    build a mental map of the board — so you can visualise threats and ideas without
-                    ever losing your place.
+                    Knowing every square by name lets you read notation and follow engine
+                    analysis without losing your place.
                   </p>
                 )}
                 <div className="btn-row">
@@ -187,7 +216,7 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
 
   const begin = () => { setTarget(randomSquare()); setFb(null); start(); };
   const answer = (light: boolean) => {
-    if (!running || fb === 'fail') return;
+    if (!running || fb) return; // ignore taps during either feedback flash
     if (isLight(target) === light) {
       setCorrect((s) => s + 1);
       setFb('ok');
@@ -205,17 +234,22 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
 
       <div className="main">
         <div className="board-col">
-          <div className="ct-above-board">
-            <span className="ct-coord-above ct-coord-idle">colour</span>
-          </div>
           <div className="board-row">
-            <div className="ct-color-area">
-              <div className={'ct-coord-big' + (fb === 'ok' ? ' ok' : fb === 'fail' ? ' fail' : '')}>
-                {running ? target : <span className="ct-coord-ghost">e4</span>}
+            <div className="ct-color-stack">
+              {/* Mode switcher (+ menu) portals in here, above the coordinate. */}
+              <BoardTopSlot className="ct-switcher-head" />
+              {/* Board-sized white square in the board's position, with the
+                  coordinate to guess shown inside it. */}
+              <div className="ct-color-square">
+                {/* Reserved hint row above the coordinate — a wrong answer fills
+                    it in without shifting the coordinate. */}
+                <div className="ct-color-hint">
+                  {fb === 'fail' ? `${target} is ${isLight(target) ? 'light' : 'dark'}` : ''}
+                </div>
+                <div className={'ct-coord-big' + (fb === 'ok' ? ' ok' : fb === 'fail' ? ' fail' : '')}>
+                  {running ? target : <span className="ct-coord-ghost">e4</span>}
+                </div>
               </div>
-              {fb === 'fail' && (
-                <div className="ct-color-hint">{target} is {isLight(target) ? 'light' : 'dark'}</div>
-              )}
               <div className="ct-color-btns">
                 <button type="button" className="ct-color-btn light" onClick={() => answer(true)} disabled={!running}>Light</button>
                 <button type="button" className="ct-color-btn dark" onClick={() => answer(false)} disabled={!running}>Dark</button>
@@ -224,9 +258,6 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
             <div className="result-slot">
               <div className="pre-result">
                 <div className="verdict idle">
-                  <div className="verdict-ico">
-                    {running ? (fb === 'ok' ? '✓' : fb === 'fail' ? '✗' : '?') : over ? '★' : '?'}
-                  </div>
                   <div>
                     {running && fb === 'fail' ? (
                       <>
@@ -255,9 +286,8 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
                 </div>
                 {!running && !over && (
                   <p className="ct-mode-note">
-                    Recognising square colours at a glance sharpens your feel for bishop dynamics,
-                    pawn structure, and opposite-coloured bishop endings. Strong players see the
-                    board in two shades — this drill builds that instinct until it becomes automatic.
+                    Spotting square colours at a glance sharpens your feel for bishop
+                    endings and pawn structure.
                   </p>
                 )}
                 <div className="btn-row">
@@ -316,7 +346,7 @@ function CoordBoard({ orientation, onPick, flash, interactive, showCoords }: {
   );
 }
 
-function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMode) => void }) {
+function ReplayMode({ sub, onChangeSub, coords }: { sub: SubMode; onChangeSub: (s: SubMode) => void; coords: boolean }) {
   const [gameIdx, setGameIdx] = useState(0);
   const game = FAMOUS_GAMES[gameIdx];
   const moves = useMemo(() => game.san.trim().split(/\s+/), [game]);
@@ -327,7 +357,11 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
   const [selected, setSelected] = useState<string | null>(null);
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
   const [wrong, setWrong] = useState<{ from: string; to: string } | null>(null);
+  /** Piece slide for a replayed move, so it travels rather than reappears. */
+  const [travel, setTravel] = useState<{ from: string; to: string } | null>(null);
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
+  /** "What is this" blurb — collapsible, since you only need it the first time. */
+  const [aboutOpen, setAboutOpen] = useState(true);
 
   useEffect(() => {
     chessRef.current = new Chess();
@@ -338,9 +372,20 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
   const movesRef = useRef<HTMLOListElement | null>(null);
   useEffect(() => {
     const ol = movesRef.current;
-    const next = ol?.querySelector<HTMLElement>('.ct-ply.next');
-    if (ol && next) ol.scrollTop = next.offsetTop - ol.clientHeight / 2;
-  }, [ply]);
+    if (!ol) return;
+    // At the start of a game the list must show move 1 at the top — otherwise
+    // centering the "next" ply scrolls moves 1+ up out of view and the notation
+    // looks like it begins mid-game. Only auto-follow once we're underway.
+    if (ply === 0) { ol.scrollTop = 0; return; }
+    // Keep the active move centred. Measure against the list's own box (not
+    // offsetTop, whose offsetParent isn't the <ol> — that made it jump to the
+    // very bottom on every move) and nudge only the list's own scroll.
+    const active = ol.querySelector<HTMLElement>('.ct-ply.next');
+    if (!active) { ol.scrollTop = ol.scrollHeight; return; } // game over → show the end
+    const olBox = ol.getBoundingClientRect();
+    const aBox = active.getBoundingClientRect();
+    ol.scrollTop += (aBox.top - olBox.top) - ol.clientHeight / 2 + aBox.height / 2;
+  }, [ply, gameIdx]);
 
   const boardChess = useMemo(() => new Chess(fen), [fen]);
   const done = ply >= moves.length;
@@ -354,22 +399,27 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
     return out;
   }, [boardChess, done]);
 
-  const advance = (mv: Move) => {
+  const advance = (mv: Move, fromDrag = false) => {
     setLastMove({ from: mv.from, to: mv.to });
     setFen(chessRef.current.fen());
     setPly((p) => p + 1);
     setSelected(null);
     setWrong(null);
+    // A dragged piece is already under the finger; everything else travels.
+    if (!fromDrag) {
+      setTravel({ from: mv.from, to: mv.to });
+      window.setTimeout(() => setTravel(null), 260);
+    }
   };
 
-  const tryMove = (m: { from: string; to: string; promotion?: string }) => {
+  const tryMove = (m: { from: string; to: string; promotion?: string }, fromDrag = false) => {
     if (done) return;
     const g = chessRef.current;
     let mv: Move | null;
     try { mv = g.move({ from: m.from, to: m.to, promotion: m.promotion ?? 'q' }); } catch { return; }
     if (!mv) return;
     if (mv.san === expected) {
-      advance(mv);
+      advance(mv, fromDrag);
     } else {
       g.undo();
       setWrong({ from: m.from, to: m.to });
@@ -390,7 +440,8 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
 
   const showMove = () => {
     if (done || !expected) return;
-    const mv = chessRef.current.move(expected);
+    let mv: Move | null = null;
+    try { mv = chessRef.current.move(expected); } catch { mv = null; }
     if (mv) advance(mv);
   };
 
@@ -399,13 +450,22 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
     const targetPly = ply - 1;
     const g = new Chess();
     let lastMv: Move | null = null;
-    for (let i = 0; i < targetPly; i++) lastMv = g.move(moves[i]);
+    for (let i = 0; i < targetPly; i++) { try { lastMv = g.move(moves[i]); } catch { break; } }
+    const undone = moves[targetPly] ? (() => {
+      const probe = new Chess(g.fen());
+      try { return probe.move(moves[targetPly]); } catch { return null; }
+    })() : null;
     chessRef.current = g;
     setFen(g.fen());
     setLastMove(lastMv ? { from: lastMv.from, to: lastMv.to } : null);
     setPly(targetPly);
     setSelected(null);
     setWrong(null);
+    // Rewind: the piece lands back on `from`, having come from `to`.
+    if (undone) {
+      setTravel({ from: undone.to, to: undone.from });
+      window.setTimeout(() => setTravel(null), 260);
+    }
   };
 
   const restart = () => {
@@ -413,6 +473,24 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
     setFen(chessRef.current.fen());
     setPly(0); setSelected(null); setLastMove(null); setWrong(null);
   };
+
+  /** Jump to the final position (used by the ▶▶ nav button). */
+  const toEnd = () => {
+    const g = new Chess();
+    let last: Move | null = null;
+    for (let i = 0; i < moves.length; i++) { try { last = g.move(moves[i]); } catch { break; } }
+    chessRef.current = g;
+    setFen(g.fen());
+    setLastMove(last ? { from: last.from, to: last.to } : null);
+    setPly(moves.length); setSelected(null); setWrong(null);
+  };
+
+  // Drive the shared board-control arrows: step through the game move by move
+  // (first = restart · prev = undo · next = play next · last = jump to end).
+  useRegisterBoardNav(
+    { canPrev: ply > 0, canNext: ply < moves.length, first: restart, prev: undo, next: showMove, last: toEnd },
+    [ply, moves.length, gameIdx],
+  );
 
   const rows: { n: number; w?: string; wPly: number; b?: string; bPly: number }[] = [];
   for (let i = 0; i < moves.length; i += 2) rows.push({ n: i / 2 + 1, w: moves[i], wPly: i, b: moves[i + 1], bPly: i + 1 });
@@ -427,28 +505,34 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
               <option key={g.id} value={i}>{g.title}{g.year ? ` · ${g.year}` : ''}</option>
             ))}
           </select>
-          <div className="ct-game-players">{game.white} – {game.black}</div>
-          <p className="ct-game-context">{game.context}</p>
+          {/* Game name + blurb + turn indicator live in the sidebar. */}
+          <div className="ct-game-info">
+            <div className="ct-game-title">{game.white} – {game.black}</div>
+            <p className="ct-game-context">{game.context}</p>
+            {/* Only says something when there's something to say — whose turn it
+                is is already obvious from the board. */}
+            {(done || wrong) && (
+              <div className="ct-game-status">
+                {done ? `Game over · ${game.result}` : 'Not that move. Try another square.'}
+              </div>
+            )}
+          </div>
         </div>
         <div className="side-block">
           <div className="side-h">Controls</div>
           <div className="ct-controls">
-            <button type="button" className="ps-btn" onClick={showMove} disabled={done}>Show move</button>
-            <button type="button" className="ps-btn" onClick={undo} disabled={ply === 0}>Undo</button>
+            {/* Step / undo / restart all live in the board arrows now — only the
+                board flip has no equivalent there. */}
             <button type="button" className="ps-btn" onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}>Flip board</button>
-            <button type="button" className="ps-btn" onClick={restart} disabled={ply === 0}>Restart</button>
           </div>
         </div>
       </CoordsPanel>
 
       <div className="main">
         <div className="board-col">
-          <div className="ct-above-board">
-            <span className="ct-coord-above ct-coord-idle">
-              {done ? `${game.result} — game over` : `${sideToMove === 'w' ? 'White' : 'Black'} to move · move ${Math.floor(ply / 2) + 1}`}
-            </span>
-          </div>
-          <div className="board-row">
+          {/* Games layout, top → bottom: mode switcher · board · arrows · notation. */}
+          <div className="board-stack ct-replay-stack">
+            <BoardTopSlot className="ct-switcher-head" />
             <Board
               chess={boardChess}
               orientation={orientation}
@@ -459,37 +543,38 @@ function ReplayMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMo
               flashOk={null}
               flashFail={wrong?.to ?? null}
               bounceBack={wrong}
-              introMove={null}
+              introMove={travel}
               revealed={done}
               onSquareClick={onSquareClick}
-              onDragMove={(mv) => tryMove(mv)}
+              onDragMove={(mv) => tryMove(mv, true)}
+              coords={coords}
             />
-            <div className="result-slot">
-              <div className="pre-result">
-                <div className="verdict idle">
-                  <div className="verdict-ico">{done ? '♛' : sideToMove === 'w' ? '○' : '●'}</div>
-                  <div>
-                    <div className="verdict-title">
-                      {done ? 'Game complete' : wrong ? "Not that move" : `${sideToMove === 'w' ? 'White' : 'Black'} to move`}
-                    </div>
-                    <div className="verdict-sub">
-                      {done ? `Result: ${game.result}` : wrong ? "Try another square." : "Play the next move."}
-                    </div>
-                  </div>
+            <BoardControlsSlot />
+            {/* Says what this mode is for, like the note under Find / Colour. */}
+            <div className="ct-replay-about">
+              {/* Same collapsible-title pattern as the Play move list: title with a
+                  trailing chevron, tap to fold the blurb away once you've read it. */}
+              <button className="ps-moves-toggle" onClick={() => setAboutOpen((o) => !o)} aria-expanded={aboutOpen}>
+                {game.white} vs {game.black}
+                <span className="ps-moves-chevron">{aboutOpen ? '▾' : '▸'}</span>
+              </button>
+              {aboutOpen && (
+                <div className="verdict-sub">
+                  Step through a famous game with the arrows and read the moves off the notation.
                 </div>
-                <div className="ct-moves-block">
-                  <div className="ct-moves-h">Moves · {Math.ceil(moves.length / 2)}</div>
-                  <ol className="ct-moves" ref={movesRef}>
-                    {rows.map((r) => (
-                      <li className="ps-move-row" key={r.n}>
-                        <span className="ps-move-no num">{r.n}.</span>
-                        <span className={'ct-ply' + (r.wPly < ply ? ' done' : '') + (r.wPly === ply ? ' next' : '')}>{r.w}</span>
-                        <span className={'ct-ply' + (r.b ? (r.bPly < ply ? ' done' : '') + (r.bPly === ply ? ' next' : '') : '')}>{r.b ?? ''}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              </div>
+              )}
+            </div>
+            <div className="ct-notation">
+              <div className="ct-moves-h">Moves · {Math.ceil(moves.length / 2)}{done ? ` · ${game.result}` : ''}</div>
+              <ol className="ct-moves" ref={movesRef}>
+                {rows.map((r) => (
+                  <li className="ps-move-row" key={r.n}>
+                    <span className="ps-move-no num">{r.n}.</span>
+                    <span className={'ct-ply' + (r.wPly < ply ? ' done' : '') + (r.wPly === ply ? ' next' : '')}>{figurine(r.w, 'w')}</span>
+                    <span className={'ct-ply' + (r.b ? (r.bPly < ply ? ' done' : '') + (r.bPly === ply ? ' next' : '') : '')}>{figurine(r.b ?? '', 'b')}</span>
+                  </li>
+                ))}
+              </ol>
             </div>
           </div>
         </div>

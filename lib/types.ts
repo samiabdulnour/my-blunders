@@ -44,9 +44,18 @@ export interface Puzzle {
   combination?: boolean;
   /** SAN of the move the user actually played in the original game. */
   mistakeMove: string;
-  /** Eval (in pawn units, white-positive) before the mistake. */
+  /**
+   * The moves actually played in the real game from the critical position
+   * onward, in SAN (`playedLine[0]` === `mistakeMove`). Lets the puzzle replay
+   * how the game really went — the counterpart to the engine's `line`. Missing
+   * on puzzles imported before this field existed (fall back to `mistakeMove`).
+   */
+  playedLine?: string[];
+  /** Eval in pawn units, SIDE-RELATIVE (positive = good for the player who
+   *  blundered), before the mistake. Set as `evalCp * sideSign` in
+   *  puzzle-generator.ts — not white-positive. */
   evalBefore: number;
-  /** Eval (in pawn units, white-positive) after the mistake. */
+  /** Eval in pawn units, side-relative (see `evalBefore`), after the mistake. */
   evalAfter: number;
   /** Magnitude of eval drop (always a positive number, in pawn units). */
   drop: number;

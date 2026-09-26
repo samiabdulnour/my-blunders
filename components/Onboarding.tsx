@@ -2,22 +2,30 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import type { Puzzle } from '@/lib/types';
-import { useImporter } from '@/lib/useImporter';
+import type { Importer } from '@/lib/useImporter';
+import { useImportStatus } from '@/lib/import-status';
+import { BoardThemePicker } from '@/components/BoardThemePicker';
+import type { BoardThemeId } from '@/lib/board-theme';
 
 interface OnboardingProps {
-  /** Feed imported puzzles into the app as they arrive. */
-  onImport: (newPuzzles: Puzzle[]) => void;
-  /** Fired when the user's own games have been fetched (before analysis), so
-   *  the app can drop the famous-blunder placeholders right away. */
-  onGamesFetched?: () => void;
+  /** The page-level importer. Shared with the settings panel so the batch
+   *  started here keeps its cursor + "working" state after this screen hands
+   *  off (a private instance died with the screen, stranding auto-import). */
+  importer: Importer;
+  /** How many of the user's own puzzles the app holds. Growth during an import
+   *  means the first real puzzle is ready — the cue to hand off. */
+  ownPuzzleCount: number;
   /** Called once onboarding is finished (with the username, or '' if skipped).
    *  `showFamous` asks the app to show the famous-blunder library to play while
    *  a real import is still streaming in (or as the guest fallback). */
   onComplete: (username: string, opts?: { showFamous?: boolean }) => void;
+  /** Board theme choice for the "choose your board" step, applied live. */
+  boardLight: BoardThemeId;
+  boardDark: BoardThemeId;
+  onSetBoard: (mode: 'light' | 'dark', id: BoardThemeId) => void;
 }
 
-type Phase = 'idle' | 'running' | 'done' | 'error';
+type Phase = 'idle' | 'board' | 'running' | 'done' | 'error';
 
 /**
  * First-run screen: captures the user's Lichess username and kicks off a real
@@ -26,15 +34,25 @@ type Phase = 'idle' | 'running' | 'done' | 'error';
  * reflects live analysis status. Users can also upload a PGN or skip straight
  * into the app.
  */
-export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingProps) {
+export function Onboarding({
+  importer,
+  ownPuzzleCount,
+  onComplete,
+  boardLight,
+  boardDark,
+  onSetBoard,
+}: OnboardingProps) {
   const [phase, setPhase] = useState<Phase>('idle');
+  // Which action the "choose your board" step continues into: a real import or
+  // the guest famous-library entry.
+  const [pending, setPending] = useState<'import' | 'famous'>('import');
   const fileRef = useRef<HTMLInputElement>(null);
   // Hand off to the app exactly once — whether that's triggered by the first
   // puzzle, the batch finishing with none, or a skip link.
   const enteredRef = useRef(false);
-  // Latest username, read inside the import callback (which is created before
-  // useImporter returns `username`).
-  const usernameRef = useRef('');
+  // Own-puzzle count when the import started, so the hand-off keys on puzzles
+  // *this* import produced rather than anything already in the store.
+  const baselineRef = useRef(0);
 
   // Always enter with the famous library available: real puzzles replace it as
   // they stream in, and the app's own guard keeps famous from clobbering real
@@ -48,26 +66,20 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
     [onComplete]
   );
 
+  const { username, setUsername, source, setSource, runImport, importFile } = importer;
+  const status = useImportStatus();
+
   // Hand off the moment the first real puzzle is ready, landing the user
   // straight on one of their own blunders. Until then they wait on the progress
   // screen — or tap "play famous blunders while this loads" to start solving the
-  // famous library immediately while the rest analyses behind them. (autoImport
-  // off: the import is driven by the CTA, not the queue-drain loop.)
-  const handleImport = useCallback(
-    (puzzles: Puzzle[]) => {
-      onImport(puzzles);
-      if (puzzles.length > 0) enterApp(usernameRef.current.trim());
-    },
-    [onImport, enterApp]
-  );
-
-  const { username, setUsername, source, setSource, status, runImport, importFile } = useImporter({
-    onImport: handleImport,
-    onGamesFetched,
-    unseenCount: 0,
-    autoImport: false,
-  });
-  usernameRef.current = username;
+  // famous library immediately while the rest analyses behind them. (The page
+  // keeps the auto-import loop off until onboarding completes: the import here
+  // is driven by the CTA.)
+  useEffect(() => {
+    if (phase !== 'running') return;
+    if (ownPuzzleCount > baselineRef.current) enterApp(username.trim());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownPuzzleCount, phase]);
 
   // Fetching-window progress: a real bar that fills as the engine works through
   // the current game's moves; falls back to an indeterminate sweep before the
@@ -94,8 +106,19 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  // Entering a name (or choosing the guest path) lands on the "choose your
+  // board" step first; the import / famous entry runs when you continue.
   const start = () => {
     if (!username.trim()) return;
+    setPending('import');
+    setPhase('board');
+  };
+  const proceedFromBoard = () => {
+    if (pending === 'famous') {
+      enterApp('');
+      return;
+    }
+    baselineRef.current = ownPuzzleCount;
     setPhase('running');
     runImport();
   };
@@ -109,6 +132,7 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
       await importFile(file);
       return;
     }
+    baselineRef.current = ownPuzzleCount;
     setPhase('running');
     await importFile(file);
   };
@@ -126,7 +150,7 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
   return (
     <div className="onboarding">
       <div className="onb-hero">
-        <div className="onb-eyebrow">my·blunders</div>
+        <div className="onb-eyebrow">My Blunders</div>
         <div className="onb-title">
           Train on <em>your own</em> blunders.
         </div>
@@ -199,7 +223,10 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
           <button
             type="button"
             className="onb-famous"
-            onClick={() => enterApp('')}
+            onClick={() => {
+              setPending('famous');
+              setPhase('board');
+            }}
           >
             ♟ Play famous blunders
             <span className="sub">no account needed</span>
@@ -215,6 +242,22 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
             style={{ display: 'none' }}
             onChange={onFile}
           />
+        </div>
+      )}
+
+      {phase === 'board' && (
+        <div className="onb-board">
+          <div className="onb-board-h">Choose your chessboard</div>
+          <div className="onb-board-sub">
+            Pick a look for light and dark mode. You can change this any time in Settings.
+          </div>
+          <BoardThemePicker boardLight={boardLight} boardDark={boardDark} onSet={onSetBoard} />
+          <button className="onb-go" onClick={proceedFromBoard}>
+            {pending === 'famous' ? '♟ Play famous blunders →' : 'Continue →'}
+          </button>
+          <div className="onb-alt">
+            <a onClick={() => setPhase('idle')}>← back</a>
+          </div>
         </div>
       )}
 
@@ -248,7 +291,7 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
             <>
               {/* Live detail so it's clear work is happening, plus the working
                   "play while it loads" escape into the famous library. */}
-              <div className="progress-note">{status.message ?? 'analysing your recent games…'}</div>
+              <div className="progress-note">{status.message ?? 'Looking through your recent games…'}</div>
               <div className="onb-alt">
                 <a onClick={() => enterApp(username.trim())}>
                   play famous blunders while this loads →
@@ -264,7 +307,7 @@ export function Onboarding({ onImport, onGamesFetched, onComplete }: OnboardingP
       )}
 
       <div className="onb-alt">
-        <Link href="/about">about my·blunders →</Link>
+        <Link href="/about">about My Blunders →</Link>
       </div>
     </div>
   );

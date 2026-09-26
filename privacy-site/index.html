@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Privacy Policy · My Blunders</title>
+  <meta name="description" content="How My Blunders handles your data: public games only, nothing stored on our servers, no accounts, no tracking." />
+  <style>
+    :root {
+      --bg: #efe9e0; --card: #fbf9f5; --txt: #16140f; --dim: #6e6657;
+      --faint: #a89e8e; --coral: #dd574c; --border: #e6ddce; --green: #3f8f5b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16140f; --card: #201d17; --txt: #f4eef0; --dim: #b3a992;
+        --faint: #7a7160; --coral: #e56a5f; --border: #33302a; --green: #6fbf88;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      background: var(--bg); color: var(--txt);
+      font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6; -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 680px; margin: 0 auto; padding: 40px 22px 72px; }
+    .brand { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: var(--coral); }
+    .eyebrow { margin-top: 40px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--dim); }
+    h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 16px; line-height: 1.15; }
+    .lead { font-size: 16px; color: var(--dim); }
+    .lead strong { color: var(--txt); font-weight: 700; }
+    .updated { font-size: 13px; color: var(--faint); margin-top: -4px; }
+    h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--dim); margin: 40px 0 12px; }
+    .note {
+      display: flex; gap: 12px; align-items: flex-start;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 4px; padding: 14px 16px; margin-bottom: 10px;
+    }
+    .note .tick { color: var(--green); font-weight: 700; flex-shrink: 0; line-height: 1.6; }
+    .note p { margin: 0; font-size: 15px; color: var(--dim); }
+    .note strong { color: var(--txt); font-weight: 700; }
+    a { color: var(--coral); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .contact { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 16px 18px; font-size: 15px; color: var(--dim); }
+    .contact strong { color: var(--txt); }
+    footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 13px; color: var(--faint); }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="brand">My Blunders</div>
+
+    <div class="eyebrow">Privacy</div>
+    <h1>Privacy Policy</h1>
+    <p class="lead">
+      <strong>My Blunders</strong> is built to need as little of your data as possible.
+      There are no accounts, nothing about you is stored on our servers, and everything
+      you train on stays on your own device. This page explains exactly what that means.
+    </p>
+    <p class="updated">Last updated: July 2026.</p>
+
+    <h2>What we access</h2>
+    <div class="note"><span class="tick">✓</span><p><strong>Public games only.</strong> You give a Lichess or Chess.com username — never a password. We only read games you have already made public on those sites, and we never sign in as you or act on your behalf.</p></div>
+    <div class="note"><span class="tick">✓</span><p><strong>No account, no personal details.</strong> We don't ask for your email, name, or any sign-up. A public username is the only thing you provide.</p></div>
+
+    <h2>What we store</h2>
+    <div class="note"><span class="tick">✓</span><p><strong>Nothing on our servers.</strong> Your games are fetched and handed straight back to you — we keep no copy. On the iOS app, your device talks to Lichess and Chess.com directly, with no server of ours in between. On the web, games pass through a thin stateless relay (browsers can't call those sites directly) that stores nothing.</p></div>
+    <div class="note"><span class="tick">✓</span><p><strong>Everything stays on your device.</strong> Imported games, generated puzzles, your progress, and your settings are saved only in your browser / the app (local storage). We can't see them. Clearing your browser data — or using the in-app “Clear all” — deletes them permanently.</p></div>
+    <div class="note"><span class="tick">✓</span><p><strong>Analysis runs on your device.</strong> The Stockfish engine that finds your blunders runs locally (in your browser on the web, in the app on iOS). Your moves are not sent anywhere to be analysed.</p></div>
+
+    <h2>Third parties</h2>
+    <div class="note"><span class="tick">✓</span><p><strong>Lichess &amp; Chess.com.</strong> To fetch your games we contact <a href="https://lichess.org" target="_blank" rel="noopener">lichess.org</a> and <a href="https://www.chess.com" target="_blank" rel="noopener">chess.com</a> using the username you enter. Their handling of that request is governed by their own privacy policies.</p></div>
+    <div class="note"><span class="tick">✓</span><p><strong>No analytics, ads, or tracking.</strong> We don't use analytics SDKs, advertising, or third-party trackers. Nothing follows you around, and we don't build a profile of you.</p></div>
+
+    <h2>Children</h2>
+    <div class="note"><span class="tick">✓</span><p>My Blunders collects no personal information from anyone, including children. It reads only the public game data tied to the username you provide.</p></div>
+
+    <h2>Contact</h2>
+    <div class="contact">
+      Questions about privacy? Reach the author, <strong>Sami Abdulnour</strong>, at
+      <a href="mailto:hi@samiabdulnour.com">hi@samiabdulnour.com</a>, or on GitHub at
+      <a href="https://github.com/samiabdulnour/my-blunders" target="_blank" rel="noopener">github.com/samiabdulnour/my-blunders</a>.
+    </div>
+
+    <footer>© 2026 Sami Abdulnour · My Blunders</footer>
+  </main>
+</body>
+</html>

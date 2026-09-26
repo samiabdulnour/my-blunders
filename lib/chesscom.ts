@@ -31,7 +31,7 @@ export interface FetchChessComPgnOpts {
 }
 
 /** Absolute upper bound enforced regardless of client input. */
-export const CHESSCOM_MAX_GAMES = 50;
+export const CHESSCOM_MAX_GAMES = 100;
 
 /** Monthly archives scanned per request — bounds a sparse-cursor scan. */
 const ARCHIVE_SCAN_LIMIT = 18;

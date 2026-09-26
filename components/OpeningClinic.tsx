@@ -2,12 +2,15 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { layoutTree, findByPath, hotspots, weakSpots, lineString, formatEval, CARD_W, type LaidNode, type DrillItem } from '@/lib/opening-tree';
+import { figurine } from '@/lib/figurine';
 import { useClinic } from '@/lib/clinic-context';
 import { fetchTheory, type Theory } from '@/lib/opening-explorer';
 import { evalPosition, peekEval, whiteCp, type EngineEval } from '@/lib/opening-engine';
 import { OpeningDrill } from '@/components/OpeningDrill';
 import { OpeningBoard, type BoardArrow } from '@/components/repertoire/OpeningBoard';
 import { IconWarn } from '@/components/repertoire/icons';
+import { BoardTopSlot } from '@/lib/board-nav';
+import { isNativeApp } from '@/lib/platform';
 
 /** White-relative eval as a label: "+0.6", "-1.2", "#3". */
 function evalText(e: EngineEval): string {
@@ -16,7 +19,7 @@ function evalText(e: EngineEval): string {
   return (cp > 0 ? '+' : '') + cp.toFixed(1);
 }
 
-/** White's win probability from a white-relative centipawn eval — a logistic
+/** White's win probability from a white-relative centipawn eval. A logistic
  *  (Elo-style expected score): cp 0 → .50, +300 → ~.85, −300 → ~.15. This is what
  *  makes the marking precise: an equal centipawn loss means very different things
  *  near a decided position (+6.0→+5.0 is nothing) versus near equality
@@ -27,7 +30,7 @@ function winProb(cp: number): number {
 }
 
 /** Colour a connector by how much the move (parent→child) hurt the side that
- *  played it — the drop in *that side's* win probability, not raw centipawns.
+ *  played it. The drop in *that side's* win probability, not raw centipawns.
  *  green = held the position, amber = an inaccuracy that let the advantage slip,
  *  red = a mistake/blunder. Neutral when the eval isn't known. Thresholds are in
  *  win-probability points (~Lichess: ≥0.10 inaccuracy, ≥0.20 mistake). */
@@ -59,17 +62,22 @@ function connectorPath(parent: LaidNode, child: LaidNode): string {
 }
 
 /**
- * Opening Clinic — the "Opening" mode of the trainer. Turns your imported games
+ * Opening Clinic. The "Opening" mode of the trainer. Turns your imported games
  * into a top-down opening tree (left) and, for the selected position, shows what
  * you play from here and the right continuation from Lichess theory (right).
  * Uses the main app's tokens so it matches the trainer and inherits dark mode.
  */
 export function OpeningClinic() {
-  const { ready, fetching, color, focus, setFocus, selectedId, setSelectedId, tree } = useClinic();
+  const { ready, fetching, color, focus, setFocus, selectedId, setSelectedId, tree, openings } = useClinic();
   const [drillItems, setDrillItems] = useState<DrillItem[] | null>(null);
   const [detailOpen, setDetailOpen] = useState(true);
   const [zoom, setZoom] = useState(1);
-  const zoomBy = (d: number) => setZoom((z) => Math.min(1.6, Math.max(0.4, Math.round((z + d) * 10) / 10)));
+  const zoomBy = (d: number) => setZoom((z) => Math.min(1.6, Math.max(0.1, Math.round((z + d) * 10) / 10)));
+  // The tree-zoom control is only handy on the web; the native app drops it.
+  // Detect after mount so the prerendered HTML and first client render agree
+  // (no hydration mismatch), then hide it on device.
+  const [nativeApp, setNativeApp] = useState(false);
+  useEffect(() => { setNativeApp(isNativeApp()); }, []);
   // The scrolling tree pane + a live mirror of the zoom (so the centering
   // effect can read the current zoom without re-running on every zoom change).
   const treeRef = useRef<HTMLDivElement | null>(null);
@@ -79,8 +87,13 @@ export function OpeningClinic() {
   // reads it once the DOM has updated its new scrollable dimensions).
   const pendingScrollRef = useRef<{ x: number; y: number } | null>(null);
   // What view we last auto-centred (colour|focus). Re-centre only when the view
-  // changes — not on every incremental fetch, which would yank the canvas back.
+  // changes. Not on every incremental fetch, which would yank the canvas back.
   const centeredKeyRef = useRef<string | null>(null);
+  // Set once the user pans or pinches. Until then the auto-centre keeps pulling
+  // the canvas back to the root as the tree fills in — the tree loads async, so
+  // a single centre on mount would land on a half-built (or empty) layout and
+  // leave you looking at the wrong place when you open the tab.
+  const userMovedRef = useRef(false);
 
   // After a pinch-zoom re-render, apply the stored scroll position so the pinch
   // midpoint stays anchored in place (canvas dimensions have updated by now).
@@ -113,6 +126,7 @@ export function OpeningClinic() {
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length < 2) { pinching = false; return; }
       pinching = true;
+      userMovedRef.current = true; // user took over the canvas
       startDist = pinchDist(e.touches);
       startZoom = zoomRef.current;
       startScrollX = el.scrollLeft;
@@ -126,7 +140,7 @@ export function OpeningClinic() {
       if (!pinching || e.touches.length < 2) return;
       e.preventDefault();
       const d = pinchDist(e.touches);
-      const newZ = Math.min(1.6, Math.max(0.4, startZoom * (d / startDist)));
+      const newZ = Math.min(1.6, Math.max(0.1, startZoom * (d / startDist)));
       // Keep the canvas point under the pinch midpoint stationary.
       const layoutX = (startScrollX + midX) / startZoom;
       const layoutY = (startScrollY + midY) / startZoom;
@@ -149,6 +163,7 @@ export function OpeningClinic() {
       const target = e.target as Element;
       if (target.closest('.cnode, button, a, input, select, textarea')) return;
       panStart = { x: e.clientX, y: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
+      userMovedRef.current = true; // user took over the canvas
       document.body.classList.add('panning');
       e.preventDefault();
     };
@@ -184,14 +199,16 @@ export function OpeningClinic() {
   // can drill in; otherwise the whole tree. Path ids are absolute, so a focus
   // node's children keep walking deeper.
   const layout = useMemo(() => {
+    // Cap the on-screen explorer at 3 variations per node (its established look);
+    // the data now keeps more (MAX_CHILDREN) so the poster can show wider.
     if (focus) {
       const node = findByPath(tree, focus);
       if (node) {
         const parent = focus.split('/').slice(0, -1).join('/');
-        return layoutTree(tree, { topNodes: [node], basePath: parent });
+        return layoutTree(tree, { topNodes: [node], basePath: parent, maxChildren: 3 });
       }
     }
-    return layoutTree(tree);
+    return layoutTree(tree, { maxChildren: 3 });
   }, [tree, focus]);
   const hasGames = tree.games > 0;
 
@@ -221,7 +238,7 @@ export function OpeningClinic() {
 
   // Open the canvas *on the opening*, not on blank space: a wide repertoire's
   // root sits centred over its subtree, so scroll-0 shows empty canvas. Centre
-  // the first row (the opening's first moves) — but only when the *view* changes
+  // the first row (the opening's first moves). But only when the *view* changes
   // (colour or focused opening), or on first population. Re-centring on every
   // games update would fight the user's scroll while the background fetch fills
   // the tree in.
@@ -231,7 +248,12 @@ export function OpeningClinic() {
     const top = layout.nodes.filter((n) => n.y === 0);
     if (top.length === 0) return;
     const key = `${color}|${focus ?? ''}`;
-    if (centeredKeyRef.current === key) return; // already centred this view
+    const newView = centeredKeyRef.current !== key;
+    // A new view (opening the tab, switching colour, drilling) takes control back
+    // and re-centres. Within the same view we keep re-centring as the tree fills,
+    // but stop the moment the user pans — never yank the canvas out from under them.
+    if (newView) userMovedRef.current = false;
+    else if (userMovedRef.current) return;
     centeredKeyRef.current = key;
     // Centre on the *main* (most-played) first move. Centring on the span
     // midpoint would land in the blank gap between two wide openings (e.g. e4
@@ -253,7 +275,7 @@ export function OpeningClinic() {
   }, [layout]);
   const selected = (selectedId && byId[selectedId]) || defaultSel;
 
-  // FEN of the position *before* the selected node's move — so the detail panel
+  // FEN of the position *before* the selected node's move. So the detail panel
   // can show the best move for the player who made that move.
   const parentFen = useMemo(() => {
     if (!selected) return null;
@@ -263,7 +285,7 @@ export function OpeningClinic() {
   }, [selected, tree]);
 
   // Drill = re-root the tree at a node. Used by the breadcrumb, the sidebar, and
-  // the continuation list — but NOT by clicking a board (that only selects).
+  // the continuation list. But NOT by clicking a board (that only selects).
   const drill = (pathId: string) => { setFocus(pathId); setSelectedId(pathId); };
 
   // Weak spots to drill (whole tree, this colour).
@@ -279,16 +301,12 @@ export function OpeningClinic() {
   }, [tree]);
 
   // Breadcrumb from the focus path (each crumb re-roots to that level).
-  const crumbs = useMemo(() => {
-    if (!focus) return [] as { path: string; label: string }[];
-    const out: { path: string; label: string }[] = [];
-    let acc = '';
-    for (const s of focus.split('/')) {
-      acc = acc ? `${acc}/${s}` : s;
-      out.push({ path: acc, label: findByPath(tree, acc)?.label ?? s });
-    }
-    return out;
-  }, [tree, focus]);
+  /* When the focus sits inside an opening picked from the sidebar filter, that
+     opening's name becomes the root crumb in place of "All openings". */
+  const focusOpening = useMemo(() => {
+    if (!focus) return null;
+    return openings.find((o) => focus === o.pathId || focus.startsWith(`${o.pathId}/`)) ?? null;
+  }, [openings, focus]);
 
   if (drillItems && drillItems.length > 0) {
     return <OpeningDrill items={drillItems} onExit={() => setDrillItems(null)} />;
@@ -298,37 +316,57 @@ export function OpeningClinic() {
     <div className="clinic">
       <div className="clinic-tree" ref={treeRef}>
         <div className="clinic-bar">
-          <nav className="clinic-crumbs">
-            <button className={'crumb' + (focus ? '' : ' on')} onClick={() => { setFocus(null); setSelectedId(null); }}>
-              All openings
-            </button>
-            {crumbs.map((c) => (
-              <span key={c.path} className="crumb-wrap">
-                <span className="crumb-sep">›</span>
-                <button className={'crumb' + (c.path === focus ? ' on' : '')} onClick={() => drill(c.path)}>{c.label}</button>
-              </span>
-            ))}
-          </nav>
-          <div className="clinic-legend">
-            <span className="cleg"><i className="ln good" /> good</span>
-            <span className="cleg"><i className="ln risk" /> risky</span>
-            <span className="cleg"><i className="ln bad" /> blunder</span>
-            <span className="cleg"><i className="ln dev" /> off-book</span>
-            {allHot > 0 && <span className="cleg"><i className="sw hot" /> {allHot} hotspot{allHot === 1 ? '' : 's'}</span>}
-            {allGaps > 0 && <span className="cleg"><i className="sw gap" /> {allGaps} gap{allGaps === 1 ? '' : 's'}</span>}
-            {fetching && <span className="clinic-loading">loading games…</span>}
+          <div className="clinic-bar-left">
+            <nav className="clinic-crumbs">
+              <button
+                className={'crumb' + (focus && !(focusOpening && focus === focusOpening.pathId) ? '' : ' on')}
+                onClick={() => {
+                  // Named opening: this crumb is its root. Otherwise it clears the filter.
+                  if (focusOpening && focus !== focusOpening.pathId) {
+                    setFocus(focusOpening.pathId);
+                    setSelectedId(focusOpening.pathId);
+                  } else {
+                    setFocus(null);
+                    setSelectedId(null);
+                  }
+                }}
+              >
+                {focusOpening ? focusOpening.name : 'All openings'}
+              </button>
+            </nav>
+            <div className="clinic-legend">
+              <span className="cleg"><i className="ln good" /> good</span>
+              <span className="cleg"><i className="ln risk" /> risky</span>
+              <span className="cleg"><i className="ln bad" /> blunder</span>
+              <span className="cleg"><i className="ln dev" /> off-book</span>
+              {/* These are legend keys, not counters — they name what the swatch
+                  means. The count lives on the nodes themselves. */}
+              {allHot > 0 && <span className="cleg" title={`${allHot} hotspot${allHot === 1 ? '' : 's'}`}><i className="sw hot" /> hotspots</span>}
+              {allGaps > 0 && <span className="cleg" title={`${allGaps} gap${allGaps === 1 ? '' : 's'}`}><i className="sw gap" /> gaps</span>}
+              {fetching && <span className="clinic-loading">loading games…</span>}
+            </div>
           </div>
-          {weak.length > 0 && (
-            <button className="od-start" onClick={() => setDrillItems(weak)}>
-              Drill {weak.length} weak spot{weak.length === 1 ? '' : 's'} →
-            </button>
-          )}
-          <div className="clinic-zoom">
-            <button onClick={() => zoomBy(-0.2)} aria-label="Zoom out" disabled={zoom <= 0.4}>−</button>
-            <span className="num">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => zoomBy(0.2)} aria-label="Zoom in" disabled={zoom >= 1.6}>+</button>
+          {/* Tools pinned top-right: settings/menu button always, plus a zoom
+              control on the web (handy on a big screen, dropped in the app). */}
+          <div className="clinic-tools">
+            {!nativeApp && (
+              <div className="clinic-zoom">
+                <button onClick={() => zoomBy(-0.2)} aria-label="Zoom out" disabled={zoom <= 0.1}>−</button>
+                <span className="num">{Math.round(zoom * 100)}%</span>
+                <button onClick={() => zoomBy(0.2)} aria-label="Zoom in" disabled={zoom >= 1.6}>+</button>
+              </div>
+            )}
+            <BoardTopSlot />
           </div>
         </div>
+
+        {/* Standalone below the bracket, so the header stays the same 54px as every
+            other tab and the drill call-to-action reads as its own control. */}
+        {weak.length > 0 && (
+          <button className="od-start clinic-drill" onClick={() => setDrillItems(weak)}>
+            Drill {weak.length} weak spot{weak.length === 1 ? '' : 's'} →
+          </button>
+        )}
 
         {!ready ? null : !hasGames ? (
           <div className="clinic-empty">
@@ -405,7 +443,7 @@ function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: La
       </button>
       <div className="cnode-label">
         {node.name && <span className="cnode-name">{node.name}</span>}
-        <span className="cnode-move">{node.label}</span>
+        <span className="cnode-move">{figurine(node.label, node.depth % 2 === 1 ? 'w' : 'b')}</span>
         <span className="cnode-eval num">{evalLabel}</span>
       </div>
     </div>
@@ -417,7 +455,7 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
   const [theoryLoading, setTheoryLoading] = useState(false);
   const [engine, setEngine] = useState<EngineEval | null>(null);
   const [engineLoading, setEngineLoading] = useState(false);
-  // Engine eval of the position *before* this node's move — the best move the
+  // Engine eval of the position *before* this node's move. The best move the
   // player who moved here should have chosen.
   const [parentEngine, setParentEngine] = useState<EngineEval | null>(null);
 
@@ -461,6 +499,8 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
   // Whose move is it here? The "your move" framing only applies on your turn —
   // in the White tree, the node after 1.e4 has Black (the opponent) to move.
   const userTurn = (node.fen.split(' ')[1] ?? 'w') === color;
+  // Side to move at this node — the colour of any move played *from* here.
+  const stm: 'w' | 'b' = (node.fen.split(' ')[1] ?? 'w') === 'w' ? 'w' : 'b';
   const yours = [...node.children].sort((a, b) => b.games - a.games);
   const yourMain = yours[0];
 
@@ -482,10 +522,10 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
     <aside className="clinic-detail">
       <button className="cd-close" onClick={onClose} aria-label="Close panel" title="Close panel">×</button>
       <div className="cd-board-sec">
-        <div className="cd-board"><OpeningBoard fen={node.fen} hl={node.hl} sqSize={30} orient={color} arrows={arrows} /></div>
+        <div className="cd-board"><OpeningBoard fen={node.fen} hl={node.hl} sqSize={22} orient={color} arrows={arrows} /></div>
         <div className="cd-head">
           {node.name && <div className="cd-name">{node.name}</div>}
-          <div className="cd-move">{node.label}</div>
+          <div className="cd-move">{figurine(node.label, node.depth % 2 === 1 ? 'w' : 'b')}</div>
           {node.depth > 0 && (
             <div className={'cd-theory ' + (node.onBook ? 'book' : 'off')}>
               {node.onBook ? 'Main line' : 'Off-book'}
@@ -519,13 +559,15 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
           parentEngine ? (
             <>
               <div className="cd-engine">
-                <span className="ce-move">{parentEngine.bestSan || '—'}</span>
+                <span className="ce-move">{figurine(parentEngine.bestSan || '—', movedColor ?? 'w')}</span>
                 <span className="ce-eval num">{evalText(parentEngine)}</span>
               </div>
+              {/* Only the part the headline above doesn't already say — the move
+                  and its eval are right there, so don't repeat them. */}
               <div className="cd-verdict">
                 {playedBest
-                  ? <>{reachedByUser ? 'You' : 'The opponent'} played the top engine move — <b className="good">{node.san}</b>. ✓</>
-                  : <>{reachedByUser ? 'You' : 'The opponent'} played <b className={node.deviation ? 'bad' : ''}>{node.san}</b>; the engine prefers <b className="good">{parentEngine.bestSan}</b> ({evalText(parentEngine)}).</>}
+                  ? <>{reachedByUser ? 'You' : 'Opponent'} played it <b className="good">✓</b></>
+                  : <>{reachedByUser ? 'You' : 'Opponent'} played <b className={node.deviation ? 'bad' : ''}>{figurine(node.san, movedColor ?? 'w')}</b></>}
               </div>
             </>
           ) : (
@@ -533,7 +575,7 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
           )
         ) : engine ? (
           <div className="cd-engine">
-            <span className="ce-move">{engine.bestSan || '—'}</span>
+            <span className="ce-move">{figurine(engine.bestSan || '—', stm)}</span>
             <span className="ce-eval num">{evalText(engine)}</span>
           </div>
         ) : engineLoading ? (
@@ -555,7 +597,7 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
                 const isBest = m.san === greenSan;
                 return (
                   <li key={m.uci} className={'theory-row' + (isBest ? ' best' : '') + (mine ? ' mine' : '')}>
-                    <span className="t-san">{m.san}{mine && <span className="t-tag you">you</span>}</span>
+                    <span className="t-san">{figurine(m.san, stm)}{mine && <span className="t-tag you">you</span>}</span>
                     <span className="t-bar"><span className="t-fill" style={{ width: m.share + '%' }} /></span>
                     <span className="t-share num">{m.share}%</span>
                   </li>
@@ -575,7 +617,7 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
             {yours.map((c) => (
               <li key={c.san}>
                 <button className={'cont-row' + (c.blunders > 0 ? ' bad' : '')} onClick={() => onPickMove(c.san)}>
-                  <span className="c-san">{c.san}</span>
+                  <span className="c-san">{figurine(c.san, stm)}</span>
                   <span className="c-meta num">
                     {c.eval != null && <span className="c-eval">{formatEval(c.eval)}</span>}
                     <span className={'c-score ' + c.perf} title={`Your score down this line: ${c.wins}W · ${c.draws}D · ${c.losses}L`}>{c.score}%</span>

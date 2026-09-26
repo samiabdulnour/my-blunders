@@ -5,7 +5,7 @@ import { BrandMark } from '@/components/BrandMark';
 export const metadata: Metadata = {
   title: 'Privacy Policy · My Blunders',
   description:
-    'How my·blunders handles your data: public games only, nothing stored on our servers, no accounts, no tracking.',
+    'How My Blunders handles your data: public games only, nothing stored on our servers, no accounts, no tracking.',
 };
 
 /**
@@ -33,7 +33,7 @@ export default function PrivacyPage() {
             <div className="about-eyebrow">privacy</div>
             <h1 className="about-title">Privacy Policy</h1>
             <p className="about-lead">
-              <strong>my·blunders</strong> is built to need as little of your data as possible. There
+              <strong>My Blunders</strong> is built to need as little of your data as possible. There
               are no accounts, nothing about you is stored on our servers, and everything you train
               on stays on your own device. This page explains exactly what that means.
             </p>
@@ -127,7 +127,7 @@ export default function PrivacyPage() {
               <div className="about-note">
                 <span className="tick" aria-hidden="true">✓</span>
                 <p>
-                  my·blunders collects no personal information from anyone, including children. It
+                  My Blunders collects no personal information from anyone, including children. It
                   reads only the public game data tied to the username you provide.
                 </p>
               </div>
@@ -157,7 +157,7 @@ export default function PrivacyPage() {
 
           <div className="about-foot">
             <Link className="about-link" href="/about">
-              ← About my·blunders
+              ← About My Blunders
             </Link>
           </div>
         </div>

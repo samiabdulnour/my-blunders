@@ -1,20 +1,16 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import type { Puzzle } from '@/lib/types';
-import { useImporter, BATCH_SIZE } from '@/lib/useImporter';
+import { BATCH_SIZE, QUEUE_TARGET, type Importer } from '@/lib/useImporter';
+import { useImportStatus } from '@/lib/import-status';
 import { useAutoImport, setAutoImport } from '@/lib/use-auto-import';
 
 interface ImportBarProps {
-  /** Called as puzzles arrive from an import. */
-  onImport: (newPuzzles: Puzzle[]) => void;
-  /** Fired when the user's own games are fetched (before analysis produces
-   *  puzzles), so the app can drop the famous-blunder placeholders at once. */
-  onGamesFetched?: () => void;
+  /** The page-level importer. Owned by the page rather than this bar so the
+   *  auto-import loop keeps running while the settings panel is closed. */
+  importer: Importer;
   /** Wipe all imported puzzles and solved progress from cache. */
   onClearAll: () => void;
-  /** Unsolved puzzle count (passed through for API compatibility). */
-  unseenCount: number;
 }
 
 /**
@@ -22,28 +18,27 @@ interface ImportBarProps {
  * auto-import switch, and quiet links for PGN upload / cache-clear. With
  * auto-import on, the app keeps pulling + analysing games in the background
  * toward a target library; off, the user pulls each batch with "Import more".
- * All the import machinery lives in the shared `useImporter` hook.
+ * All the import machinery lives in the shared `useImporter` hook, which the
+ * page creates once and passes in — this component is only its controls.
  */
-export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }: ImportBarProps) {
+export function ImportBar({ importer, onClearAll }: ImportBarProps) {
   const {
     username,
     setUsername,
     source,
     setSource,
-    status,
     setStatus,
     oldestMs,
     fetchedCount,
     exhausted,
-    target,
-    capped,
-    working,
     runImport,
     importFile,
     resetCursor,
-  } = useImporter({ onImport, onGamesFetched, unseenCount });
+  } = importer;
 
   const autoImportEnabled = useAutoImport();
+  const status = useImportStatus();
+  const working = status.kind === 'working';
 
   const fileRef = useRef<HTMLInputElement>(null);
   // Two-step clear: avoids window.confirm (unreliable in mobile / in-app
@@ -59,29 +54,38 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
   const doClear = () => {
     onClearAll();
     resetCursor();
-    setStatus({ kind: 'ok', message: 'cache cleared' });
+    setStatus({ kind: 'ok', message: 'Everything cleared. Tap Import to start again.' });
     setConfirmClear(false);
   };
 
-  // Progress reflects the *analysis* — how many games we've turned into puzzles,
-  // toward the auto target (which is smaller on phones to save battery). The
-  // opening-study corpus fills separately and cheaply, so it isn't counted here.
-  const analysed = Math.min(target, fetchedCount);
-  const pct = target > 0 ? Math.round((analysed / target) * 100) : 0;
+  // How far through the current batch: whole games done, plus the fraction of
+  // the game being scanned. Unknown while downloading — the stripe travels then.
+  const batchFraction =
+    status.progress && status.progress.total > 0
+      ? (status.progress.current +
+          (status.moveProgress && status.moveProgress.total > 0
+            ? status.moveProgress.done / status.moveProgress.total
+            : 0)) /
+        status.progress.total
+      : null;
 
-  // Status caption: the live action + count while working, then a clear resting
-  // summary that points to "Import more" once the auto target is reached.
+  // Status caption: the live action + running count while working, then a clear
+  // resting summary. Auto-import keeps pulling in the background with no cap, so
+  // there's no "target" — just how many games have been turned into puzzles.
   let caption: React.ReactNode = null;
   if (working) {
-    caption = `${status.message ?? 'analysing your games…'} · ${analysed}/${target}`;
+    // The importer's own words: which game, how far through it, what it found.
+    caption = status.message ?? 'Looking through your games…';
   } else if (status.kind === 'error') {
     caption = status.message;
-  } else if (capped) {
-    caption = `${fetchedCount} games analysed — “Import more” for the next ${BATCH_SIZE}`;
   } else if (exhausted) {
     caption = `${fetchedCount} games · all your history imported`;
   } else if (fetchedCount > 0) {
-    caption = `${fetchedCount} games analysed`;
+    // Auto-import idles once plenty of unsolved puzzles are waiting (see
+    // QUEUE_TARGET) and picks up again as they're solved.
+    caption = autoImportEnabled
+      ? `${fetchedCount} games analysed · more load as you solve`
+      : `${fetchedCount} games analysed — “Import more” for the next ${BATCH_SIZE}`;
   } else if (status.kind === 'ok' && status.message) {
     caption = status.message;
   }
@@ -152,16 +156,20 @@ export function ImportBar({ onImport, onGamesFetched, onClearAll, unseenCount }:
         onClick={() => setAutoImport(!autoImportEnabled)}
         title={
           autoImportEnabled
-            ? `Auto-import on — building toward ${target} games in the background`
+            ? 'Auto-import on — keeps a stock of unsolved puzzles ready, through your whole history'
             : 'Auto-import off — pull each batch with “Import more”'
         }
       >
-        Auto-import: {autoImportEnabled ? <>on<span className="auto-btn-sub"> · to {target}</span></> : 'off'}
+        Auto-import: {autoImportEnabled ? <>on<span className="auto-btn-sub"> · keeps {QUEUE_TARGET} ready</span></> : 'off'}
       </button>
 
       {working && (
         <div className="imp-progress">
-          <div className="bar" style={{ width: pct + '%' }} />
+          {batchFraction == null ? (
+            <div className="bar indeterminate" />
+          ) : (
+            <div className="bar" style={{ width: Math.round(batchFraction * 100) + '%' }} />
+          )}
         </div>
       )}
 

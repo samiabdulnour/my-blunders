@@ -5,7 +5,7 @@ import { ContactForm } from '@/components/ContactForm';
 
 export const metadata: Metadata = {
   title: 'Contact · My Blunders',
-  description: 'Ask a question or send feedback about my·blunders.',
+  description: 'Ask a question or send feedback about My Blunders.',
 };
 
 /**
@@ -40,7 +40,7 @@ export default function ContactPage() {
 
           <div className="about-foot">
             <Link className="about-link" href="/about">
-              ← About my·blunders
+              ← About My Blunders
             </Link>
           </div>
         </div>

@@ -7,12 +7,16 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * `npm run build:static` — Capacitor copies that into
  * `ios/App/App/public/` on every `cap sync`.
  *
- * `backgroundColor` matches the terminal-green theme so the brief
- * flash between the launch screen and the WebView paint isn't jarring.
+ * `backgroundColor` is the app's paper background, so the safe-area bands
+ * (behind the Dynamic Island / status bar and the home indicator) and any
+ * brief flash before the WebView paints read as paper — not a coloured edge.
  *
- * The iOS section's `contentInset: 'always'` stops the WebView's
- * scrollable content from sliding under the status bar / home
- * indicator — important for the fullscreen terminal look.
+ * The iOS section's `contentInset: 'never'` lets the WebView fill the screen
+ * edge-to-edge and hands safe-area handling entirely to CSS
+ * `env(safe-area-inset-*)` (the header reserves the top inset; the app root
+ * pads the bottom). Applying the *native* inset ('always') on top of the CSS
+ * insets double-counts them — which pushed the UI under the Dynamic Island and
+ * desynced on rotation. One source of truth (CSS) fixes both.
  *
  * `CapacitorHttp` is enabled so the app can fetch a user's games straight
  * from Lichess / chess.com without a backend of our own: it patches
@@ -27,9 +31,9 @@ const config: CapacitorConfig = {
   appId: 'com.samiabdulnour.myblunders',
   appName: 'My Blunders',
   webDir: 'out',
-  backgroundColor: '#2da66a',
+  backgroundColor: '#f1eee8',
   ios: {
-    contentInset: 'always',
+    contentInset: 'never',
   },
   plugins: {
     CapacitorHttp: {

@@ -4,14 +4,18 @@
  * by default, or rated Lichess games), with how popular each is and how it
  * scores. The top move is opening theory's main line.
  *
- * Calls go through our own `/api/explorer` proxy rather than hitting
- * explorer.lichess.ovh directly: a same-origin request survives privacy
+ * On the web, calls go through our own `/api/explorer` proxy rather than
+ * hitting explorer.lichess.ovh directly: a same-origin request survives privacy
  * browsers / shields that block cross-site requests (which silently killed
- * theory for some users). NOTE: the upstream is *not* reachable from the dev
- * sandbox's egress, so this is exercised live in the browser / production and
- * mocked in local tests.
+ * theory for some users). In the native iOS app there is no backend to proxy
+ * through, so we hit the Lichess explorer directly over Capacitor's native HTTP
+ * (which bypasses the WebView CORS) — exactly like the game importers. Without
+ * this fork the proxy 404s on the capacitor:// origin and theory is dead on
+ * device. NOTE: the upstream is *not* reachable from the dev sandbox's egress,
+ * so this is exercised live in the browser / production and mocked in tests.
  */
 import { apiUrl } from './api';
+import { isNativeApp } from './platform';
 
 export type TheoryDb = 'masters' | 'lichess';
 
@@ -60,17 +64,24 @@ function shape(json: { white?: number; draws?: number; black?: number; moves?: R
 }
 
 async function query(db: TheoryDb, fen: string): Promise<Theory | null> {
-  const url = new URL(apiUrl('/api/explorer'), window.location.origin);
-  url.searchParams.set('db', db);
-  url.searchParams.set('fen', fen);
-  url.searchParams.set('moves', '6');
-  url.searchParams.set('topGames', '0');
-  url.searchParams.set('recentGames', '0');
+  const params = new URLSearchParams({ fen, moves: '6', topGames: '0', recentGames: '0' });
   if (db === 'lichess') {
-    url.searchParams.set('speeds', 'blitz,rapid,classical');
-    url.searchParams.set('ratings', '1600,1800,2000,2200,2500');
+    params.set('speeds', 'blitz,rapid,classical');
+    params.set('ratings', '1600,1800,2000,2200,2500');
   }
-  const res = await fetch(url.toString());
+  let res: Response;
+  if (isNativeApp()) {
+    // Native: hit the explorer directly (CapacitorHttp routes it past CORS).
+    res = await fetch(`https://explorer.lichess.ovh/${db}?${params}`, {
+      headers: { 'User-Agent': 'my-blunders/0.1' },
+    });
+  } else {
+    // Web: same-origin proxy so privacy shields don't block it.
+    params.set('db', db);
+    const url = new URL(apiUrl('/api/explorer'), window.location.origin);
+    params.forEach((v, k) => url.searchParams.set(k, v));
+    res = await fetch(url.toString());
+  }
   if (!res.ok) return null;
   return shape(await res.json(), db);
 }

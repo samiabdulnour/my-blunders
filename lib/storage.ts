@@ -1,5 +1,6 @@
 import type { GameSource, HistoryEntry, Puzzle, SessionStats } from './types';
 import type { OpeningGame } from './opening-tree';
+import { BOARD_THEMES, DEFAULT_BOARD_LIGHT, DEFAULT_BOARD_DARK, type BoardThemeId } from './board-theme';
 
 /**
  * Tiny localStorage wrapper for persisting imported puzzles across reloads.
@@ -25,11 +26,15 @@ const KEY_SOLVED = 'bt.solved';
 const KEY_OLDEST = 'bt.oldestFetchedMs';
 const KEY_FETCHED = 'bt.fetchedGames';
 const KEY_RANDOM = 'bt.randomOrder';
+const KEY_COORDS = 'bt.coords';
 const KEY_THEME = 'bt.theme';
+const KEY_BOARD_LIGHT = 'bt.boardLight';
+const KEY_BOARD_DARK = 'bt.boardDark';
 const KEY_ONBOARDED = 'bt.onboarded';
 const KEY_STATS = 'bt.stats';
 const KEY_HISTORY = 'bt.history';
 const KEY_OPENING_GAMES = 'bt.openingGames';
+const KEY_TIME_CONTROL = 'bt.timeControl';
 
 /** A stored puzzle is only usable if it has the fields the app dereferences
  *  unconditionally (id, and a setupMoves array it iterates on load/render).
@@ -222,6 +227,51 @@ export function loadTheme(): ThemeMode {
 export function saveTheme(t: ThemeMode): void {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(KEY_THEME, t);
+}
+
+/** Board colour theme, chosen separately for light and dark app-mode. Light
+ *  defaults to the original green board, dark to the darker "walnut" board;
+ *  both persist. Palettes live in lib/board-theme.ts. */
+function coerceBoard(v: string | null, dflt: BoardThemeId): BoardThemeId {
+  return BOARD_THEMES.some((t) => t.id === v) ? (v as BoardThemeId) : dflt;
+}
+export function loadBoardLight(): BoardThemeId {
+  if (typeof window === 'undefined') return DEFAULT_BOARD_LIGHT;
+  return coerceBoard(window.localStorage.getItem(KEY_BOARD_LIGHT), DEFAULT_BOARD_LIGHT);
+}
+export function saveBoardLight(id: BoardThemeId): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(KEY_BOARD_LIGHT, id);
+}
+export function loadBoardDark(): BoardThemeId {
+  if (typeof window === 'undefined') return DEFAULT_BOARD_DARK;
+  return coerceBoard(window.localStorage.getItem(KEY_BOARD_DARK), DEFAULT_BOARD_DARK);
+}
+export function saveBoardDark(id: BoardThemeId): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(KEY_BOARD_DARK, id);
+}
+/** Board rank/file labels. Off by default — a clean, full-width board — with a
+ *  toggle in the top-bar prefs. Persisted. */
+export function loadCoords(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(KEY_COORDS) === '1';
+}
+export function saveCoords(on: boolean): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(KEY_COORDS, on ? '1' : '0');
+}
+
+/** Assisted Play time control, stored as the preset id ('off', '3+2', …).
+ *  Defaults to 'off' so the clock-free behaviour is what a first-time (or
+ *  upgrading) user sees. Resolve the id to a preset with `timeControlById`. */
+export function loadTimeControl(): string {
+  if (typeof window === 'undefined') return 'off';
+  return window.localStorage.getItem(KEY_TIME_CONTROL) ?? 'off';
+}
+export function saveTimeControl(id: string): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(KEY_TIME_CONTROL, id);
 }
 
 /* ── First-run onboarding flag ──
