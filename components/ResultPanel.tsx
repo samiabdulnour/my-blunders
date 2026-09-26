@@ -8,6 +8,8 @@ import { figurine } from '@/lib/figurine';
 
 interface ResultPanelProps {
   puzzle: Puzzle;
+  /** The move you played (or '—' on show-solution). Kept for the caller; the
+   *  verdict no longer distinguishes a wrong move from a shown solution. */
   yourMove: string;
   isOk: boolean;
   onRetry: () => void;
@@ -17,27 +19,31 @@ interface ResultPanelProps {
 }
 
 /**
- * Condensed result: the action buttons (Next / Retry / Play) up top, a mint ✓
- * "Correct" / coral ✗ verdict, then the best move and the real-game blunder as
- * two cards. Tapping a card opens a board popup that replays it — the engine's
- * winning line, or how the game actually went. The "Play" button hands the exact
+ * Condensed result: the verdict first — "Solved." in green, or "Puzzle
+ * completed." in plain text — then a 2×2 grid of identical buttons — In game,
+ * Best move, then Retry, Play — and Next puzzle last.
+ * Tapping Best move or In game opens a board popup that replays it — the
+ * engine's winning line, or how the game actually went. "Play" hands the exact
  * position to the Play tab to play it out vs the engine.
  *
  * The replay is the most useful thing on this panel, and it used to hide behind
- * a faintly underlined move in a line of text — nobody found it. So each move is
- * now a whole card that reads as a button: bordered, a full-size touch target,
- * with a play mark that says "this plays something".
+ * a faintly underlined move in a line of text — nobody found it. Each move is
+ * now a button exactly like Retry and Play (same box, same contour), so it reads
+ * as tappable by the company it keeps. One line each: label + move. The eval
+ * moved into the popup header, next to its live eval bar: with it, "BEST MOVE
+ * ♞f3 (+21.6)" is 147px, which fits an iPhone 17's 147px cell by 0.2px and no
+ * other phone; without it the longest move fits everywhere with room to spare.
  */
 export function ResultPanel({
   puzzle,
-  yourMove,
   isOk,
   onRetry,
   onNext,
   onPlay,
 }: ResultPanelProps) {
-  const gaveUp = yourMove === '—';
-  const verdictText = isOk ? 'Correct.' : gaveUp ? 'Solution shown.' : 'Suboptimal.';
+  // Two outcomes, in words, no glyphs: solved (green), or simply finished — a
+  // wrong move and "show solution" both land here, in the plain text colour.
+  const verdictText = isOk ? 'Solved.' : 'Puzzle completed.';
   // Evals are stored side-relative (+ = good for the player who moved). Chess
   // convention is white-relative (+ = good for White), so flip the sign when the
   // player to move was Black — that's what every board/engine shows.
@@ -62,10 +68,35 @@ export function ResultPanel({
 
   return (
     <div className="result">
+      <div className={'verdict ' + (isOk ? 'ok' : 'done')}>
+        <span className="verdict-text">{verdictText}</span>
+      </div>
+
       <div className="actions">
-        <button className="btn prim" onClick={onNext}>
-          Next puzzle →
-        </button>
+        {/* The two replays first, in the same boxes as Retry / Play: what you
+            played, then what was best — the order the story happens in. Side by
+            side on a phone; they stack wherever the slot is too narrow for both
+            (desktop column, landscape phone). */}
+        <div className="rf-cards">
+          <button
+            type="button"
+            className="btn rf-card"
+            onClick={() => setPopup('played')}
+            aria-label={`In game ${puzzle.mistakeMove}. Replay how the game actually went.`}
+          >
+            <span className="rf-lbl">In game</span>
+            <span className="rf-v">{figurine(puzzle.mistakeMove, orient)}</span>
+          </button>
+          <button
+            type="button"
+            className="btn rf-card"
+            onClick={() => setPopup('best')}
+            aria-label={`Best move ${puzzle.bestMove}. Watch the winning line on a board.`}
+          >
+            <span className="rf-lbl">Best move</span>
+            <span className="rf-v best">{figurine(puzzle.bestMove, orient)}</span>
+          </button>
+        </div>
         <div className="btn-row">
           <button className="btn" onClick={onRetry}>
             Retry
@@ -74,41 +105,9 @@ export function ResultPanel({
             Play →
           </button>
         </div>
-      </div>
-
-      <div className={'verdict ' + (isOk ? 'ok' : 'bad')}>
-        <span className="verdict-ico">{isOk ? '✓' : '✗'}</span>
-        <span className="verdict-text">{verdictText}</span>
-      </div>
-
-      {/* Two replay cards. Side by side on a phone; they stack wherever the slot
-          is too narrow for both (desktop column, landscape phone). */}
-      <div className="rf-cards">
-        <button
-          type="button"
-          className="rf-card"
-          onClick={() => setPopup('best')}
-          aria-label={`Best move ${puzzle.bestMove}. Watch the winning line on a board.`}
-        >
-          <span className="rf-lbl">Best move</span>
-          <span className="rf-v best">
-            {figurine(puzzle.bestMove, orient)}{' '}
-            <span className="rf-eval">({fmtEval(puzzle.evalBefore * sideSign)})</span>
-          </span>
-          <PlayMark />
-        </button>
-        <button
-          type="button"
-          className="rf-card"
-          onClick={() => setPopup('played')}
-          aria-label={`Blunder in game ${puzzle.mistakeMove}. Replay how the game actually went.`}
-        >
-          <span className="rf-lbl">Blunder in game</span>
-          <span className="rf-v">
-            {figurine(puzzle.mistakeMove, orient)}{' '}
-            <span className="rf-eval">({fmtEval(puzzle.evalAfter * sideSign)})</span>
-          </span>
-          <PlayMark />
+        {/* Next puzzle last — the way out, at the bottom where the thumb rests. */}
+        <button className="btn prim" onClick={onNext}>
+          Next puzzle →
         </button>
       </div>
 
@@ -118,6 +117,7 @@ export function ResultPanel({
           pvSan={popup === 'best' ? bestPv : playedPv}
           orient={orient}
           lead={popup === 'best' ? 'Best was' : 'You played'}
+          tail={fmtEval((popup === 'best' ? puzzle.evalBefore : puzzle.evalAfter) * sideSign)}
           note={
             popup === 'best'
               ? 'The position you had, then the engine’s best line. Tap a move to jump to it.'
@@ -131,18 +131,6 @@ export function ResultPanel({
       )}
 
     </div>
-  );
-}
-
-/** The "this plays something" mark on a replay card — a solid disc with a play
- *  triangle, the one glyph everybody reads as "watch". An icon, not text, so it
- *  sits outside the three type styles. */
-function PlayMark() {
-  return (
-    <svg className="rf-play" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-      <circle cx="11" cy="11" r="11" />
-      <path d="M8.6 6.6 L15.6 11 L8.6 15.4 Z" />
-    </svg>
   );
 }
 

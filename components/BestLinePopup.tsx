@@ -113,6 +113,9 @@ interface BestLinePopupProps {
   orient: 'w' | 'b';
   /** Header lead before the first move, e.g. "Best was" / "You played". */
   lead?: string;
+  /** Shown after the move in the header, e.g. its eval "+21.6" — the number
+   *  the result panel no longer has room for next to the move. */
+  tail?: string;
   /** One-line caption under the board. */
   note?: string;
   /** Plies to play out (default 10 = five moves). */
@@ -129,6 +132,7 @@ export function BestLinePopup({
   pvSan,
   orient,
   lead = 'Best was',
+  tail,
   note = 'The position you had, then the engine’s line. Tap a move to jump to it.',
   maxPlies = MAX_PLIES,
   firstDelay = FIRST_DELAY,
@@ -242,6 +246,7 @@ export function BestLinePopup({
         <div className="pv-head">
           <div className="pv-title">
             {lead} <span className="num">{figurine(steps[0]?.san ?? pvSan[0] ?? '—', steps[0]?.color ?? orient)}</span>
+            {tail && <span className="pv-tail"> · {tail}</span>}
           </div>
           <button className="pv-x" onClick={onClose} aria-label="Close">
             ✕

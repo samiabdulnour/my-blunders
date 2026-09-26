@@ -206,7 +206,9 @@ select {
   gap: 8px;
   width: 100%;
   box-sizing: border-box;
-  padding: 7px;
+  /* 14px at the sides = the result panel's inset, so the arrows line up with
+     the buttons beneath them (and with the name / ☰ in the bracket above). */
+  padding: 7px 14px;
   border: 1px solid var(--contour);
   background: var(--bg2);
 }
@@ -996,7 +998,10 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 12px;
+  /* Side inset shared by every bracket in the column (arrows, result) — see
+     .board-controls — so the name, the ☰, the arrows and the result panel's
+     buttons all sit on one vertical line. */
+  padding: 0 14px;
   min-width: 0;
   /* Compact shared header height (same as the arrows bracket). */
   height: 54px;
@@ -1352,6 +1357,11 @@ html[data-theme='dark'] .sq.cap-ring {
 .verdict.bad .verdict-text {
   color: var(--red);
 }
+/* Finished without solving (wrong move, or the solution shown): a plain
+   statement in the text colour, not a red verdict. */
+.verdict.done .verdict-text {
+  color: var(--txt);
+}
 /* Unified bracket typography: a base-size bold title over base-size dimmed body,
    regular case — shared by the puzzle / coordinate / play result brackets. */
 .verdict-title {
@@ -1434,51 +1444,45 @@ html[data-theme='dark'] .sq.cap-ring {
 }
 /* Condensed result facts — best move + blunder as a tight label→value grid so
    the move sits right next to its label (not pushed to the far right). */
-/* Replay cards — the best move and the real-game blunder, each a button that
-   opens the board replay. Two across on a phone; `auto-fit` stacks them wherever
-   the slot can't hold two 150px cards (desktop's 280px column, landscape's
-   180px). 150px is not arbitrary: "BLUNDER IN GAME" sets 121px wide in the
-   Label style and needs a line to itself. */
+/* Replay buttons — the best move and the move played in the game, each opening
+   the board replay. They ARE `.btn`s (same box, contour and pressed look as
+   Retry / Play beside them); the rules here only lay out the label + move
+   inside. Two across on a phone; `auto-fit` stacks them wherever the slot can't
+   hold two (desktop's 280px column, landscape's 180px). */
 .rf-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 6px;
 }
-/* Quieter than the action buttons above (tinted ground, lighter rule) so Next /
-   Retry / Play keep the hierarchy — but unmistakably a button. */
-.rf-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: 'lbl lbl' 'val play';
-  align-items: center;
-  gap: 5px 8px;
-  min-height: 44px; /* iOS touch-target floor */
-  padding: 9px 10px;
-  border: 1px solid var(--border2);
-  border-radius: 2px;
-  background: var(--bg);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.12s var(--ease-snap), border-color 0.12s var(--ease-snap);
+.btn.rf-card {
+  display: flex;
+  align-items: baseline;
+  justify-content: center; /* label + move centred as one unit, like the text in Retry / Play */
+  gap: 6px;
+  min-width: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  /* Exactly as tall as Retry / Play, on every platform. A <button> doesn't
+     inherit line-height, so a .btn's text sits in a `normal` line box — and
+     `normal` is a font metric that differs between desktop WebKit (~15.5px)
+     and iOS (~17px), so no fixed number can match both. Instead the label
+     gets the same `normal` box a .btn's own 11px text gets, and the 13px move
+     is squeezed to line-height 1 so it never outgrows it; baseline alignment
+     then makes the label's box set the height. */
+  line-height: normal;
 }
-.rf-card .rf-lbl { grid-area: lbl; }
-.rf-card .rf-v { grid-area: val; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rf-play { grid-area: play; display: block; flex-shrink: 0; }
-.rf-play circle { fill: var(--contour); }
-.rf-play path { fill: var(--bg2); }
-/* Pressed feedback for touch; hover only where a pointer can actually hover —
-   on iOS a plain :hover sticks to whatever sits under the last tap. */
-.rf-card:active { background: var(--bg3); border-color: var(--contour); }
+/* The label is the button's own text — same colour as "RETRY" / "PLAY", and it
+   inverts with the button when pressed. Only the move keeps its own colour. */
+.rf-card .rf-lbl { flex-shrink: 0; color: inherit; }
+.rf-card .rf-v { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1; }
+/* Pressed / hovered: the .btn inversion, carried into the move's colour too. */
+.btn.rf-card:active:not(:disabled) .rf-v { color: inherit; }
 @media (hover: hover) {
-  .rf-card:hover { background: var(--bg3); border-color: var(--contour); }
+  .btn.rf-card:hover:not(:disabled) .rf-v { color: inherit; }
 }
-.rf-card:focus-visible { outline: 2px solid var(--contour); outline-offset: 2px; }
 .rf-lbl { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); }
 .rf-v { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); font-variant-numeric: tabular-nums; }
 .rf-v.best { color: var(--green); }
-/* Eval in brackets after the move — secondary, so Body weight/colour. */
-.rf-eval { font-weight: var(--fw-reg); color: var(--txt-dim); }
 .move-cell {
   border: 1px solid var(--border);
   background: var(--bg);
@@ -3260,6 +3264,8 @@ body.panning * {
 }
 .pv-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
 .pv-title { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); }
+/* The eval after the move — secondary, so Body weight/colour. */
+.pv-tail { font-weight: var(--fw-reg); color: var(--txt-dim); }
 /* Icon glyph only — exempt from the three text styles. */
 .pv-x {
   flex-shrink: 0; width: 26px; height: 26px; line-height: 1;
