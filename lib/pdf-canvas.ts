@@ -49,9 +49,17 @@ export class CanvasPdf {
   private fontFamily = 'Helvetica';
   private fontSize = 12;
 
-  constructor(orientation: 'portrait' | 'landscape', targetPx = 1400) {
-    this.pageW = orientation === 'portrait' ? A1_SHORT : A1_LONG;
-    this.pageH = orientation === 'portrait' ? A1_LONG : A1_SHORT;
+  /** `page` is an A1 orientation, or explicit page dimensions in points (the
+   *  wallpaper passes a 16:9 page). `targetPx` sizes the LONG edge in pixels —
+   *  1400 for the dialog preview, 3840 for the 4K wallpaper itself. */
+  constructor(page: 'portrait' | 'landscape' | { w: number; h: number }, targetPx = 1400) {
+    if (typeof page === 'object') {
+      this.pageW = page.w;
+      this.pageH = page.h;
+    } else {
+      this.pageW = page === 'portrait' ? A1_SHORT : A1_LONG;
+      this.pageH = page === 'portrait' ? A1_LONG : A1_SHORT;
+    }
     this.scale = targetPx / Math.max(this.pageW, this.pageH);
     this.canvas = document.createElement('canvas');
     this.canvas.width = Math.round(this.pageW * this.scale);
@@ -227,5 +235,18 @@ export class CanvasPdf {
 
   toDataURL(): string {
     return this.canvas.toDataURL('image/png');
+  }
+
+  /** Encode the finished canvas as a JPEG blob (the wallpaper export). The
+   *  poster draw starts with an opaque paper fill, so JPEG's lack of alpha
+   *  costs nothing. */
+  toJpegBlob(quality = 0.92): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      this.canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error('jpeg encode failed'))),
+        'image/jpeg',
+        quality
+      );
+    });
   }
 }

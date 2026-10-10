@@ -407,6 +407,13 @@ export interface PosterBudget {
 export const POSTER_BUDGET = {
   portrait: { maxLines: 20, maxPly: 24, rank: 'branch', stubs: { count: 40, plies: 5 } },
   landscape: { maxLines: 29, maxPly: 16, rank: 'branch', stubs: { count: 40, plies: 5 } },
+  /** The 4K desktop wallpaper (16:9, 3840×2160). Far sparser than a print
+   *  sheet ON PURPOSE: a wallpaper is read at screen size, not at arm's length
+   *  on A1 paper, so the budget is chosen to land boards at their native 96pt
+   *  (~155px at 4K) with the move text ~15px — readable on a laptop. The 16:9
+   *  tree area is 2218pt wide × ~1178pt tall: 19 lines (116·19−12 = 2192) and
+   *  8 plies (18 + 140·8 = 1138) fill it at scale 1, ending on move 4. */
+  wallpaper: { maxLines: 19, maxPly: 8, rank: 'branch', stubs: { count: 40, plies: 5 } },
 } as const;
 
 export type PosterShape = keyof typeof POSTER_BUDGET;

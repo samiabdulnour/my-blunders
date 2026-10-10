@@ -8,10 +8,9 @@ import { PrintDialog } from '@/components/PrintDialog';
  * Left panel for Opening mode: a colour switch and a filterable list of your
  * openings. Picking one focuses the tree on that opening's subtree (the clinic
  * and this list share state via ClinicProvider). Import lives in the top-bar
- * import panel now, shared across modes. "Print" exports an A1 PDF poster — the
- * focused opening's subtree when one is picked, else the whole colour, at full
- * depth (auto-reduced only when a huge tree wouldn't fit A1). Share sheet on
- * iOS, download on web.
+ * import panel now, shared across modes. "Print" opens the export dialog — an
+ * A1 PDF poster or a 4K desktop wallpaper of the focused opening's subtree when
+ * one is picked, else the whole colour. Share sheet on iOS, download on web.
  */
 export function OpeningSidebar() {
   const { color, setColor, tree, games, openings, focus, setFocus, setSelectedId, loading, fetching } = useClinic();
@@ -55,7 +54,7 @@ export function OpeningSidebar() {
             <rect x="6" y="14" width="12" height="8" />
           </svg>
           <span className="side-print-lbl">
-            Print {focusOpening ? focusOpening.name : `full ${color === 'w' ? 'White' : 'Black'} tree`} · A1
+            Print {focusOpening ? focusOpening.name : `full ${color === 'w' ? 'White' : 'Black'} tree`}
           </span>
         </button>
         {showPrint && (

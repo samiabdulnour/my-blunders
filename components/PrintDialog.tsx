@@ -3,20 +3,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { buildOpeningTree, POSTER_BUDGET, POSTER_MAX_NODES, type OpeningGame } from '@/lib/opening-tree';
-import { buildOpeningTreePdf, renderOpeningTreePreview, savePdf, type OpeningPdfOpts } from '@/lib/opening-pdf';
+import {
+  buildOpeningTreePdf,
+  buildOpeningTreeWallpaper,
+  renderOpeningTreePreview,
+  savePdf,
+  type OpeningPdfOpts,
+} from '@/lib/opening-pdf';
 import { fillPosterEvals } from '@/lib/opening-engine';
 
 /**
- * Print dialog for the opening-tree poster. Shows a fit-to-page preview image
- * and one choice before you commit: orientation (portrait or landscape).
- * The whole repertoire is drawn on ONE A1 sheet: full-depth columns for the
- * lines played most, short stubs for the rest where there is room (see
- * POSTER_BUDGET). The preview is a rasterised page-1 image (not an embedded PDF), so it
- * fits reliably everywhere. "Save / share" builds the real PDF and hands it off
- * (share sheet on iOS, download on web). Re-renders whenever a choice changes.
+ * Print dialog for the opening tree, in two outputs:
+ *  · POSTER — one A1 PDF sheet, portrait or landscape: full-depth columns for
+ *    the lines played most, short stubs for the rest where there is room (see
+ *    POSTER_BUDGET);
+ *  · WALLPAPER — a 16:9 JPEG at 3840×2160 for a desktop background, shaped by
+ *    its own sparser budget so the boards and moves read at screen size.
+ * The preview is a rasterised image of the sheet (not an embedded PDF), so it
+ * fits reliably everywhere. "Save / share" builds the real file and hands it
+ * off (share sheet on iOS, download on web). Re-renders whenever a choice
+ * changes.
  */
 
 type Orientation = 'landscape' | 'portrait';
+type OutputMode = 'poster' | 'wallpaper';
 
 interface PrintDialogProps {
   /** Raw games — the poster builds its own tree, denser than the clinic's and
@@ -30,6 +40,7 @@ interface PrintDialogProps {
 
 export function PrintDialog({ games, color, focusPath, focusName, onClose }: PrintDialogProps) {
   const [mounted, setMounted] = useState(false);
+  const [mode, setMode] = useState<OutputMode>('poster');
   const [orientation, setOrientation] = useState<Orientation>('portrait');
   const [building, setBuilding] = useState(true);
   const [img, setImg] = useState<string | null>(null);
@@ -50,20 +61,31 @@ export function PrintDialog({ games, color, focusPath, focusName, onClose }: Pri
   const [evalsReady, setEvalsReady] = useState(0);
   const [analysing, setAnalysing] = useState<{ done: number; total: number } | null>(null);
 
+  // Which budget shapes the tree: the chosen A1 orientation, or the wallpaper's
+  // own (sparser) one.
+  const shape = mode === 'wallpaper' ? 'wallpaper' : orientation;
+
   // The poster's own tree: a lower games floor than the clinic (every line you
-  // played, not just the ≥2 core) and budgeted to the chosen sheet — portrait
-  // gets fewer, longer lines; landscape more, shorter ones. Rebuilt on an
-  // orientation switch, which is why it isn't built once by the sidebar.
+  // played, not just the ≥2 core) and budgeted to the chosen output — portrait
+  // gets fewer, longer lines; landscape more, shorter ones; the wallpaper far
+  // fewer of both, so it reads at screen size. Rebuilt on a mode/orientation
+  // switch, which is why it isn't built once by the sidebar.
   // `focusPath` goes in here rather than being filtered out later, so a focused
   // poster spends the whole budget inside that opening.
   const tree = useMemo(
-    () => buildOpeningTree(games, color, 1, POSTER_MAX_NODES, POSTER_BUDGET[orientation], focusPath),
-    [games, color, orientation, focusPath]
+    () => buildOpeningTree(games, color, 1, POSTER_MAX_NODES, POSTER_BUDGET[shape], focusPath),
+    [games, color, shape, focusPath]
   );
 
   const opts = useCallback(
-    (): OpeningPdfOpts => ({ focusPath, focusName, orientation, evals: evalsRef.current }),
-    [focusPath, focusName, orientation]
+    (): OpeningPdfOpts => ({
+      focusPath,
+      focusName,
+      orientation: mode === 'wallpaper' ? 'landscape' : orientation,
+      shape,
+      evals: evalsRef.current,
+    }),
+    [focusPath, focusName, orientation, mode, shape]
   );
 
   useEffect(() => setMounted(true), []);
@@ -125,15 +147,22 @@ export function PrintDialog({ games, color, focusPath, focusName, onClose }: Pri
     if (saving) return;
     setSaving(true);
     try {
-      const built = await buildOpeningTreePdf(tree, color, opts());
+      const built =
+        mode === 'wallpaper'
+          ? await buildOpeningTreeWallpaper(tree, color, opts())
+          : await buildOpeningTreePdf(tree, color, opts());
       await savePdf(built);
     } finally {
       setSaving(false);
     }
-  }, [saving, tree, color, opts]);
+  }, [saving, mode, tree, color, opts]);
 
   if (!mounted) return null;
 
+  const modeOpts: [OutputMode, string][] = [
+    ['poster', 'Poster · A1 PDF'],
+    ['wallpaper', 'Wallpaper · 4K JPEG'],
+  ];
   const orientOpts: [Orientation, string][] = [
     ['portrait', 'Portrait'],
     ['landscape', 'Landscape'],
@@ -170,20 +199,37 @@ export function PrintDialog({ games, color, focusPath, focusName, onClose }: Pri
 
         <div className="pd-controls">
           <div className="pd-row">
-            <span className="pd-lbl">Orientation</span>
+            <span className="pd-lbl">Output</span>
             <div className="seg-tabs">
-              {orientOpts.map(([val, label]) => (
+              {modeOpts.map(([val, label]) => (
                 <button
                   key={val}
                   type="button"
-                  className={'seg-tab' + (orientation === val ? ' on' : '')}
-                  onClick={() => setOrientation(val)}
+                  className={'seg-tab' + (mode === val ? ' on' : '')}
+                  onClick={() => setMode(val)}
                 >
                   {label}
                 </button>
               ))}
             </div>
           </div>
+          {mode === 'poster' && (
+            <div className="pd-row">
+              <span className="pd-lbl">Orientation</span>
+              <div className="seg-tabs">
+                {orientOpts.map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    className={'seg-tab' + (orientation === val ? ' on' : '')}
+                    onClick={() => setOrientation(val)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {analysing && (
             <div className="pd-note">
               Analysing positions with Stockfish… {analysing.done}/{analysing.total}
@@ -191,8 +237,9 @@ export function PrintDialog({ games, color, focusPath, focusName, onClose }: Pri
             </div>
           )}
           <div className="pd-note">
-            One A1 sheet. The columns go to the lines you play most; openings you only
-            tried appear as a few boards where there is room.
+            {mode === 'poster'
+              ? 'One A1 sheet. The columns go to the lines you play most; openings you only tried appear as a few boards where there is room.'
+              : 'A 3840 × 2160 image for your desktop background — fewer, bigger boards than the poster, sized to read on a laptop screen.'}
           </div>
         </div>
 

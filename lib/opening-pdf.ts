@@ -13,7 +13,7 @@
  * what surfaces "Save to Files" / Print inside the iOS app), falling back to a
  * plain download on desktop web.
  */
-import { layoutTree, findByPath, formatEval, POSTER_BUDGET, RENDER_ROWS, type TreeNode, type LaidNode } from './opening-tree';
+import { layoutTree, findByPath, formatEval, POSTER_BUDGET, RENDER_ROWS, type PosterShape, type TreeNode, type LaidNode } from './opening-tree';
 import { loadUsername } from './storage';
 
 // The poster packs far tighter than the on-screen clinic — small boards nearly
@@ -231,7 +231,7 @@ async function rasterizePieces(): Promise<Map<string, string>> {
 }
 
 async function saveOrShare(blob: Blob, filename: string, title: string): Promise<void> {
-  const file = new File([blob], filename, { type: 'application/pdf' });
+  const file = new File([blob], filename, { type: blob.type || 'application/pdf' });
   const nav = navigator as Navigator & {
     canShare?: (d: unknown) => boolean;
     share?: (d: unknown) => Promise<void>;
@@ -267,6 +267,9 @@ export interface OpeningPdfOpts {
   maxPlies?: number | 'auto';
   /** Sheet orientation (default 'portrait'). */
   orientation?: 'portrait' | 'landscape';
+  /** Which budget shapes the tree: an A1 orientation, or 'wallpaper' for the
+   *  16:9 4K JPEG. Defaults to the orientation, so PDF callers never set it. */
+  shape?: PosterShape;
   /** Engine evals by FEN (white-relative cp), overriding the sparse per-game
    *  evals so every board can show one. See fillPosterEvals(). */
   evals?: Map<string, number>;
@@ -348,10 +351,11 @@ async function renderPoster(
       branchDepth: o.branchDepth,
       // Packed by outline, so the tree's stubs sit in its empty corners and
       // deep lines run underneath them — never wider than the line budget.
-      pack: { maxCols: POSTER_BUDGET[opts.orientation === 'landscape' ? 'landscape' : 'portrait'].maxLines },
+      pack: { maxCols: POSTER_BUDGET[shape].maxLines },
     });
 
   const orient: 'portrait' | 'landscape' = opts.orientation === 'landscape' ? 'landscape' : 'portrait';
+  const shape: PosterShape = opts.shape ?? orient;
   const portrait = orient === 'portrait';
   const doc = await makeDoc(orient);
   const pageW = doc.internal.pageSize.getWidth();
@@ -441,7 +445,7 @@ async function renderPoster(
   // Rows come from the same budget the tree was built against, so the sheet
   // never draws fewer plies than the lines were spent on (that mismatch left
   // landscape two-thirds empty).
-  const maxRows = POSTER_BUDGET[orient].maxPly;
+  const maxRows = POSTER_BUDGET[shape].maxPly;
   const branchDepth = DEEP;
   let minGames = 1; // show every line you've played (the poster tree keeps ≥1)
   const build = () => layoutAt({ mg: minGames, maxRows, maxChildren: 8, branchDepth });
@@ -772,10 +776,60 @@ export async function buildOpeningTreePdf(
   return { blob: doc.output('blob'), filename, title, pages, branches };
 }
 
+/* ── Wallpaper (16:9 canvas → JPEG) ────────────────────────────────────────
+ * The same draw code as the A1 sheet, on a 16:9 "page" whose width matches A1's
+ * long edge — so every pt-sized constant (headers, legend, gutter) keeps the
+ * proportions the poster was designed at. Rendered at 3840px wide, the page
+ * height lands at exactly 2160px: a native 4K desktop wallpaper. */
+const WALL_PAGE_W = 2383.94; // = A1's long edge, in points
+const WALL_PAGE_H = (WALL_PAGE_W * 9) / 16;
+const WALL_PX = 3840;
+const WALL_JPEG_QUALITY = 0.92;
+
+/** Canvas text draws with whatever face is loaded at the time, so pull the
+ *  poster's family in before the first stroke — otherwise the render silently
+ *  falls back to Helvetica and mismatches the PDF. `GrueziPoster` is declared
+ *  in globals.css purely for this, and only downloaded when needed. */
+async function ensureCanvasFonts(): Promise<void> {
+  if (typeof document === 'undefined' || !document.fonts) return;
+  try {
+    await Promise.all([document.fonts.load(`700 24px ${FONT}`), document.fonts.load(`400 24px ${FONT}`)]);
+  } catch { /* fall back to the default face */ }
+}
+
+/**
+ * Build the 4K wallpaper JPEG of `tree` (16:9, 3840×2160). Shaped by the
+ * 'wallpaper' budget — far fewer, larger boards than the print sheet, so the
+ * moves stay readable at screen size.
+ */
+export async function buildOpeningTreeWallpaper(
+  tree: TreeNode,
+  color: 'w' | 'b',
+  opts: OpeningPdfOpts = {}
+): Promise<BuiltPdf> {
+  const { CanvasPdf } = await import('./pdf-canvas');
+  await ensureCanvasFonts();
+  const { doc, filename, title, pages, branches } = await renderPoster(
+    () => new CanvasPdf({ w: WALL_PAGE_W, h: WALL_PAGE_H }, WALL_PX),
+    tree,
+    color,
+    { ...opts, orientation: 'landscape', shape: 'wallpaper' }
+  );
+  await doc.flushImages();
+  return {
+    blob: await doc.toJpegBlob(WALL_JPEG_QUALITY),
+    filename: filename.replace(/\.pdf$/, '-wallpaper.jpg'),
+    title,
+    pages,
+    branches,
+  };
+}
+
 /**
  * Render page 1 of the poster to a PNG data URL for the print dialog's preview.
  * Drawing to a canvas (rather than embedding the PDF) guarantees a fit-to-page
  * image on every platform — iOS's built-in PDF viewer can't be relied on to.
+ * With `shape: 'wallpaper'` the preview is the 16:9 page instead of A1.
  */
 export async function renderOpeningTreePreview(
   tree: TreeNode,
@@ -784,17 +838,12 @@ export async function renderOpeningTreePreview(
   targetPx = 1400
 ): Promise<{ dataUrl: string; pages: number; branches: string[]; fens: string[] }> {
   const { CanvasPdf } = await import('./pdf-canvas');
-  // Canvas draws with whatever is loaded at the time, so make sure the poster's
-  // face is in before the first stroke — otherwise the preview silently falls
-  // back to Helvetica and mismatches the PDF. `GrueziPoster` is declared in
-  // globals.css purely for this, and only downloaded when the dialog opens.
-  if (typeof document !== 'undefined' && document.fonts) {
-    try {
-      await Promise.all([document.fonts.load(`700 24px ${FONT}`), document.fonts.load(`400 24px ${FONT}`)]);
-    } catch { /* fall back to the default face */ }
-  }
+  await ensureCanvasFonts();
   const { doc, pages, branches, fens } = await renderPoster(
-    (orient) => new CanvasPdf(orient, targetPx),
+    (orient) =>
+      opts.shape === 'wallpaper'
+        ? new CanvasPdf({ w: WALL_PAGE_W, h: WALL_PAGE_H }, targetPx)
+        : new CanvasPdf(orient, targetPx),
     tree,
     color,
     opts
