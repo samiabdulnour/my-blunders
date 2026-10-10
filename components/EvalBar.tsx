@@ -35,8 +35,8 @@ export function EvalBar({ fen, orientation }: { fen: string; orientation: 'white
 
   const wf = ev ? whiteFraction(ev.cp, ev.mate) : 0.5;
   const bottomFrac = orientation === 'white' ? wf : 1 - wf;
-  const bottomColor = orientation === 'white' ? '#efe9dc' : '#2b2925';
-  const topColor = orientation === 'white' ? '#2b2925' : '#efe9dc';
+  const bottomColor = orientation === 'white' ? 'var(--eval-w)' : 'var(--eval-b)';
+  const topColor = orientation === 'white' ? 'var(--eval-b)' : 'var(--eval-w)';
 
   return (
     <div className="board-evalbar" style={{ background: topColor }} aria-hidden="true">

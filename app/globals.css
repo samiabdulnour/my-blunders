@@ -71,6 +71,11 @@
   --sq-d: #8fae86;
   --lm-l: #e8e08a;
   --lm-d: #d2c45f;
+  /* Engine bar: drawn like a button (white fill, ink contour). White's share
+     must stay the LIGHT colour and Black's the dark one in both themes, so the
+     dark theme swaps which token each side takes. */
+  --eval-w: var(--bg2);
+  --eval-b: var(--contour);
   --coral: #f44e48;
   --mint: #7ce3a0;
   --lemon: #e8e373;
@@ -108,6 +113,8 @@ html[data-theme='dark'] {
   --bg: #16140f;
   --bg2: #211e17;
   --bg3: #2c2820;
+  --eval-w: var(--contour);
+  --eval-b: var(--bg2);
   --border: rgba(244, 238, 240, 0.14);
   --border2: rgba(244, 238, 240, 0.3);
   --contour: #f4eef0;

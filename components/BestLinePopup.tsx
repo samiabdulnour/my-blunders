@@ -228,8 +228,8 @@ export function BestLinePopup({
   }
   const wf = curEval ? whiteFraction(curEval.cp, curEval.mate) : 0.5;
   const bottomFrac = orient === 'w' ? wf : 1 - wf;
-  const bottomColor = orient === 'w' ? '#efe9dc' : '#2b2925';
-  const topColor = orient === 'w' ? '#2b2925' : '#efe9dc';
+  const bottomColor = orient === 'w' ? 'var(--eval-w)' : 'var(--eval-b)';
+  const topColor = orient === 'w' ? 'var(--eval-b)' : 'var(--eval-w)';
 
   if (!mounted) return null;
 
