@@ -35,6 +35,7 @@ const KEY_STATS = 'bt.stats';
 const KEY_HISTORY = 'bt.history';
 const KEY_OPENING_GAMES = 'bt.openingGames';
 const KEY_TIME_CONTROL = 'bt.timeControl';
+const KEY_EVAL_BAR = 'bt.evalBar';
 
 /** A stored puzzle is only usable if it has the fields the app dereferences
  *  unconditionally (id, and a setupMoves array it iterates on load/render).
@@ -260,6 +261,18 @@ export function loadCoords(): boolean {
 export function saveCoords(on: boolean): void {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(KEY_COORDS, on ? '1' : '0');
+}
+
+/** Engine bar: a live eval bar beside every board — puzzles, Play, the opening
+ *  drill and the famous-game replay. Off by default (it gives away whether a
+ *  puzzle move worked); a toggle in Settings. Persisted. */
+export function loadEvalBar(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(KEY_EVAL_BAR) === '1';
+}
+export function saveEvalBar(on: boolean): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(KEY_EVAL_BAR, on ? '1' : '0');
 }
 
 /** Assisted Play time control, stored as the preset id ('off', '3+2', …).

@@ -77,18 +77,24 @@ const QUALITY_LABEL: Record<MoveVerdict['quality'], string> = {
  */
 export function PlayMode({
   coords = true,
+  evalBar = false,
   startFrom,
   onStarted,
 }: {
   coords?: boolean;
+  /** Engine eval bar beside the board (the global setting). */
+  evalBar?: boolean;
   /** Open at this position instead of the initial one (from a puzzle's "Play").
-   *  `noClock` forces this game clock-free regardless of the saved time control. */
-  startFrom?: { fen: string; color: Color; noClock?: boolean } | null;
+   *  `noClock` forces this game clock-free regardless of the saved time control.
+   *  `moves` is the SAN path from the initial position to `fen`; when present
+   *  the game is rebuilt by replaying it, so the whole history (the real game's
+   *  setup moves included) is in the move list and scrubbable with the arrows. */
+  startFrom?: { fen: string; color: Color; noClock?: boolean; moves?: string[] } | null;
   /** Called once the start position has been consumed, so the parent can clear
    *  it and a later return to this tab begins from the standard position. */
   onStarted?: () => void;
 }) {
-  const gameRef = useRef<Chess>(startFrom ? safeGame(startFrom.fen) : new Chess());
+  const gameRef = useRef<Chess>(startFrom ? gameFrom(startFrom) : new Chess());
   const [fen, setFen] = useState(gameRef.current.fen());
   const [userColor, setUserColor] = useState<Color>(startFrom?.color ?? 'w');
   const [orientation, setOrientation] = useState<Color>(startFrom?.color ?? 'w');
@@ -109,7 +115,10 @@ export function PlayMode({
    *  Scrubbing back is non-destructive; playing a move from a past ply branches
    *  there (the moves after it are dropped). */
   const [viewPly, setViewPly] = useState<number | null>(null);
-  /** Piece slide for a one-ply scrub with the arrows (see `seekTo`). */
+  /** Piece slide for a one-ply scrub with the arrows (see `seekTo`) — and for
+   *  live moves (yours by click, and every engine reply), so a piece travels
+   *  to its square instead of reappearing there. A dragged piece is already
+   *  under your finger, so drags don't re-animate. */
   const [navTravel, setNavTravel] = useState<{ from: string; to: string } | null>(null);
   /** Move-list panel open by default; collapsible so it isn't in the way. */
   const [movesOpen, setMovesOpen] = useState(true);
@@ -353,6 +362,12 @@ export function PlayMode({
 
   const goPly = (n: number) => seekTo(n >= totalPlies ? null : n);
 
+  /** Slide a piece across for a live move (same mechanism as the scrub). */
+  const slide = (from: string, to: string) => {
+    setNavTravel({ from, to });
+    window.setTimeout(() => setNavTravel(null), 260);
+  };
+
   // Drive the bottom control bar's first/prev/next/last through the game.
   useRegisterBoardNav(
     {
@@ -436,6 +451,7 @@ export function PlayMode({
       if (em) {
         playMove(!!em.captured);
         setLastMove({ from: em.from, to: em.to });
+        slide(em.from, em.to);
         commitClock(em.color);
       }
       setFen(g.fen());
@@ -517,6 +533,7 @@ export function PlayMode({
         if (em) {
           playMove(!!em.captured);
           setLastMove({ from: em.from, to: em.to });
+          slide(em.from, em.to);
           commitClock(em.color);
         }
         setFen(g.fen());
@@ -527,7 +544,7 @@ export function PlayMode({
     }
   };
 
-  const applyUserMove = (m: { from: string; to: string; promotion?: string }) => {
+  const applyUserMove = (m: { from: string; to: string; promotion?: string }, fromDrag = false) => {
     if (!canMove) return;
     const g = gameRef.current;
     // Branching from a reviewed position: drop the moves after it, then play on
@@ -553,6 +570,7 @@ export function PlayMode({
     commitClock(played.color);
     setSelected(null);
     setLastMove({ from: played.from, to: played.to });
+    if (!fromDrag) slide(played.from, played.to);
     setFen(g.fen());
 
     if (manualRef.current) {
@@ -777,8 +795,9 @@ export function PlayMode({
               introMove={navTravel}
               revealed={!canMove}
               onSquareClick={onSquareClick}
-              onDragMove={(mv) => applyUserMove(mv)}
+              onDragMove={(mv) => applyUserMove(mv, true)}
               coords={coords}
+              showEval={evalBar}
             />
           </div>
 
@@ -932,6 +951,24 @@ function safeGame(fen: string): Chess {
   } catch {
     return new Chess();
   }
+}
+
+/** Build the handed-off game. Preferred: replay the SAN path from the initial
+ *  position, so the game carries its whole history (the move list fills in and
+ *  the arrows can walk all the way back). Falls back to the bare FEN — a
+ *  playable game with no past — if the path doesn't reproduce the position. */
+function gameFrom(startFrom: { fen: string; moves?: string[] }): Chess {
+  const moves = startFrom.moves;
+  if (moves && moves.length > 0) {
+    try {
+      const c = new Chess();
+      for (const san of moves) c.move(san);
+      if (c.fen() === startFrom.fen) return c;
+    } catch {
+      /* fall through to the FEN */
+    }
+  }
+  return safeGame(startFrom.fen);
 }
 
 /** FEN after replaying the first `n` plies of a verbose move history. */

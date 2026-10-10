@@ -30,6 +30,9 @@ interface AppShellProps {
   onToggleCoords: () => void;
   sound: boolean;
   onToggleSound: () => void;
+  /** Engine eval bar beside every board (off by default). */
+  evalBar: boolean;
+  onToggleEvalBar: () => void;
   /** Puzzle · Opening · Play · Coordinates mode for the shared topbar switch. */
   mode: 'puzzle' | 'opening' | 'play' | 'coords';
   onModeChange: (mode: 'puzzle' | 'opening' | 'play' | 'coords') => void;
@@ -66,6 +69,8 @@ export function AppShell({
   onToggleCoords,
   sound,
   onToggleSound,
+  evalBar,
+  onToggleEvalBar,
   mode,
   onModeChange,
   importer,
@@ -263,6 +268,16 @@ export function AppShell({
                 Board coordinates
               </span>
               <span className={'toggle-pill' + (coords ? ' on' : '')}>{coords ? 'On' : 'Off'}</span>
+            </button>
+            <button type="button" className="settings-row" onClick={onToggleEvalBar} aria-pressed={evalBar}>
+              <span className="settings-row-label">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="9" y="3" width="6" height="18" rx="1" />
+                  <line x1="9" y1="12" x2="15" y2="12" />
+                </svg>
+                Engine bar
+              </span>
+              <span className={'toggle-pill' + (evalBar ? ' on' : '')}>{evalBar ? 'On' : 'Off'}</span>
             </button>
             <button type="button" className="settings-row" onClick={onToggleSound} aria-pressed={sound}>
               <span className="settings-row-label">

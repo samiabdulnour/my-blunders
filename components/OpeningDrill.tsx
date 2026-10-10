@@ -7,7 +7,7 @@ import { evalPosition, candidateMoves, type EngineEval, type EngineMove } from '
 import { fetchTheory } from '@/lib/opening-explorer';
 import { formatEval, type DrillItem } from '@/lib/opening-tree';
 import { figurine } from '@/lib/figurine';
-import { BoardTopSlot } from '@/lib/board-nav';
+import { BoardControlsSlot, BoardTopSlot } from '@/lib/board-nav';
 
 /** Half-moves to drill out from each weak spot — far enough to play the
  *  opening's idea, short enough not to drag. */
@@ -60,7 +60,17 @@ type Phase = 'analyzing' | 'awaitUser' | 'wrong' | 'opponent' | 'lineDone';
  * a good (varied) reply, and you keep going for several moves so you rehearse the
  * whole opening idea — not just one move. Reuses the trainer's interactive board.
  */
-export function OpeningDrill({ items, onExit }: { items: DrillItem[]; onExit: () => void }) {
+export function OpeningDrill({
+  items,
+  coords = false,
+  evalBar = false,
+  onExit,
+}: {
+  items: DrillItem[];
+  coords?: boolean;
+  evalBar?: boolean;
+  onExit: () => void;
+}) {
   const [idx, setIdx] = useState(0);
   const item = items[idx];
 
@@ -231,11 +241,17 @@ export function OpeningDrill({ items, onExit }: { items: DrillItem[]; onExit: ()
   const lineDone = phase === 'lineDone';
   const isFirstMove = ply === 0;
 
-  /* The shared top bracket every tab renders: back out of the drill, the title
-     line + label line, and the menu (three-dash) portaled in on the right — so
-     it lands at exactly the same spot as in Puzzles / Play / Opening. */
+  // Figurine the drilled line: played[0] is by whoever moves at the weak spot,
+  // then the colours alternate. Display only — the state stays plain SAN.
+  const startTurn: 'w' | 'b' = item.fen.split(' ')[1] === 'b' ? 'b' : 'w';
+  const playedLine = played
+    .map((san, i) => figurine(san, i % 2 === 0 ? startTurn : startTurn === 'w' ? 'b' : 'w'))
+    .join('  ');
+
+  /* The same top bracket as Puzzles (.ctx-line): back out of the drill, the
+     title + label, and the menu (three-dash) portaled in on the right. */
   const head = (title: string, label: string) => (
-    <div className="od-head">
+    <div className="ctx-line">
       <button type="button" className="od-back" onClick={onExit} aria-label="Back to the opening tree">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <polyline points="15 18 9 12 15 6" />
@@ -251,81 +267,124 @@ export function OpeningDrill({ items, onExit }: { items: DrillItem[]; onExit: ()
 
   if (finished) {
     return (
-      <div className="odrill">
-        {head('Drill complete', `${items.length} weak spot${items.length === 1 ? '' : 's'}`)}
-        <div className="od-body">
-          <div className="od-done">
-            <div className="od-done-line">
-              <b className="num">{nRight}</b> of <b className="num">{items.length}</b> solved first try.
+      <div className="odrill-page">
+        <div className="board-col">
+          {head('Drill complete', `${items.length} weak spot${items.length === 1 ? '' : 's'}`)}
+          <div className="board-row">
+            <div className="result-slot">
+              <div className="pre-result">
+                <div className="verdict ok">
+                  <span className="verdict-text">Drill complete.</span>
+                </div>
+                <div className="verdict-sub">
+                  <b className="num">{nRight}</b> of <b className="num">{items.length}</b> solved first try.
+                </div>
+                <div className="btn-row">
+                  <button className="btn prim" onClick={onExit}>Back to the tree</button>
+                </div>
+              </div>
             </div>
-            <button className="od-btn primary" onClick={onExit}>Back to the tree</button>
           </div>
         </div>
       </div>
     );
   }
 
+  /* Verdict panel per phase — the same title-over-sub blocks the puzzle tab
+     uses, instead of the drill's old inverted prompt bar. */
+  const verdict = lineDone ? (
+    <div className="verdict ok">
+      <span className="verdict-text">Line complete.</span>
+    </div>
+  ) : (
+    <div className="verdict idle">
+      <div>
+        <div className="verdict-title">
+          {phase === 'analyzing'
+            ? 'Analysing…'
+            : phase === 'opponent'
+              ? 'Good move.'
+              : phase === 'wrong'
+                ? 'Not that one.'
+                : revealed
+                  ? <>The move is {figurine(bestSan, chess.turn())}.</>
+                  : isFirstMove
+                    ? 'Find the best move.'
+                    : 'Find the next move.'}
+        </div>
+        <div className="verdict-sub">
+          {phase === 'analyzing'
+            ? `${turnColor} to move.`
+            : phase === 'opponent'
+              ? 'Your opponent replies…'
+              : phase === 'wrong'
+                ? 'Try again — find the best move.'
+                : revealed
+                  ? 'Play it to continue the line.'
+                  : isFirstMove
+                    ? `For ${turnColor.toLowerCase()}.`
+                    : `Keep the line going — ${turnColor} to move.`}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="odrill">
-      {/* The opening name is shown here and nowhere else. */}
-      {head(item.name || 'Opening drill', `Weak spot ${idx + 1} / ${items.length}`)}
+    <div className="odrill-page">
+      <div className="board-col">
+        {/* The opening name is shown here and nowhere else. */}
+        {head(item.name || 'Opening drill', `Weak spot ${idx + 1} / ${items.length}`)}
 
-      <div className="od-body">
-        <div className={'od-frame' + (phase === 'wrong' ? ' bad' : '') + (lineDone || phase === 'opponent' ? ' ok' : '')}>
-          <Board
-            chess={chess}
-            orientation={item.color === 'w' ? 'white' : 'black'}
-            selected={selected}
-            legalFrom={legalFrom}
-            lastFrom={lastFrom}
-            lastTo={lastTo}
-            flashOk={flashOk}
-            flashFail={flashFail}
-            bounceBack={bounce}
-            introMove={travel}
-            revealed={phase !== 'awaitUser'}
-            onSquareClick={onSquareClick}
-            onDragMove={(mv) => attempt(mv, true)}
-          />
-        </div>
-
-        <div className={'od-prompt' + (lineDone || phase === 'opponent' ? ' ok' : '') + (phase === 'wrong' ? ' bad' : '')}>
-          {phase === 'analyzing' ? (
-            <span className="q">Analysing…</span>
-          ) : lineDone ? (
-            <><span className="q">Line complete ✓</span><span className="qs">You played the opening accurately.</span></>
-          ) : phase === 'opponent' ? (
-            <><span className="q">Good move.</span><span className="qs">Your opponent replies…</span></>
-          ) : phase === 'wrong' ? (
-            <><span className="q">Not that one.</span><span className="qs">Try again — find the best move.</span></>
-          ) : revealed ? (
-            <><span className="q">The move is {figurine(bestSan, chess.turn())}.</span><span className="qs">Play it to continue the line.</span></>
-          ) : isFirstMove ? (
-            <><span className="q">Find the best move.</span><span className="qs">{turnColor} to move.</span></>
-          ) : (
-            <><span className="q">Find the next move.</span><span className="qs">Keep the line going — {turnColor} to move.</span></>
-          )}
-        </div>
-
-        <div className="od-actions">
-          {lineDone ? (
-            <button className="od-btn primary" onClick={next}>{idx + 1 >= items.length ? 'Finish' : 'Next position'} →</button>
-          ) : (
-            <>
-              <button className="od-btn primary" onClick={playCorrect} disabled={phase !== 'awaitUser' || !correct}>Show the move</button>
-              <button className="od-btn ghost" onClick={() => setRevealed((v) => !v)} disabled={phase !== 'awaitUser' || !correct}>{revealed ? 'Hide hint' : 'Hint'}</button>
-            </>
-          )}
-        </div>
-
-        {(revealed || lineDone) && bestSan && phase !== 'opponent' && (
-          <div className="od-reveal">
-            {lineDone ? <>Last best move: <b>{figurine(bestSan, chess.turn())}</b> ({bestEval}).</> : <>Best move: <b>{figurine(bestSan, chess.turn())}</b> ({bestEval}).</>}
-            {isFirstMove && item.usualSan && item.usualSan !== bestSan && <> You usually play <b className="bad">{figurine(item.usualSan, chess.turn())}</b>.</>}
+        <div className="board-row">
+          <div className="board-stack">
+            <Board
+              chess={chess}
+              orientation={item.color === 'w' ? 'white' : 'black'}
+              selected={selected}
+              legalFrom={legalFrom}
+              lastFrom={lastFrom}
+              lastTo={lastTo}
+              flashOk={flashOk}
+              flashFail={flashFail}
+              bounceBack={bounce}
+              introMove={travel}
+              revealed={phase !== 'awaitUser'}
+              onSquareClick={onSquareClick}
+              onDragMove={(mv) => attempt(mv, true)}
+              coords={coords}
+              showEval={evalBar}
+            />
+            {/* Control bracket slot under the board, like every other tab. */}
+            <BoardControlsSlot />
           </div>
-        )}
 
-        {played.length > 0 && <div className="od-played num">{played.join('  ')}</div>}
+          <div className="result-slot">
+            <div className="pre-result">
+              {verdict}
+              {lineDone && <div className="verdict-sub">You played the opening accurately.</div>}
+
+              {(revealed || lineDone) && bestSan && phase !== 'opponent' && (
+                <div className="od-reveal">
+                  {lineDone ? <>Last best move: <b>{figurine(bestSan, chess.turn())}</b> ({bestEval}).</> : <>Best move: <b>{figurine(bestSan, chess.turn())}</b> ({bestEval}).</>}
+                  {isFirstMove && item.usualSan && item.usualSan !== bestSan && <> You usually play <b className="bad">{figurine(item.usualSan, chess.turn())}</b>.</>}
+                </div>
+              )}
+
+              {played.length > 0 && <div className="od-played num">{playedLine}</div>}
+
+              <div className="btn-row">
+                {lineDone ? (
+                  <button className="btn prim" onClick={next}>{idx + 1 >= items.length ? 'Finish' : 'Next position'} →</button>
+                ) : (
+                  <>
+                    <button className="btn" onClick={() => setRevealed((v) => !v)} disabled={phase !== 'awaitUser' || !correct}>{revealed ? 'Hide hint' : 'Hint'}</button>
+                    <button className="btn" onClick={playCorrect} disabled={phase !== 'awaitUser' || !correct}>Show move</button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

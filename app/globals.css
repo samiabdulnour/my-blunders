@@ -1273,21 +1273,27 @@ select {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: rgba(22, 20, 15, 0.25);
   pointer-events: none;
   z-index: 3;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
 }
-html[data-theme='dark'] .sq-dot-hint {
-  background: rgba(244, 238, 240, 0.3);
+/* Contrast comes from the SQUARE under the dot, not the app theme — the board
+   keeps its own palette in dark mode, so a theme-keyed light dot disappears on
+   the still-light squares. Light squares are light-to-midtone and dark squares
+   midtone-to-dark in every board theme, so: dark dot on light, light on dark. */
+.sq-l .sq-dot-hint {
+  background: rgba(22, 20, 15, 0.3);
 }
-.sq.cap-ring {
+.sq-d .sq-dot-hint {
+  background: rgba(244, 238, 240, 0.42);
+}
+.sq-l.cap-ring {
   box-shadow: inset 0 0 0 3px rgba(22, 20, 15, 0.35);
 }
-html[data-theme='dark'] .sq.cap-ring {
-  box-shadow: inset 0 0 0 3px rgba(244, 238, 240, 0.35);
+.sq-d.cap-ring {
+  box-shadow: inset 0 0 0 3px rgba(244, 238, 240, 0.45);
 }
 /* Drop-target ring: the square a dragged piece would land on. Coral so it
    reads as the active intent, thicker than the legal-target rings. */
@@ -2528,6 +2534,13 @@ html[data-theme='dark'] .sq.cap-ring {
   .bwrap.no-coords {
     --sq-size: min(52px, calc((100vw - 28px) / 8));
   }
+  /* Engine bar on: reserve its 12px + 8px gap too, so the grid still fits. */
+  .bwrap.has-eval {
+    --sq-size: min(44px, calc((100vw - 88px) / 8));
+  }
+  .bwrap.no-coords.has-eval {
+    --sq-size: min(52px, calc((100vw - 48px) / 8));
+  }
   .board-row {
     flex-direction: column;
     align-items: center;
@@ -2561,6 +2574,12 @@ html[data-theme='dark'] .sq.cap-ring {
   }
   .bwrap.no-coords {
     --sq-size: calc((100vw - 28px) / 8);
+  }
+  .bwrap.has-eval {
+    --sq-size: calc((100vw - 88px) / 8);
+  }
+  .bwrap.no-coords.has-eval {
+    --sq-size: calc((100vw - 48px) / 8);
   }
 }
 
@@ -3138,18 +3157,19 @@ body.panning * {
 /* ════════════════════════════════════════════════════════════════
    Opening Drill — practice the best move in your weak positions.
    ════════════════════════════════════════════════════════════════ */
-/* One centred column — header bracket · board · prompt · actions — sized so the
-   whole drill fits a phone screen. No side panel, no second copy of the opening
-   name, no per-game tallies: the board and the prompt are the drill. */
-.odrill { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px 12px 0; box-sizing: border-box; }
-/* Top bracket — the same 54px header at top 60 / left 12 as every other tab
-   (puzzle .ctx-line, play .ps-block-open, opening .clinic-bar), with the menu
-   (three-dash) portaled in at the right so it lands in the identical spot. */
-.od-head {
-  flex-shrink: 0; display: flex; align-items: center; gap: 10px;
-  width: 100%; max-width: 520px; margin: 0 auto;
-  height: 54px; box-sizing: border-box; padding: 0 12px;
-  border: 1px solid var(--contour); background: var(--bg2);
+/* The drill uses the Puzzle tab's layout verbatim — .board-col with a .ctx-line
+   header, the board in a .board-stack, and the verdict panel in a .result-slot.
+   It renders inside .main.clinic-mode (a padding-less row), so this wrapper
+   recreates .main's centred scrolling column around it. */
+.odrill-page {
+  flex: 1;
+  overflow-y: auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px;
+  box-sizing: border-box;
 }
 /* Title line then label line — 16 + 3 + 13 = 32px, centred like the others. */
 .od-head-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
@@ -3163,56 +3183,11 @@ body.panning * {
   .od-back:hover { color: var(--txt); }
 }
 
-/* The column scrolls (long reveal text, landscape) but is budgeted to fit. */
-.od-body {
-  flex: 1; min-height: 0; overflow-y: auto;
-  display: flex; flex-direction: column; align-items: stretch; gap: 10px;
-  width: 100%; max-width: 520px; margin: 0 auto;
-  padding: 10px 0 calc(12px + env(safe-area-inset-bottom));
-}
-.od-frame { align-self: center; padding: 3px; border: 1px solid var(--contour); background: var(--bg2); transition: border-color 0.15s ease; }
-.od-frame.ok { border-color: var(--green); }
-.od-frame.bad { border-color: var(--red); }
-/* .bwrap sets --sq-size on *itself*, so an inherited value never reaches the
-   grid — the drill has to set it on the board (and match .bwrap.no-coords'
-   specificity) for it to take. Width budget: the viewport minus the column's
-   12px side padding and the frame's 3px padding + 1px border. */
-.od-frame .bwrap,
-.od-frame .bwrap.no-coords { --sq-size: min(54px, calc((100vw - 32px) / 8)); }
-
-.od-prompt { padding: 9px 12px; background: var(--contour); color: var(--bg2); border-radius: 0; display: flex; flex-direction: column; gap: 2px; }
-.od-prompt.ok { background: var(--green); color: #fff; }
-.od-prompt.bad { background: var(--red); color: #fff; }
-.od-prompt .q { font-size: var(--fs-base); font-weight: var(--fw-bold); letter-spacing: normal; line-height: 16px; }
-.od-prompt .qs { font-size: var(--fs-base); line-height: 16px; opacity: 0.75; }
 /* The moves you've drilled so far — one line, scrolled rather than wrapped. */
 .od-played { padding: 6px 10px; background: var(--green-soft); border: 1px solid var(--green); border-radius: 0; font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--green); letter-spacing: normal; line-height: 16px; white-space: nowrap; overflow-x: auto; }
-.od-done { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 20px 0; }
-.od-done-line { font-size: var(--fs-base); color: var(--txt-dim); line-height: 16px; }
-.od-done-line b { color: var(--txt); font-weight: var(--fw-bold); }
-.od-done .od-btn { flex: 0 0 auto; padding: 9px 18px; }
-.od-actions { display: flex; gap: 8px; }
-.od-btn { flex: 1; padding: 9px; border-radius: 0; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); border: 1px solid var(--contour); cursor: pointer; transition: filter 0.1s ease, background 0.1s ease; }
-.od-btn.primary { background: var(--contour); color: var(--bg2); }
-.od-btn.primary:active { filter: brightness(1.1); }
-@media (hover: hover) {
-  .od-btn.primary:hover { filter: brightness(1.1); }
-}
-.od-btn.ghost { background: var(--bg); color: var(--txt); }
-.od-btn.ghost:active { background: var(--bg3); }
-@media (hover: hover) {
-  .od-btn.ghost:hover { background: var(--bg3); }
-}
-.od-btn:disabled { opacity: 0.4; cursor: default; }
 .od-reveal { font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.45; }
 .od-reveal b { color: var(--green); font-weight: var(--fw-bold); }
 .od-reveal b.bad { color: var(--red); }
-/* Landscape phone: height is the constraint, so size the board off the viewport
-   height instead (header + prompt + actions reserved). */
-@media (orientation: landscape) and (max-height: 500px) {
-  .od-frame .bwrap,
-  .od-frame .bwrap.no-coords { --sq-size: min(42px, calc((100vh - 150px) / 8)); }
-}
 
 /* Drill entry buttons (clinic bar + detail panel) */
 .od-start { flex-shrink: 0; padding: 7px 12px; border-radius: 0; background: var(--coral); color: #16140f; border: 1px solid var(--contour); font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); cursor: pointer; white-space: nowrap; }
@@ -3258,8 +3233,10 @@ body.panning * {
   .cd-board-sec { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px; }
   .cd-board { margin: 0 auto; }
 
-  /* The drill needs no mobile override: it is a single column at every width,
-     and its board is sized off the viewport (see .od-frame .bwrap). */
+  /* The drill shares the puzzle tab's responsive board rules (.board-stack >
+     .bwrap), so it needs no override of its own — but .main's mobile padding
+     cut has to apply to its stand-in wrapper too. */
+  .odrill-page { padding: 12px; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
 }
 
 /* Phones: drop the wordmark and tighten the clusters so the mode tabs, the
@@ -3484,6 +3461,18 @@ body.panning * {
   position: absolute; left: 0; right: 0; bottom: 0;
   transition: height 400ms var(--ease-snap);
 }
+/* The same bar on the main boards (the "Engine bar" setting). It lives inside
+   .bwrap, so --sq-size is in scope and the bar spans exactly the 8×8 grid even
+   when the file-label row sits below it. The no-coords board has gap: 0, so the
+   bar carries its own gap to the grid. */
+.board-evalbar {
+  flex: 0 0 12px; width: 12px;
+  height: calc(var(--sq-size) * 8);
+  box-sizing: border-box;
+  border: 1px solid var(--contour); border-radius: 2px;
+  overflow: hidden; position: relative;
+}
+.bwrap.no-coords .board-evalbar { margin-right: 8px; }
 /* Each move lands with a soft highlight rather than a bare jump. */
 .pv-board .ob-hl::after { animation: pv-hl 260ms var(--ease-snap); }
 @keyframes pv-hl { from { opacity: 0; } to { opacity: 0.6; } }

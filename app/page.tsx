@@ -50,6 +50,8 @@ import {
   saveBoardDark,
   loadCoords,
   saveCoords,
+  loadEvalBar,
+  saveEvalBar,
   loadStats,
   saveStats,
   loadHistory,
@@ -163,10 +165,14 @@ export default function Page() {
   const [boardDark, setBoardDark] = useState<BoardThemeId>(DEFAULT_BOARD_DARK);
   /** Board rank/file labels. Off by default (clean, full-width board). Persisted. */
   const [coords, setCoords] = useState(false);
+  /** Engine eval bar beside every board. Off by default. Persisted. */
+  const [evalBar, setEvalBar] = useState(false);
   /** Move sound. On by default; persisted. */
   const [sound, setSound] = useState(true);
-  /** When set, the Play tab opens at this position — the puzzle's "Play" button. */
-  const [playFrom, setPlayFrom] = useState<{ fen: string; color: 'w' | 'b'; noClock?: boolean } | null>(null);
+  /** When set, the Play tab opens at this position — the puzzle's "Play" button.
+   *  `moves` is the full SAN path from the initial position to `fen`, so Play
+   *  can rebuild the game with its history and let you step back through it. */
+  const [playFrom, setPlayFrom] = useState<{ fen: string; color: 'w' | 'b'; noClock?: boolean; moves?: string[] } | null>(null);
   const hydrated = useRef(false);
   /** Puzzle id whose outcome has already been counted in stats. Prevents
    *  double-counting across multiple wrong tries on one puzzle. */
@@ -189,6 +195,11 @@ export default function Page() {
    *  last-move highlight can be restored after a wrong-move bounce instead of
    *  being cleared. */
   const puzzleLastMoveRef = useRef<{ from: string; to: string } | null>(null);
+  /** SAN path from the initial position to the *live* board (`chess`), kept in
+   *  step with every mutation — chess.js instances here are rebuilt from FENs,
+   *  so they carry no history of their own. This is what the puzzle's "Play"
+   *  hands to the Play tab so the whole game is scrubbable there. */
+  const movesRef = useRef<string[]>([]);
   /** Whether this is a "non-guest": the user has a Lichess account on record
    *  (a saved username, i.e. they've imported at least once) or is importing
    *  now. The famous-blunder library is GUEST-ONLY, so once this is true the
@@ -218,6 +229,7 @@ export default function Page() {
     setBoardLight(loadBoardLight());
     setBoardDark(loadBoardDark());
     setCoords(loadCoords());
+    setEvalBar(loadEvalBar());
     setSound(loadSound());
     setStats(loadStats());
     setHistory(loadHistory());
@@ -277,6 +289,9 @@ export default function Page() {
   useEffect(() => {
     if (hydrated.current) saveCoords(coords);
   }, [coords]);
+  useEffect(() => {
+    if (hydrated.current) saveEvalBar(evalBar);
+  }, [evalBar]);
   useEffect(() => {
     // The CSS theme switch is driven by data-theme on <html> so the variable
     // swap stays outside React's tree (and works for portals). The active board
@@ -356,9 +371,11 @@ export default function Page() {
     const c = new Chess();
     let lastMoveFrom: string | null = null;
     let lastMoveTo: string | null = null;
+    const sans: string[] = [];
     for (let i = 0; i < p.setupMoves.length; i++) {
       try {
         const applied = c.move(p.setupMoves[i]);
+        if (applied) sans.push(applied.san);
         if (applied && i === p.setupMoves.length - 1) {
           lastMoveFrom = applied.from;
           lastMoveTo = applied.to;
@@ -368,6 +385,7 @@ export default function Page() {
         break;
       }
     }
+    movesRef.current = sans;
     setCurrent(p);
     currentRef.current = p;
     puzzleLastMoveRef.current =
@@ -458,6 +476,7 @@ export default function Page() {
         setAnalysis(true);
         return;
       }
+      movesRef.current = [...movesRef.current, applied.san];
       setChess(new Chess(c.fen()));
       setLastFrom(applied.from);
       setLastTo(applied.to);
@@ -606,11 +625,16 @@ export default function Page() {
 
     // ── Free analysis: once solved, any legal move is allowed (explore). ──
     if (analysis) {
+      movesRef.current = [...movesRef.current, applied.san];
       setChess(next);
       setSelected(null);
       setSeekPly(null); // a free move leaves the engine line
       setLastFrom(mv.from);
       setLastTo(mv.to);
+      // Playing on dismisses the solve-time green (or red) square — it marked
+      // the solution move, not whatever you explore afterwards.
+      setFlashOk(null);
+      setFlashFail(null);
       setLegalFrom(groupLegal(next));
       if (!fromDrag) {
         setIntroMove({ from: mv.from, to: mv.to });
@@ -626,6 +650,7 @@ export default function Page() {
     const ok = applied.san === line[lineStep];
 
     if (ok) {
+      movesRef.current = [...movesRef.current, applied.san];
       setChess(next);
       setSelected(null);
       setLastFrom(mv.from);
@@ -684,6 +709,7 @@ export default function Page() {
             return;
           }
           playMove(!!rep.captured);
+          movesRef.current = [...movesRef.current, rep.san];
           setChess(new Chess(c2.fen()));
           setLastFrom(rep.from);
           setLastTo(rep.to);
@@ -702,6 +728,8 @@ export default function Page() {
 
     // ── Wrong move: red flash at the destination, then bounce home so you can
     //    try again. A mistake is never revealed — you keep solving. ──
+    const movesBefore = movesRef.current;
+    movesRef.current = [...movesBefore, applied.san];
     setChess(next);
     setSelected(null);
     setLastFrom(mv.from);
@@ -735,6 +763,7 @@ export default function Page() {
     setTimeout(() => {
       if (currentRef.current?.id !== puzzleId) return;
       const rewind = new Chess(beforeFen);
+      movesRef.current = movesBefore; // the wrong move is taken back
       setChess(rewind);
       // Restore the opponent's setup-move highlight (the blunder being
       // punished) rather than clearing it — otherwise the yellow last-move
@@ -834,13 +863,20 @@ export default function Page() {
     // the opponent's turn in that position.
     // Always hand off clock-free: solving a puzzle out against the engine isn't
     // a timed game, so ignore whatever time control Play was last set to.
+    // Hand the SAN path to the position too, so Play rebuilds the game *with*
+    // its history and the whole game — setup moves included — is scrubbable.
+    const moves =
+      seekPly != null
+        ? [...current.setupMoves, ...solutionLine(current)].slice(0, seekPly + 1)
+        : [...movesRef.current];
     setPlayFrom({
       fen: boardChess.fen(),
       color: current.abdulsColor === 'white' ? 'w' : 'b',
       noClock: true,
+      moves,
     });
     setMode('play');
-  }, [current, boardChess]);
+  }, [current, boardChess, seekPly]);
 
   const next = useCallback(() => {
     if (!current || filtered.length === 0) return;
@@ -1069,6 +1105,8 @@ export default function Page() {
       onSetBoard={setBoard}
       coords={coords}
       onToggleCoords={() => setCoords((c) => !c)}
+      evalBar={evalBar}
+      onToggleEvalBar={() => setEvalBar((v) => !v)}
       sound={sound}
       onToggleSound={() => setSound((v) => { const n = !v; saveSound(n); return n; })}
       mode={mode}
@@ -1080,13 +1118,13 @@ export default function Page() {
         <ClinicProvider key={clinicEpoch}>
           <OpeningSidebar />
           <div className="main clinic-mode">
-            <OpeningClinic />
+            <OpeningClinic coords={coords} evalBar={evalBar} />
           </div>
         </ClinicProvider>
       ) : mode === 'play' ? (
-        <PlayMode coords={coords} startFrom={playFrom} onStarted={() => setPlayFrom(null)} />
+        <PlayMode coords={coords} evalBar={evalBar} startFrom={playFrom} onStarted={() => setPlayFrom(null)} />
       ) : mode === 'coords' ? (
-        <CoordsTrainer coords={coords} />
+        <CoordsTrainer coords={coords} evalBar={evalBar} />
       ) : (
         <>
           <PuzzleNav
@@ -1150,6 +1188,7 @@ export default function Page() {
                   onDragMove={(mv) => makeMove(mv, true)}
                   coords={coords}
                   hintSquare={hintSquare}
+                  showEval={evalBar}
                 />
                 {/* Control bracket sits right under the board (portal target). */}
                 <BoardControlsSlot />

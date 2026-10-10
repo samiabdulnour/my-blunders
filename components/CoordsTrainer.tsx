@@ -62,7 +62,7 @@ function CoordsPanel({ children }: {
   return <div className="side">{children}</div>;
 }
 
-export function CoordsTrainer({ coords = false }: { coords?: boolean }) {
+export function CoordsTrainer({ coords = false, evalBar = false }: { coords?: boolean; evalBar?: boolean }) {
   const [sub, setSub] = useState<SubMode>('find');
   // The three modes live in the board-control bracket as a button block (like
   // the arrows), so they're reachable in every sub-mode without the sidebar.
@@ -76,7 +76,7 @@ export function CoordsTrainer({ coords = false }: { coords?: boolean }) {
   );
   return sub === 'find' ? <FindMode sub={sub} onChangeSub={setSub} coords={coords} />
        : sub === 'color' ? <ColorMode sub={sub} onChangeSub={setSub} />
-       : <ReplayMode sub={sub} onChangeSub={setSub} coords={coords} />;
+       : <ReplayMode sub={sub} onChangeSub={setSub} coords={coords} evalBar={evalBar} />;
 }
 
 function FindMode({ sub, onChangeSub, coords }: { sub: SubMode; onChangeSub: (s: SubMode) => void; coords: boolean }) {
@@ -346,7 +346,7 @@ function CoordBoard({ orientation, onPick, flash, interactive, showCoords }: {
   );
 }
 
-function ReplayMode({ sub, onChangeSub, coords }: { sub: SubMode; onChangeSub: (s: SubMode) => void; coords: boolean }) {
+function ReplayMode({ sub, onChangeSub, coords, evalBar }: { sub: SubMode; onChangeSub: (s: SubMode) => void; coords: boolean; evalBar: boolean }) {
   const [gameIdx, setGameIdx] = useState(0);
   const game = FAMOUS_GAMES[gameIdx];
   const moves = useMemo(() => game.san.trim().split(/\s+/), [game]);
@@ -548,6 +548,7 @@ function ReplayMode({ sub, onChangeSub, coords }: { sub: SubMode; onChangeSub: (
               onSquareClick={onSquareClick}
               onDragMove={(mv) => tryMove(mv, true)}
               coords={coords}
+              showEval={evalBar}
             />
             <BoardControlsSlot />
             {/* Says what this mode is for, like the note under Find / Colour. */}

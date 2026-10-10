@@ -166,6 +166,72 @@ export const FAMOUS_GAMES: FamousGame[] = [
     san: 'd4 e6 e4 d5 Nc3 c5 Nf3 Nc6 exd5 exd5 Be2 Nf6 O-O Be7 Bg5 O-O dxc5 Be6 Nd4 Bxc5 Nxe6 fxe6 Bg4 Qd6 Bh3 Rae8 Qd2 Bb4 Bxf6 Rxf6 Rad1 Qc5 Qe2 Bxc3 bxc3 Qxc3 Rxd5 Nd4 Qh5 Ref8 Re5 Rh6 Qg5 Rxh3 Rc5 Qg3',
   },
   {
+    id: 'paulsen-morphy',
+    title: 'Paulsen – Morphy',
+    white: 'Louis Paulsen',
+    black: 'Paul Morphy',
+    year: 1857,
+    result: '0-1',
+    context:
+      'First American Chess Congress, New York. Morphy\'s 17…Qxf3!! — giving up the queen for a bishop — ripped open the white king and is one of the earliest great positional queen sacrifices on record. The two rooks and bishop grind out the mate.',
+    san: 'e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5 Bc5 O-O O-O Nxe5 Re8 Nxc6 dxc6 Bc4 b5 Be2 Nxe4 Nxe4 Rxe4 Bf3 Re6 c3 Qd3 b4 Bb6 a4 bxa4 Qxa4 Bd7 Ra2 Rae8 Qa6 Qxf3 gxf3 Rg6+ Kh1 Bh3 Rd1 Bg2+ Kg1 Bxf3+ Kf1 Bg2+ Kg1 Bh3+ Kh1 Bxf2 Qf1 Bxf1 Rxf1 Re2 Ra1 Rh6 d4 Be3 Bxe3 Rhxh2+ Kg1 Reg2#',
+  },
+  {
+    id: 'zukertort-blackburne',
+    title: 'Zukertort – Blackburne',
+    white: 'Johannes Zukertort',
+    black: 'Joseph Blackburne',
+    year: 1883,
+    result: '1-0',
+    context:
+      'London 1883. Zukertort\'s 28.Qb4!! leaves his queen hanging to two pieces — taking it allows a forced mate — and the combination that follows is still quoted as one of the finest ever played on the queenside-to-kingside switch.',
+    san: 'c4 e6 e3 Nf6 Nf3 b6 Be2 Bb7 O-O d5 d4 Bd6 Nc3 O-O b3 Nbd7 Bb2 Qe7 Nb5 Ne4 Nxd6 cxd6 Nd2 Ndf6 f3 Nxd2 Qxd2 dxc4 Bxc4 d5 Bd3 Rfc8 Rae1 Rc7 e4 Rac8 e5 Ne8 f4 g6 Re3 f5 exf6 Nxf6 f5 Ne4 Bxe4 dxe4 fxg6 Rc2 gxh7+ Kh8 d5+ e5 Qb4 R8c5 Rf8+ Kxh7 Qxe4+ Kg7 Bxe5+ Kxf8 Bg7+ Kg8 Qxe7',
+  },
+  {
+    id: 'immortal-zugzwang',
+    title: 'The Immortal Zugzwang',
+    white: 'Fritz Sämisch',
+    black: 'Aron Nimzowitsch',
+    year: 1923,
+    result: '0-1',
+    context:
+      'Copenhagen 1923. Nimzowitsch slowly strangled White until, with the board still full of pieces, every legal move lost material — Sämisch resigned in zugzwang. The defining demonstration of his own positional theories.',
+    san: 'd4 Nf6 c4 e6 Nf3 b6 g3 Bb7 Bg2 Be7 Nc3 O-O O-O d5 Ne5 c6 cxd5 cxd5 Bf4 a6 Rc1 b5 Qb3 Nc6 Nxc6 Bxc6 h3 Qd7 Kh2 Nh5 Bd2 f5 Qd1 b4 Nb1 Bb5 Rg1 Bd6 e4 fxe4 Qxh5 Rxf2 Qg5 Raf8 Kh1 R8f5 Qe3 Bd3 Rce1 h6',
+  },
+  {
+    id: 'byrne-fischer-1963',
+    title: 'Byrne – Fischer',
+    white: 'Robert Byrne',
+    black: 'Robert Fischer',
+    year: 1963,
+    result: '0-1',
+    context:
+      'US Championship 1963/64. Fischer\'s 15…Nxf2! demolition was so deep that grandmasters commentating in another room thought Byrne was winning when he resigned — after 21…Qd7 there is no defence to the quiet threats. Often called "The Brilliancy".',
+    san: 'd4 Nf6 c4 g6 g3 c6 Bg2 d5 cxd5 cxd5 Nc3 Bg7 e3 O-O Nge2 Nc6 O-O b6 b3 Ba6 Ba3 Re8 Qd2 e5 dxe5 Nxe5 Rfd1 Nd3 Qc2 Nxf2 Kxf2 Ng4+ Kg1 Nxe3 Qd2 Nxg2 Kxg2 d4 Nxd4 Bb7+ Kf1 Qd7',
+  },
+  {
+    id: 'short-timman',
+    title: 'Short – Timman',
+    white: 'Nigel Short',
+    black: 'Jan Timman',
+    year: 1991,
+    result: '1-0',
+    context:
+      'Tilburg 1991. With the queens still on, Short marched his own king up the board — Kh2, Kg3, Kf4, Kg5 — to help deliver mate on a full board. Timman resigned facing Kh6 next. The most famous king walk in modern chess.',
+    san: 'e4 Nf6 e5 Nd5 d4 d6 Nf3 g6 Bc4 Nb6 Bb3 Bg7 Qe2 Nc6 O-O O-O h3 a5 a4 dxe5 dxe5 Nd4 Nxd4 Qxd4 Re1 e6 Nd2 Nd5 Nf3 Qc5 Qe4 Qb4 Bc4 Nb6 b3 Nxc4 bxc4 Re8 Rd1 Qc5 Qh4 b6 Be3 Qc6 Bh6 Bh8 Rd8 Bb7 Rad1 Bg7 R8d7 Rf8 Bxg7 Kxg7 R1d4 Rae8 Qf6+ Kg8 h4 h5 Kh2 Rc8 Kg3 Rce8 Kf4 Bc8 Kg5',
+  },
+  {
+    id: 'deepblue-kasparov',
+    title: 'Deep Blue – Kasparov, Game 6',
+    white: 'Deep Blue',
+    black: 'Garry Kasparov',
+    year: 1997,
+    result: '1-0',
+    context:
+      'New York 1997, the decider of the rematch. Deep Blue\'s knight sacrifice 8.Nxe6! wrecked Kasparov\'s Caro-Kann before move ten; he resigned after 19 moves. The first match victory by a computer over a reigning world champion.',
+    san: 'e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nd7 Ng5 Ngf6 Bd3 e6 N1f3 h6 Nxe6 Qe7 O-O fxe6 Bg6+ Kd8 Bf4 b5 a4 Bb7 Re1 Nd5 Bg3 Kc8 axb5 cxb5 Qd3 Bc6 Bf5 exf5 Rxe7 Bxe7 c4',
+  },
+  {
     id: 'larsen-spassky',
     title: 'Larsen – Spassky',
     white: 'Bent Larsen',
@@ -174,6 +240,6 @@ export const FAMOUS_GAMES: FamousGame[] = [
     result: '0-1',
     context:
       'USSR vs Rest of the World, Belgrade 1970. Spassky sacrificed a rook on h1 then promoted a pawn, demolishing Larsen in 19 moves. A thunderbolt attack that has been called one of the most spectacular short games of the 20th century.',
-    san: 'b3 e5 Bb2 Nc6 c4 Nf6 Nf3 e4 Nd4 Bc5 Nxc6 dxc6 e3 Bf5 Qc2 Qe7 Be2 O-O-O f4 Ng4 g3 h5 h3 h4 hxg4 hxg3 Rg1 Rh1 Rxh1 g2 Rf1 Qh4+ Kd1 gxf1=Q+ Bxf1 Bxg4+ Be2 Qh1',
+    san: 'b3 e5 Bb2 Nc6 c4 Nf6 Nf3 e4 Nd4 Bc5 Nxc6 dxc6 e3 Bf5 Qc2 Qe7 Be2 O-O-O f4 Ng4 g3 h5 h3 h4 hxg4 hxg3 Rg1 Rh1 Rxh1 g2 Rf1 Qh4+ Kd1 gxf1=Q+ Bxf1 Bxg4+ Be2 Qh1#',
   },
 ];

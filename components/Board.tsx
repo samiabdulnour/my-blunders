@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Chess, Move } from 'chess.js';
 import { Piece } from './Piece';
+import { EvalBar } from './EvalBar';
 
 interface BoardProps {
   chess: Chess;
@@ -39,6 +40,9 @@ interface BoardProps {
   coords?: boolean;
   /** A square to ring as a hint — the piece you should move. */
   hintSquare?: string | null;
+  /** Show the engine eval bar to the left of the grid (the "Engine bar"
+   *  setting) — evaluated per position via the shared engine cache. */
+  showEval?: boolean;
 }
 
 /** Pixels of pointer movement before a press becomes a drag. Below the
@@ -86,6 +90,7 @@ export function Board({
   onDragMove,
   coords = true,
   hintSquare = null,
+  showEval = false,
 }: BoardProps) {
   const flipped = orientation === 'black';
   const pos = useMemo(() => chess.board(), [chess]);
@@ -383,7 +388,8 @@ export function Board({
   }
 
   return (
-    <div className={'bwrap' + (coords ? '' : ' no-coords')}>
+    <div className={'bwrap' + (coords ? '' : ' no-coords') + (showEval ? ' has-eval' : '')}>
+      {showEval && <EvalBar fen={chess.fen()} orientation={orientation} />}
       {coords && (
         <div className="ranks">
           {ranks.map((r) => (

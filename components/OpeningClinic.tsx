@@ -67,7 +67,7 @@ function connectorPath(parent: LaidNode, child: LaidNode): string {
  * you play from here and the right continuation from Lichess theory (right).
  * Uses the main app's tokens so it matches the trainer and inherits dark mode.
  */
-export function OpeningClinic() {
+export function OpeningClinic({ coords = false, evalBar = false }: { coords?: boolean; evalBar?: boolean }) {
   const { ready, fetching, color, focus, setFocus, selectedId, setSelectedId, tree, openings } = useClinic();
   const [drillItems, setDrillItems] = useState<DrillItem[] | null>(null);
   const [detailOpen, setDetailOpen] = useState(true);
@@ -309,7 +309,7 @@ export function OpeningClinic() {
   }, [openings, focus]);
 
   if (drillItems && drillItems.length > 0) {
-    return <OpeningDrill items={drillItems} onExit={() => setDrillItems(null)} />;
+    return <OpeningDrill items={drillItems} coords={coords} evalBar={evalBar} onExit={() => setDrillItems(null)} />;
   }
 
   return (
