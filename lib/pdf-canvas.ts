@@ -147,16 +147,27 @@ export class CanvasPdf {
     this.ctx.fill();
   }
 
-  // jsPDF: lines(segments, x, y, scale, style). The poster passes a single cubic
-  // Bézier segment [c1x, c1y, c2x, c2y, ex, ey], relative to (x, y).
+  // jsPDF: lines(segments, x, y, scale, style). Like jsPDF, every segment is
+  // relative to where the PREVIOUS one ended, not to (x, y): the poster's elbow
+  // connectors are three chained segments (down, across, down). A straight
+  // segment is [dx, dy]; a cubic Bézier is [c1x, c1y, c2x, c2y, ex, ey].
   lines(segments: number[][], x: number, y: number, _scale?: [number, number], _style: Style = 'S') {
     if (this.frozen) return;
     this.ctx.strokeStyle = this.strokeColor;
     this.ctx.beginPath();
     this.ctx.moveTo(x, y);
+    let cx = x;
+    let cy = y;
     for (const s of segments) {
-      if (s.length >= 6) this.ctx.bezierCurveTo(x + s[0], y + s[1], x + s[2], y + s[3], x + s[4], y + s[5]);
-      else if (s.length >= 2) this.ctx.lineTo(x + s[0], y + s[1]);
+      if (s.length >= 6) {
+        this.ctx.bezierCurveTo(cx + s[0], cy + s[1], cx + s[2], cy + s[3], cx + s[4], cy + s[5]);
+        cx += s[4];
+        cy += s[5];
+      } else if (s.length >= 2) {
+        cx += s[0];
+        cy += s[1];
+        this.ctx.lineTo(cx, cy);
+      }
     }
     this.ctx.stroke();
   }
