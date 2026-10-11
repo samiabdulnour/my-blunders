@@ -29,6 +29,13 @@ import { BOARD_THEMES, boardThemeById, type BoardThemeId } from '@/lib/board-the
 type Orientation = 'landscape' | 'portrait';
 type OutputMode = 'poster' | 'wallpaper';
 
+/** Boards a print can use. Walnut is made for dark mode on a screen and would
+ *  print heavy on white paper, so a sheet is only ever Green or Wood — when the
+ *  app is showing Walnut, the print starts on Green, the poster's own look. */
+const PRINT_BOARDS = BOARD_THEMES.filter((t) => t.id !== 'walnut');
+const printBoard = (id: BoardThemeId): BoardThemeId =>
+  PRINT_BOARDS.some((t) => t.id === id) ? id : 'green';
+
 interface PrintDialogProps {
   /** Raw games — the poster builds its own tree, denser than the clinic's and
    *  shaped to the chosen sheet, so it can't take a prebuilt one. */
@@ -44,7 +51,7 @@ interface PrintDialogProps {
 export function PrintDialog({ games, color, focusPath, focusName, boardTheme, onClose }: PrintDialogProps) {
   const [mounted, setMounted] = useState(false);
   const [mode, setMode] = useState<OutputMode>('poster');
-  const [boardId, setBoardId] = useState<BoardThemeId>(boardTheme);
+  const [boardId, setBoardId] = useState<BoardThemeId>(() => printBoard(boardTheme));
   const [orientation, setOrientation] = useState<Orientation>('portrait');
   const [building, setBuilding] = useState(true);
   const [img, setImg] = useState<string | null>(null);
@@ -238,7 +245,7 @@ export function PrintDialog({ games, color, focusPath, focusName, boardTheme, on
           <div className="pd-row">
             <span className="pd-lbl">Board</span>
             <div className="seg-tabs">
-              {BOARD_THEMES.map((t) => (
+              {PRINT_BOARDS.map((t) => (
                 <button
                   key={t.id}
                   type="button"
