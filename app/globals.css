@@ -2961,46 +2961,56 @@ body.panning * {
 /* The wrapper reserves the *scaled* footprint so the tree pane scrolls
    correctly; the inner canvas keeps its natural size and is scaled with a
    transform (origin top-left) for zoom. */
-.clinic-canvas-wrap { position: relative; margin: 8px auto 40px; }
+/* Gutter (move numbers, pinned left while panning) + the canvas, side by side. */
+.clinic-canvas-wrap { position: relative; margin: 8px auto 40px; display: flex; align-items: flex-start; }
+.clinic-gutter {
+  position: sticky; left: 0; z-index: 4; flex: 0 0 30px; width: 30px;
+  background: linear-gradient(to right, var(--bg) 70%, transparent);
+}
+/* Label style (C), positioned by its optical middle like the poster's numbers. */
+.clinic-move-no {
+  position: absolute; left: 6px; transform: translateY(-50%);
+  font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim);
+  letter-spacing: var(--track-caps); line-height: 1;
+}
+.clinic-canvas-box { flex: 0 0 auto; }
 .clinic-canvas { position: relative; }
 .clinic-conn { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
-.cnode { position: absolute; }
-.cnode-btn { display: block; width: 100%; border: 0; background: none; padding: 0; cursor: pointer; }
+/* Poster card: name band, board in a hairline frame, one move/eval line. */
+.cnode { position: absolute; display: flex; flex-direction: column; align-items: center; }
+.cnode-name {
+  width: 100%; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; box-sizing: border-box;
+  text-align: center; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim);
+  text-transform: uppercase; letter-spacing: var(--track-caps); line-height: 12px;
+}
+.cnode-name span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cnode-btn { display: block; border: 0; background: none; padding: 0; cursor: pointer; }
 .cnode-frame {
-  position: relative; width: max-content; margin: 0 auto; padding: 3px; border-radius: 4px;
-  border: 2px solid var(--border2); background: var(--bg2); transition: transform 0.12s var(--ease-snap), box-shadow 0.12s ease;
+  position: relative; width: max-content; line-height: 0;
+  border: 1px solid var(--border2); background: var(--bg2); transition: transform 0.12s var(--ease-snap), box-shadow 0.12s ease;
 }
 .cnode-btn:active .cnode-frame { transform: translateY(-1px); }
 @media (hover: hover) {
   .cnode-btn:hover .cnode-frame { transform: translateY(-1px); }
 }
-.cnode-frame.perf-green { border-color: var(--green); }
-.cnode-frame.perf-amber { border-color: var(--yellow); }
-.cnode-frame.perf-red { border-color: var(--red); }
 .cnode-frame.gap { border-style: dashed; border-color: var(--txt-faint); }
 .cnode-frame.dev { border-color: var(--coral); } /* off-book: left theory here */
 .cnode-frame.hotspot { box-shadow: 0 0 0 1px var(--red), 0 4px 14px -5px var(--red); }
-.cnode-frame.sel { outline: 2px solid var(--contour); outline-offset: 2px; }
-.cnode-warn {
-  position: absolute; top: -9px; left: -9px; z-index: 3; display: inline-flex; align-items: center; gap: 2px;
-  height: 17px; padding: 0 5px; border-radius: 9px; background: var(--red); color: #fff;
-  border: 1.5px solid var(--bg2); font-size: var(--fs-base); font-weight: var(--fw-bold);
+/* Tight to the board: the name band sits just above it, so a wider ring
+   would cut into the name. */
+.cnode-frame.sel { outline: 2px solid var(--contour); outline-offset: 1px; }
+/* Chips inside the board's corners, as on the poster: games played top-left,
+   blunders top-right, hidden lines (+N, drill to see) bottom-right. */
+.cnode-games, .cnode-warn, .cnode-more {
+  position: absolute; z-index: 3; height: 14px; padding: 0 3px; border-radius: 2px;
+  display: inline-flex; align-items: center; gap: 2px; line-height: 1;
+  font-size: var(--fs-micro); font-weight: var(--fw-bold);
 }
-.cnode-more {
-  position: absolute; top: -8px; right: -8px; z-index: 3; min-width: 18px; height: 16px; padding: 0 5px; border-radius: 8px;
-  display: inline-flex; align-items: center; justify-content: center; background: var(--bg2); color: var(--txt-dim);
-  border: 1.5px solid var(--border2); font-size: var(--fs-base); font-weight: var(--fw-bold);
-}
-.cnode-off {
-  position: absolute; bottom: -8px; left: -7px; z-index: 3; height: 16px; padding: 0 6px; border-radius: 8px;
-  display: inline-flex; align-items: center; background: var(--bg2); color: var(--coral);
-  border: 1.5px solid var(--coral); font-size: var(--fs-micro); font-weight: var(--fw-bold);
-  text-transform: uppercase; letter-spacing: var(--track-caps);
-}
-.cnode-label { text-align: center; padding-top: 6px; }
-.cnode-name { display: block; font-size: var(--fs-base); color: var(--txt-dim); font-weight: var(--fw-bold); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cnode-move { display: block; font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); letter-spacing: normal; }
-.cnode-games { display: block; font-size: var(--fs-base); color: var(--txt-dim); margin-top: 1px; }
+.cnode-games { top: 1px; left: 1px; background: var(--bg2); background: color-mix(in srgb, var(--bg2) 82%, transparent); color: var(--txt-dim); }
+.cnode-warn { top: 1px; right: 1px; background: var(--red); color: #fff; }
+.cnode-more { bottom: 1px; right: 1px; background: var(--bg2); background: color-mix(in srgb, var(--bg2) 82%, transparent); color: var(--txt-dim); }
+.cnode-label { display: flex; gap: 5px; justify-content: center; align-items: baseline; padding-top: 3px; white-space: nowrap; line-height: 16px; }
+.cnode-move { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); letter-spacing: normal; }
 
 .clinic-detail { position: relative; width: 340px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--bg2); overflow-y: auto; display: flex; flex-direction: column; }
 .cd-close {
@@ -3125,7 +3135,7 @@ body.panning * {
 .ce-tag { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); margin-left: auto; }
 
 /* Per-node + per-continuation Stockfish eval (games count now lives only in the left panel) */
-.cnode-eval { display: block; font-size: var(--fs-base); color: var(--txt-dim); margin-top: 1px; font-variant-numeric: tabular-nums; font-weight: var(--fw-bold); }
+.cnode-eval { font-size: var(--fs-base); color: var(--txt-dim); font-variant-numeric: tabular-nums; font-weight: var(--fw-reg); }
 .c-eval { color: var(--txt-dim); font-variant-numeric: tabular-nums; }
 
 /* Clinic legend — explains the connector colours (move quality) + frame marks */
@@ -3526,7 +3536,10 @@ body.panning * {
   border-radius: 3px;
   overflow: hidden;
 }
-.pd-frame { width: 100%; height: 100%; object-fit: contain; display: block; background: #fff; }
+/* Pinned to the frame, so the whole sheet letterboxes into whatever height
+   the dialog leaves it — sized by its own aspect instead, a tall poster was
+   centred and clipped top and bottom once the controls grew. */
+.pd-frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
 .pd-msg { font-size: var(--fs-micro); color: var(--txt-dim); text-transform: uppercase; letter-spacing: var(--track-caps); font-weight: var(--fw-bold); }
 .pd-badge {
   position: absolute; top: 8px; right: 8px;

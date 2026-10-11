@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useClinic } from '@/lib/clinic-context';
 import { PrintDialog } from '@/components/PrintDialog';
+import type { BoardThemeId } from '@/lib/board-theme';
 
 /**
  * Left panel for Opening mode: a colour switch and a filterable list of your
@@ -12,7 +13,7 @@ import { PrintDialog } from '@/components/PrintDialog';
  * A1 PDF poster or a 4K desktop wallpaper of the focused opening's subtree when
  * one is picked, else the whole colour. Share sheet on iOS, download on web.
  */
-export function OpeningSidebar() {
+export function OpeningSidebar({ boardTheme }: { boardTheme: BoardThemeId }) {
   const { color, setColor, tree, games, openings, focus, setFocus, setSelectedId, loading, fetching } = useClinic();
   const [showPrint, setShowPrint] = useState(false);
 
@@ -63,6 +64,7 @@ export function OpeningSidebar() {
             color={color}
             focusPath={focus}
             focusName={focusOpening?.name ?? null}
+            boardTheme={boardTheme}
             onClose={() => setShowPrint(false)}
           />
         )}

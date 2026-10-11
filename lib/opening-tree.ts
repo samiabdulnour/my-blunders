@@ -262,6 +262,10 @@ export function buildOpeningTree(
     focus = n ?? null;
     if (!focus) trunk.length = 0; // unknown path — poster the whole colour
   }
+  // Deepest ply a line is spent to: the sheet's last drawn row. A sheet that
+  // starts at the focus (`fromFocus`) draws maxPly rows from there, the focus
+  // itself being the first.
+  const plyCap = budget.maxPly + (budget.fromFocus && focus ? focus.ply - 1 : 0);
 
   let keep: Set<RawNode> | undefined;
   let stubRoots: Set<RawNode> | undefined;
@@ -287,7 +291,7 @@ export function buildOpeningTree(
       for (;;) {
         kept.add(n);
         frontier.push(n);
-        if (n.ply >= budget.maxPly) break; // past the last drawn row
+        if (n.ply >= plyCap) break; // past the last drawn row
         const ks = kidsOf(n);
         if (!ks.length) break;
         nextIdx.set(n, 1); // this walk takes the principal child
@@ -307,7 +311,7 @@ export function buildOpeningTree(
       let bestKids: RawNode[] = [];
       let bestScore = -1;
       for (const f of frontier) {
-        if (f.ply >= budget.maxPly) continue; // a split here would be invisible
+        if (f.ply >= plyCap) continue; // a split here would be invisible
         const ks = f === root ? kidsOf(f).filter((k) => k.games >= topFloor) : kidsOf(f);
         const i = nextIdx.get(f) ?? 0;
         if (i >= ks.length) continue;
@@ -339,7 +343,7 @@ export function buildOpeningTree(
       stubRoots = new Set<RawNode>();
       const spare: RawNode[] = [];
       for (const f of frontier) {
-        if (f === root || f.ply >= budget.maxPly) continue;
+        if (f === root || f.ply >= plyCap) continue;
         for (const k of kidsOf(f)) if (!kept.has(k)) spare.push(k);
       }
       spare.sort((a, b) => a.ply - b.ply || b.games - a.games);
@@ -349,7 +353,7 @@ export function buildOpeningTree(
         let n = k;
         for (let len = 1; ; len++) {
           kept.add(n);
-          if (len >= budget.stubs.plies || n.ply >= budget.maxPly) break;
+          if (len >= budget.stubs.plies || n.ply >= plyCap) break;
           const ks = kidsOf(n);
           if (!ks.length) break;
           n = ks[0];
@@ -378,6 +382,10 @@ export interface PosterBudget {
    *  move 3"). They cost no column: a packed layout tucks them into the sheet's
    *  empty corners and drops any that would widen it. */
   stubs?: { count: number; plies: number };
+  /** Count `maxPly` from the focused opening rather than from move 1, and start
+   *  the sheet AT that position. For a sheet too small to spend its rows on the
+   *  moves that lead there (the wallpaper). Without a focus it changes nothing. */
+  fromFocus?: boolean;
 }
 
 /** What each A1 sheet shape holds, and how it is chosen.
@@ -385,11 +393,11 @@ export interface PosterBudget {
  *  SIZE. A full-depth line needs a column, so lines set the width and plies the
  *  height: `n` lines draw 116n - 12 units wide (the boards' own bounding box —
  *  what the poster fits) and `p` plies draw 18 + 140p units tall. Inside the
- *  margins, the 94pt move-number gutter and the header that is 1518 x 2221pt
- *  portrait, 2218 x 1521pt landscape:
+ *  margins, the 94pt move-number gutter and the header band (2026-10-11) that
+ *  is 1518 x 2191pt portrait, 2218 x 1491pt landscape:
  *
- *    portrait  20 x 24 → height-bound, boards ~63pt, width filled to within 1pt
- *    landscape 29 x 16 → width-bound,  boards ~63.5pt
+ *    portrait  20 x 24 → height-bound, boards ~62.3pt, width within ~21pt
+ *    landscape 29 x 16 → height-bound, boards ~63.4pt, width within ~8pt
  *
  *  Same board size either way; each ends on a COMPLETE move (12th / 8th).
  *  `maxPly` must match the rows the poster actually draws: a line budget spent
@@ -411,9 +419,10 @@ export const POSTER_BUDGET = {
    *  sheet ON PURPOSE: a wallpaper is read at screen size, not at arm's length
    *  on A1 paper, so the budget is chosen to land boards at their native 96pt
    *  (~155px at 4K) with the move text ~15px — readable on a laptop. The 16:9
-   *  tree area is 2218pt wide × ~1178pt tall: 19 lines (116·19−12 = 2192) and
-   *  8 plies (18 + 140·8 = 1138) fill it at scale 1, ending on move 4. */
-  wallpaper: { maxLines: 19, maxPly: 8, rank: 'branch', stubs: { count: 40, plies: 5 } },
+   *  tree area is 2218pt wide × ~1148pt tall: 19 lines (116·19−12 = 2192) and
+   *  8 plies (18 + 140·8 = 1138) fill it at scale 1, ending on move 4 — or,
+   *  focused on one opening, 8 plies on FROM that position (`fromFocus`). */
+  wallpaper: { maxLines: 19, maxPly: 8, rank: 'branch', stubs: { count: 40, plies: 5 }, fromFocus: true },
 } as const;
 
 export type PosterShape = keyof typeof POSTER_BUDGET;

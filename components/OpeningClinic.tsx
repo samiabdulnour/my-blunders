@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { layoutTree, findByPath, hotspots, weakSpots, lineString, formatEval, CARD_W, type LaidNode, type DrillItem } from '@/lib/opening-tree';
+import { layoutTree, findByPath, hotspots, weakSpots, lineString, formatEval, type LaidNode, type DrillItem } from '@/lib/opening-tree';
 import { figurine } from '@/lib/figurine';
 import { useClinic } from '@/lib/clinic-context';
 import { fetchTheory, type Theory } from '@/lib/opening-explorer';
@@ -45,20 +45,37 @@ function edgeStroke(parentFen: string, parentEval: number | null, childEval: num
   return 'var(--green)';
 }
 
-const TOP_PAD = 26;
-const LEFT_PAD = 24;
-// Connectors leave the parent *below* its label (board ≈106 + label ≈46) so the
-// line sits in the gap between rows and never crosses the move/eval text. The
-// node name is truncated to one line so node height stays bounded.
-const CARD_BOTTOM = 156;
+/* The tree is drawn like the A1 poster, scaled for a screen: small boards
+ * close together, the opening name in a band ABOVE the board, one line of move
+ * + eval below it, elbow connectors, outline packing, and the move numbers in a
+ * gutter down the left instead of on every label. Card, top to bottom:
+ *   name band (two label lines) · board (80px + 1px frame) · move/eval line,
+ * and the connectors run in the strip between one row's line and the next
+ * row's names. */
+const TOP_PAD = 10;
+const LEFT_PAD = 8;
+const SQ = 10; // board square, px
+const BOARD = SQ * 8 + 2; // + the 1px frame each side
+const CARD_W = 88;
+const COL_GAP = 10;
+const ROW_H = 146;
+const TOP_INSET = 28; // the name band above the board
+const CARD_BOTTOM = TOP_INSET + BOARD + 21; // under the move/eval line
+/** Move-number gutter: pinned to the left edge of the pane while you pan. */
+const GUTTER = 30;
+/** Where a row's move number sits down White's board (as on the poster). */
+const MOVE_NO_AT = 0.275;
 
-function connectorPath(parent: LaidNode, child: LaidNode): string {
+/** Elbow connector, as on the poster: down from the parent to one shared bus
+ *  per parent, across to the child's column, down into the child — landing
+ *  above the child's name band when it has one, so it never crosses the name. */
+function connectorPath(parent: LaidNode, child: LaidNode): { d: string; tip: [number, number] } {
   const px = LEFT_PAD + parent.x + CARD_W / 2;
   const py = TOP_PAD + parent.y + CARD_BOTTOM;
+  const busY = TOP_PAD + parent.y + CARD_BOTTOM + (ROW_H - CARD_BOTTOM) / 2;
   const cx = LEFT_PAD + child.x + CARD_W / 2;
-  const cy = TOP_PAD + child.y;
-  const my = py + (cy - py) * 0.5;
-  return `M ${px} ${py} C ${px} ${my}, ${cx} ${my}, ${cx} ${cy}`;
+  const cy = TOP_PAD + child.y + (child.name ? 1 : TOP_INSET - 2);
+  return { d: `M ${px} ${py} V ${busY} H ${cx} V ${cy}`, tip: [cx, cy] };
 }
 
 /**
@@ -141,10 +158,11 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
       e.preventDefault();
       const d = pinchDist(e.touches);
       const newZ = Math.min(1.6, Math.max(0.1, startZoom * (d / startDist)));
-      // Keep the canvas point under the pinch midpoint stationary.
-      const layoutX = (startScrollX + midX) / startZoom;
+      // Keep the canvas point under the pinch midpoint stationary. The canvas
+      // starts after the (unscaled) move-number gutter.
+      const layoutX = (startScrollX + midX - GUTTER) / startZoom;
       const layoutY = (startScrollY + midY) / startZoom;
-      pendingScrollRef.current = { x: layoutX * newZ - midX, y: layoutY * newZ - midY };
+      pendingScrollRef.current = { x: layoutX * newZ + GUTTER - midX, y: layoutY * newZ - midY };
       setZoom(newZ);
     };
 
@@ -198,17 +216,20 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
   // Focus re-roots the tree at one node (an opening, or any clicked node) so you
   // can drill in; otherwise the whole tree. Path ids are absolute, so a focus
   // node's children keep walking deeper.
-  const layout = useMemo(() => {
+  const { layout, firstPly } = useMemo(() => {
     // Cap the on-screen explorer at 3 variations per node (its established look);
-    // the data now keeps more (MAX_CHILDREN) so the poster can show wider.
+    // the data now keeps more (MAX_CHILDREN) so the poster can show wider. Packed
+    // by outline like the poster, so a deep line slides under a short one
+    // instead of every leaf owning a full-height column.
+    const metrics = { maxChildren: 3, cardW: CARD_W, colGap: COL_GAP, rowH: ROW_H, pack: { maxCols: 0 } };
     if (focus) {
       const node = findByPath(tree, focus);
       if (node) {
         const parent = focus.split('/').slice(0, -1).join('/');
-        return layoutTree(tree, { topNodes: [node], basePath: parent, maxChildren: 3 });
+        return { layout: layoutTree(tree, { ...metrics, topNodes: [node], basePath: parent }), firstPly: node.depth };
       }
     }
-    return layoutTree(tree, { maxChildren: 3 });
+    return { layout: layoutTree(tree, metrics), firstPly: 1 };
   }, [tree, focus]);
   const hasGames = tree.games > 0;
 
@@ -261,7 +282,7 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
     const main = top.reduce((a, b) => (b.games > a.games ? b : a), top[0]);
     const center = LEFT_PAD + main.x + CARD_W / 2;
     const id = requestAnimationFrame(() => {
-      el.scrollLeft = Math.max(0, center * zoomRef.current - el.clientWidth / 2);
+      el.scrollLeft = Math.max(0, GUTTER + center * zoomRef.current - el.clientWidth / 2);
       el.scrollTop = 0;
     });
     return () => cancelAnimationFrame(id);
@@ -376,27 +397,51 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
         ) : (
           <div
             className="clinic-canvas-wrap"
-            style={{ width: (LEFT_PAD + layout.width) * zoom, height: (TOP_PAD + layout.height) * zoom }}
+            style={{ width: GUTTER + (LEFT_PAD + layout.width) * zoom, height: (TOP_PAD + layout.height) * zoom }}
           >
-            <div
-              className="clinic-canvas"
-              style={{ width: LEFT_PAD + layout.width, height: TOP_PAD + layout.height, transform: `scale(${zoom})`, transformOrigin: '0 0' }}
-            >
-              <svg className="clinic-conn" width={LEFT_PAD + layout.width} height={TOP_PAD + layout.height}>
-                {layout.edges.map((e, i) => {
-                  const a = byId[e.from];
-                  const b = byId[e.to];
-                  if (!a || !b) return null;
-                  const stroke = edgeStroke(a.fen, evalOf(a) ?? null, evalOf(b) ?? null);
-                  // Dash the move that leaves theory, so the solid spine reads as
-                  // the main line and deviations stand out (colour still = quality).
-                  const dash = b.deviation ? '6 5' : undefined;
-                  return <path key={i} d={connectorPath(a, b)} fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeDasharray={dash} />;
-                })}
-              </svg>
-              {layout.nodes.map((n) => (
-                <ClinicNode key={n.pathId} node={n} color={color} displayEval={evalOf(n)} selected={selected?.pathId === n.pathId} onSelect={() => { setSelectedId(n.pathId); setDetailOpen(true); }} />
-              ))}
+            {/* Move numbers, one per full move beside White's row, pinned to
+                the pane's left edge while the tree pans under them. A view that
+                starts on a Black move labels its first row "7…". */}
+            <div className="clinic-gutter" style={{ height: (TOP_PAD + layout.height) * zoom }} aria-hidden="true">
+              {Array.from({ length: layout.maxDepth + 1 }, (_, r) => {
+                const ply = firstPly + r;
+                const whiteMove = ply % 2 === 1;
+                if (!whiteMove && r > 0) return null;
+                const top = (TOP_PAD + r * ROW_H + TOP_INSET + BOARD * MOVE_NO_AT) * zoom;
+                return (
+                  <span key={r} className="clinic-move-no num" style={{ top }}>
+                    {Math.floor((ply - 1) / 2) + 1}{whiteMove ? '.' : '…'}
+                  </span>
+                );
+              })}
+            </div>
+            <div className="clinic-canvas-box" style={{ width: (LEFT_PAD + layout.width) * zoom }}>
+              <div
+                className="clinic-canvas"
+                style={{ width: LEFT_PAD + layout.width, height: TOP_PAD + layout.height, transform: `scale(${zoom})`, transformOrigin: '0 0' }}
+              >
+                <svg className="clinic-conn" width={LEFT_PAD + layout.width} height={TOP_PAD + layout.height}>
+                  {layout.edges.map((e, i) => {
+                    const a = byId[e.from];
+                    const b = byId[e.to];
+                    if (!a || !b) return null;
+                    const stroke = edgeStroke(a.fen, evalOf(a) ?? null, evalOf(b) ?? null);
+                    // Dash the move that leaves theory, so the solid spine reads as
+                    // the main line and deviations stand out (colour still = quality).
+                    const dash = b.deviation ? '5 4' : undefined;
+                    const { d, tip: [tx, ty] } = connectorPath(a, b);
+                    return (
+                      <g key={i}>
+                        <path d={d} fill="none" stroke={stroke} strokeWidth="1.6" strokeDasharray={dash} />
+                        <path d={`M ${tx - 3} ${ty - 4.5} L ${tx + 3} ${ty - 4.5} L ${tx} ${ty} Z`} fill={stroke} />
+                      </g>
+                    );
+                  })}
+                </svg>
+                {layout.nodes.map((n) => (
+                  <ClinicNode key={n.pathId} node={n} color={color} displayEval={evalOf(n)} selected={selected?.pathId === n.pathId} onSelect={() => { setSelectedId(n.pathId); setDetailOpen(true); }} />
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -431,19 +476,23 @@ function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: La
     (node.hotspot ? ' hotspot' : '') +
     (selected ? ' sel' : '');
   const evalLabel = displayEval === undefined ? '…' : formatEval(displayEval) || '·';
+  // Poster card: name band above the board, games played top-left on it, then
+  // one line under it — the move (its number is in the gutter) and the eval.
   return (
     <div className="cnode" style={{ left: LEFT_PAD + node.x, top: TOP_PAD + node.y, width: CARD_W }}>
-      <button className="cnode-btn" onClick={onSelect}>
+      <div className="cnode-name" style={{ height: TOP_INSET }} title={node.name || undefined}>
+        {node.name && <span>{node.name}</span>}
+      </div>
+      <button className="cnode-btn" onClick={onSelect} aria-label={`${node.label}${node.name ? `, ${node.name}` : ''}`}>
         <div className={cls}>
-          {node.blunders > 0 && <span className="cnode-warn"><IconWarn size={10} /> {node.blunders}</span>}
+          {node.games > 0 && <span className="cnode-games num">{node.games}</span>}
+          {node.blunders > 0 && <span className="cnode-warn"><IconWarn size={9} /> {node.blunders}</span>}
           {node.more > 0 && <span className="cnode-more">+{node.more}</span>}
-          {node.deviation && <span className="cnode-off" title="Leaves opening theory">off-book</span>}
-          <OpeningBoard fen={node.fen} hl={node.hl} sqSize={12} orient={color} />
+          <OpeningBoard fen={node.fen} hl={node.hl} sqSize={SQ} orient={color} />
         </div>
       </button>
       <div className="cnode-label">
-        {node.name && <span className="cnode-name">{node.name}</span>}
-        <span className="cnode-move">{figurine(node.label, node.depth % 2 === 1 ? 'w' : 'b')}</span>
+        <span className="cnode-move">{figurine(node.san, node.depth % 2 === 1 ? 'w' : 'b')}</span>
         <span className="cnode-eval num">{evalLabel}</span>
       </div>
     </div>

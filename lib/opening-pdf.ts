@@ -13,8 +13,9 @@
  * what surfaces "Save to Files" / Print inside the iOS app), falling back to a
  * plain download on desktop web.
  */
-import { layoutTree, findByPath, formatEval, POSTER_BUDGET, RENDER_ROWS, type PosterShape, type TreeNode, type LaidNode } from './opening-tree';
+import { layoutTree, findByPath, formatEval, POSTER_BUDGET, RENDER_ROWS, type PosterBudget, type PosterShape, type TreeNode, type LaidNode } from './opening-tree';
 import { loadUsername } from './storage';
+import { boardThemeById, type BoardTheme } from './board-theme';
 
 // The poster packs far tighter than the on-screen clinic — small boards nearly
 // touching, a compact score under each, orthogonal connectors — so it defines
@@ -31,10 +32,10 @@ const TOP_INSET = 22; // reserved above the board for the arrow + up to 2 name l
 const CARD_BOTTOM = 132; // a connector leaves the parent here (below board + score)
 const FILES = 'abcdefgh';
 
-// Print palette (fixed, not theme-driven — a poster is a poster).
-const C_LIGHT = '#ecebde';
-const C_DARK = '#93a97f';
-const C_HL = '#e6dd86';
+// Print palette. The boards default to the app's Green board theme; a caller
+// passes `board` to print in whichever theme the app shows (see BOARD_THEMES).
+// The rest is fixed — paper, ink and the grading colours don't follow a theme.
+const DEFAULT_BOARD = boardThemeById('green');
 const C_FRAME = '#cfc9ba';
 const C_TEXT = '#1b1a16';
 const C_DIM = '#6d6656';
@@ -46,58 +47,58 @@ const C_PAPER = '#ffffff'; // pure white — this gets printed
 const C_HEAD_DIM = '#929291'; // neutral grey for the header table, rules and move numbers
 
 /* ── Poster furniture ──────────────────────────────────────────────────────
- * Set to the InDesign layout this poster follows (A1 portrait, 1683.78 x
- * 2383.94pt), as revised in the designer's review of 2026-09-20. All y values
- * are from the PAGE TOP, matching jsPDF. The three headings sit top-right; one
- * band of small grey text runs beneath them on a shared two-line grid — the
- * stats table at the left, the legend at the right — closed by one rule. Move
- * numbers run down a left gutter.
+ * Set to the designer's InDesign layout (Myblunders_zofka.indd, revised
+ * 2026-10-11), measured off its 300dpi export. All y values are from the PAGE
+ * TOP, matching jsPDF; x values on the left from the page edge, on the right
+ * from the right content edge, so the block stays anchored on every sheet.
  *
- * The review's changes, all here: the stats dropped from heading size to the
- * legend's; the legend and rule moved up under the headings (the freed height
- * goes to the tree — see POSTER_BUDGET); the rules took the tree's line weight. */
+ * The header is one closed band between two full-width rules. At its left, a
+ * boxed table: the three stats on top, ruled off, the four-line legend beneath.
+ * The three headings sit in the open part of the band to the right, centred on
+ * its height. Move numbers run down a left gutter under the box's left rule. */
 const PAGE_MARGIN = 36;
-/** Move-number column; the tree starts at PAGE_MARGIN + this. It was 136pt while
- *  the numbers were heading size; at the small-text size ("12." is ~22pt wide)
- *  that left 127pt of air before the first board — more than a whole column
- *  (~76pt). 94pt is what lets one more column fit at the SAME board size, and
- *  still leaves ~68pt (nearly a board's width) between numbers and tree. */
+/** Move-number column; the tree starts at PAGE_MARGIN + this. 94pt fits a 20th
+ *  portrait column at the same board size as 19 did, with ~68pt (nearly a
+ *  board's width) left between the numbers and the tree. */
 const GUTTER_W = 94;
 
 const HEAD_SIZE = 24;
 const LEG_SIZE = 12;
-const HEAD_TITLE_BASE = 55.2027; // bold headings
-/** The small-text grid: one heading line (24pt) under the headings, then the
- *  legend's own 14.4pt leading. Stats and legend share these two baselines. */
-const HEAD_LEG1_BASE = HEAD_TITLE_BASE + HEAD_SIZE; // 79.2
-const HEAD_LEG2_BASE = HEAD_LEG1_BASE + 14.4; // 93.6
-/** Clearance the layout keeps under the last text line — and, mirrored, above
- *  the first: the stat dividers span exactly that band. */
-const HEAD_RULE_CLEAR = 13.27;
-const HEAD_RULE_Y = HEAD_LEG2_BASE + HEAD_RULE_CLEAR; // the rule under the whole header
-/** Layout origin for the tree: the same 20.3pt under the rule as the original
- *  layout, so row 0's board top clears it by about a name band. */
-const TREE_TOP = HEAD_RULE_Y + 20.3;
-/** Stats table, at the legend's size. Columns keep the original layout's pitch
- *  and divider offset at half scale (the text is half the size), and widen for
- *  a long nickname rather than letting it run into the next cell. */
-const STAT_X = 40;
-const STAT_PITCH = 82.18;
-const STAT_DIV_LEAD = 4.62; // a divider sits this far left of the next column's text
-const STAT_MIN_GAP = 16; // least air between a cell's text and its divider
+const LEG_LEAD = 14.4;
+/** The band: top rule, the rule under the stats (box only), bottom rule. */
+const BAND_TOP = 36.4;
+const BAND_MID = 72.7;
+const BAND_BOTTOM = 136.7;
+/** Stats on two baselines inside the top cell row; the legend on four below. */
+const STAT_BASE = [51.1, 65.5];
+const LEG_BASE1 = 87.8;
+/** The box's vertical rules: its left and right edges, with the two stat
+ *  dividers between. A cell widens past this for a long nickname rather than
+ *  letting it run into its neighbour (the rules after it move right). */
+const BOX_RULES = [36, 195.7, 360.7, 525.4];
+/** Text inset from the rule on a cell's left: a touch more off the box's
+ *  outer edge (the first stat and the legend) than off a divider. */
+const CELL_PAD_EDGE = 7.2;
+const CELL_PAD = 5.5;
+const HEAD_TITLE_BASE = 89.5; // bold headings, centred on the band
+/** Layout origin for the tree: 20.3pt under the band, as it always was, so row
+ *  0's board top clears the rule by about a name band. */
+const TREE_TOP = BAND_BOTTOM + 20.3;
 /** How far down White's board a move number's optical middle sits, as a
  *  fraction of the board's height: 0 = top edge, 0.5 = centre. 0.275 is 5 mm
- *  above centre at the portrait sheet's 63pt boards. */
+ *  above centre at the portrait sheet's 63pt boards (the review of 2026-09-20;
+ *  the InDesign file still hangs them from the board top). */
 const MOVE_NO_AT = 0.275;
-/** Right-hand block, held as offsets from the right content edge so it stays
- *  anchored to the margin whatever the sheet width. */
-const HEAD_R_TITLE = 912.75; // "<COLOUR> REPERTOIRE" + the legend below it
-const HEAD_R_MID = 541.41; // "OPENING TREE"
+/** Right-hand block, held as offsets from the right content edge. */
+const HEAD_R_TITLE = 912; // "<COLOUR> REPERTOIRE"
+const HEAD_R_MID = 537.5; // "OPENING TREE"
+const HEAD_R_END = 10.5; // "N NAMED LINES" ends this far inside the rules
 /** Room the title has before "OPENING TREE", less a gap so the two never crowd
  *  (the reference leaves ~132pt between them). Beyond this it wraps. */
 const TITLE_SLOT = HEAD_R_TITLE - HEAD_R_MID - 40;
-/** Baseline drop for a wrapped title's second row, and the size it won't shrink
- *  below — the longest ECO names would otherwise set absurdly small. */
+/** Baseline pitch of a wrapped title's two rows (centred on the band), and the
+ *  size it won't shrink below — the longest ECO names would otherwise set
+ *  absurdly small. */
 const TITLE_LEAD = 26;
 const TITLE_MIN_SIZE = 14;
 /** InDesign tracks the bold caps ~0.02em; jsPDF calls this char spacing. */
@@ -273,6 +274,8 @@ export interface OpeningPdfOpts {
   /** Engine evals by FEN (white-relative cp), overriding the sparse per-game
    *  evals so every board can show one. See fillPosterEvals(). */
   evals?: Map<string, number>;
+  /** Board colours — one of the app's board themes (default: Green). */
+  board?: BoardTheme;
 }
 
 /** What a build produced: the PDF blob plus how to name/announce it. */
@@ -330,6 +333,19 @@ async function renderPoster(
   const TRIVIAL_TOP = Math.max(2, Math.round(totalGames * 0.02));
   const topMoves = tree.children.filter((c) => c.games >= TRIVIAL_TOP);
 
+  // Where the sheet starts. A print sheet always reads from the first moves —
+  // a focused poster too, down the trunk the builder kept. A sheet whose budget
+  // counts rows from the focus (the wallpaper: too small to spend rows on the
+  // moves everyone knows) starts AT the focus position instead.
+  const orient: 'portrait' | 'landscape' = opts.orientation === 'landscape' ? 'landscape' : 'portrait';
+  const shape: PosterShape = opts.shape ?? orient;
+  const shapeBudget: PosterBudget = POSTER_BUDGET[shape];
+  const fromFocus = !!focusNode && !!shapeBudget.fromFocus;
+  const topNodes = fromFocus ? [focusNode] : topMoves;
+  const basePath = fromFocus ? opts.focusPath!.split('/').slice(0, -1).join('/') : '';
+  /** Ply of the sheet's first row (1 = the first move). */
+  const firstPly = fromFocus ? focusNode.depth : 1;
+
   const layoutAt = (o: {
     mg: number;
     maxRows: number;
@@ -337,11 +353,8 @@ async function renderPoster(
     branchDepth?: number;
   }) =>
     layoutTree(tree, {
-      // Always the first moves: a focused poster reads from the initial
-      // position too, down the trunk the builder kept, so its move numbers are
-      // the real ones. The tree itself is what's already been narrowed.
-      topNodes: topMoves,
-      basePath: '',
+      topNodes,
+      basePath,
       maxRows: o.maxRows,
       cardW: CARD_W,
       colGap: COL_GAP,
@@ -354,8 +367,6 @@ async function renderPoster(
       pack: { maxCols: POSTER_BUDGET[shape].maxLines },
     });
 
-  const orient: 'portrait' | 'landscape' = opts.orientation === 'landscape' ? 'landscape' : 'portrait';
-  const shape: PosterShape = opts.shape ?? orient;
   const portrait = orient === 'portrait';
   const doc = await makeDoc(orient);
   const pageW = doc.internal.pageSize.getWidth();
@@ -370,15 +381,13 @@ async function renderPoster(
       }
     } catch { /* keep the default face */ }
   }
-  // ── Title, measured up front ───────────────────────────────────────────────
+  // ── Title ─────────────────────────────────────────────────────────────────
   // The title owns the room up to "OPENING TREE". A long opening name — and
   // ECO's run long — used to print straight through that label, so it wraps to
   // a second row instead, and only shrinks if two rows still won't hold it.
   // Measured with the tracking added by hand: jsPDF's getTextWidth ignores char
-  // spacing, and the canvas backend would otherwise count it twice.
-  // It is measured BEFORE the tree is fitted because the small-text band now
-  // sits directly under the headings: a second title row pushes that band, the
-  // rule and the tree down by one title lead, and the fit has to know.
+  // spacing, and the canvas backend would otherwise count it twice. The band
+  // has room for two rows, so a wrapped title never moves the tree.
   const title = focusNode
     ? opts.focusName || focusNode.name || 'Opening line'
     : `${color === 'w' ? 'White' : 'Black'} repertoire`;
@@ -410,11 +419,10 @@ async function renderPoster(
     if (titleRows.length > 2) titleRows = [titleRows[0], `${titleRows[1]}…`];
   }
   doc.setCharSpace(0);
-  const headDrop = (titleRows.length - 1) * TITLE_LEAD;
-  const leg1Y = HEAD_LEG1_BASE + headDrop;
-  const leg2Y = HEAD_LEG2_BASE + headDrop;
-  const ruleY = HEAD_RULE_Y + headDrop;
-  const treeTop = TREE_TOP + headDrop;
+  // Two rows sit either side of the single-row baseline, so the block stays
+  // centred on the band.
+  const titleBase0 = HEAD_TITLE_BASE - ((titleRows.length - 1) * TITLE_LEAD) / 2;
+  const treeTop = TREE_TOP;
 
   // The tree sits right of the move-number gutter and below the header rule.
   const treeLeft = PAGE_MARGIN + GUTTER_W;
@@ -475,10 +483,12 @@ async function renderPoster(
   const pieces = await rasterizePieces();
 
   const named = layout.nodes.filter((n) => n.name).length;
-  const legendLine1 =
-    'Under each board: the move, the engine eval in pawns (+ favours White), then your record from that position as wins/draws/losses. Games played is top-left.';
-  const legendLine2 =
-    'Green strong · amber even · red weak. Connector colour grades the move: green good · amber risky · red blunder.';
+  const legendLines = [
+    'Under each board: the move, the engine eval in pawns (+ favours White),',
+    'then your record from that position as wins/draws/losses.',
+    'Games played is top-left. Green strong · amber even · red weak.',
+    'Connector colour grades the move: green good · amber risky · red blunder.',
+  ];
   const branches: string[] = [];
 
   // layout.width carries a trailing card of padding and LEFT_PAD leads it, so
@@ -503,6 +513,7 @@ async function renderPoster(
   // they cover every position, not just the ~1 in 5 from an analysed game.
   const evalOf = (n: { fen: string; eval: number | null }): number | null =>
     opts.evals?.get(n.fen) ?? n.eval;
+  const board = opts.board ?? DEFAULT_BOARD;
 
   const byId: Record<string, LaidNode> = {};
   for (const n of layout.nodes) byId[n.pathId] = n;
@@ -514,56 +525,53 @@ async function renderPoster(
   doc.rect(0, 0, pageW, pageH, 'F');
 
   // ── Header ────────────────────────────────────────────────────────────────
-  // Top-right: the three headings. Beneath, one band of small grey text on a
-  // shared two-line grid — stats table left, legend right — closed by one rule.
+  // One band between two full-width rules: the boxed stats + legend table on
+  // the left, the three headings in the open part to the right.
   const contentRight = pageW - PAGE_MARGIN;
   // Every rule on the sheet is one weight: the tree's connector line.
   const ruleW = Math.max(0.4, L(1.6));
 
   // Stats: three cells of two rows (who / how many / how well, over W-D-L),
-  // set like the legend. A cell is the layout's pitch wide, or as wide as its
-  // text needs, so a long nickname pushes the next cell along instead of
-  // running into it. Dividers stand in the band the two rows occupy.
+  // set like the legend. Each cell keeps the layout's width unless its text
+  // needs more, in which case every rule after it moves right.
   doc.setFont(FONT, 'normal');
   doc.setFontSize(LEG_SIZE);
   text(C_HEAD_DIM);
-  const dividerX: number[] = [];
-  let cellX = STAT_X;
+  const boxX = [BOX_RULES[0]];
   statCells.forEach(([top, bottom], i) => {
-    doc.text(top, cellX, leg1Y);
-    doc.text(bottom, cellX, leg2Y);
+    const pad = i === 0 ? CELL_PAD_EDGE : CELL_PAD;
+    const x = boxX[i] + pad;
+    doc.text(top, x, STAT_BASE[0]);
+    doc.text(bottom, x, STAT_BASE[1]);
     const textW = Math.max(doc.getTextWidth(top), doc.getTextWidth(bottom));
-    const pitch = Math.max(STAT_PITCH, textW + STAT_MIN_GAP + STAT_DIV_LEAD);
-    if (i < statCells.length - 1) dividerX.push(cellX + pitch - STAT_DIV_LEAD);
-    cellX += pitch;
+    boxX.push(boxX[i] + Math.max(BOX_RULES[i + 1] - BOX_RULES[i], textW + pad + CELL_PAD));
   });
+  const boxRight = boxX[statCells.length];
+
+  // Legend: the row under the stats, spanning the whole box.
+  legendLines.forEach((ln, i) => doc.text(ln, BOX_RULES[0] + CELL_PAD_EDGE, LEG_BASE1 + i * LEG_LEAD));
 
   doc.setFont(FONT, 'bold');
   text(C_TEXT);
-  // The heading block keeps its spacing from the layout and hangs off the right
-  // margin, the same on both orientations. (Title rows were measured up front.)
-  const blockLeft = contentRight - HEAD_R_TITLE;
+  // The heading block hangs off the right margin, the same on every sheet.
   doc.setFontSize(titleSize);
   doc.setCharSpace(HEAD_TRACK * titleSize);
-  titleRows.forEach((row, i) => doc.text(row, blockLeft, HEAD_TITLE_BASE + i * TITLE_LEAD));
+  titleRows.forEach((row, i) => doc.text(row, contentRight - HEAD_R_TITLE, titleBase0 + i * TITLE_LEAD));
 
   doc.setFontSize(HEAD_SIZE);
   doc.setCharSpace(HEAD_TRACK * HEAD_SIZE);
   doc.text('OPENING TREE', contentRight - HEAD_R_MID, HEAD_TITLE_BASE);
-  doc.text(`${named} NAMED LINE${named === 1 ? '' : 'S'}`, contentRight, HEAD_TITLE_BASE, { align: 'right' });
+  doc.text(`${named} NAMED LINE${named === 1 ? '' : 'S'}`, contentRight - HEAD_R_END, HEAD_TITLE_BASE, { align: 'right' });
   doc.setCharSpace(0);
-
-  // Legend, on the same two baselines as the stats.
-  doc.setFont(FONT, 'normal');
-  doc.setFontSize(LEG_SIZE);
-  text(C_HEAD_DIM);
-  doc.text(legendLine1, blockLeft, leg1Y);
-  doc.text(legendLine2, blockLeft, leg2Y);
 
   stroke(C_HEAD_DIM);
   doc.setLineWidth(ruleW);
-  for (const dx of dividerX) doc.line(dx, leg1Y - HEAD_RULE_CLEAR, dx, ruleY);
-  doc.line(PAGE_MARGIN, ruleY, contentRight, ruleY);
+  doc.line(PAGE_MARGIN, BAND_TOP, contentRight, BAND_TOP);
+  doc.line(PAGE_MARGIN, BAND_BOTTOM, contentRight, BAND_BOTTOM);
+  doc.line(boxX[0], BAND_MID, boxRight, BAND_MID);
+  doc.line(boxX[0], BAND_TOP, boxX[0], BAND_BOTTOM);
+  doc.line(boxRight, BAND_TOP, boxRight, BAND_BOTTOM);
+  for (const dx of boxX.slice(1, -1)) doc.line(dx, BAND_TOP, dx, BAND_MID);
 
   // ── Move numbers ──────────────────────────────────────────────────────────
   // One per full move, down the gutter, beside that move's first board —
@@ -575,18 +583,23 @@ async function renderPoster(
   // landscape and on a small repertoire's larger boards. Positioned by cap
   // height: the figures have no descenders, so the optical middle of "12." is
   // half a cap above its baseline.
-  // Set at the small-text size, like the stats and legend (they were heading
-  // size), and on the stats' left edge, so the margin carries ONE column of
-  // small grey text rather than two edges 4pt apart. Bold, in the face's
-  // TABULAR figures: every digit is one 600-unit column wide, so the numbers
-  // line up down the gutter and "10" grows rightwards from the same axis as
-  // "1" — no alignment trick needed.
+  // Set at the small-text size, like the stats and legend, flush with the
+  // header box's left rule. Bold, in the face's TABULAR figures: every digit is
+  // one 600-unit column wide, so the numbers line up down the gutter and "10"
+  // grows rightwards from the same axis as "1" — no alignment trick needed.
+  // Rows are labelled by their real ply, so a sheet that starts mid-game (a
+  // focused wallpaper) still counts from the right move; when its first row is
+  // a Black move, that row reads "7…" rather than going unlabelled.
   doc.setFont(FONT, 'bold');
   doc.setFontSize(LEG_SIZE);
   text(C_HEAD_DIM);
-  for (let r = 0; r <= layout.maxDepth; r += 2) {
+  for (let r = 0; r <= layout.maxDepth; r++) {
+    const ply = firstPly + r;
+    const whiteMove = ply % 2 === 1;
+    if (!whiteMove && r > 0) continue;
+    const no = Math.floor((ply - 1) / 2) + 1;
     const anchor = Y(TOP_PAD + r * ROW_H + TOP_INSET + BOARD * MOVE_NO_AT);
-    doc.text(tabular(`${r / 2 + 1}.`), STAT_X, anchor + (CAP_RATIO * LEG_SIZE) / 2);
+    doc.text(tabular(`${no}`) + (whiteMove ? '.' : '…'), PAGE_MARGIN, anchor + (CAP_RATIO * LEG_SIZE) / 2);
   }
 
   // ── Edges ─────────────────────────────────────────────────────────────────
@@ -645,7 +658,8 @@ async function renderPoster(
         const rankNo = color === 'w' ? 8 - dr : dr + 1;
         const sqName = FILES[fileIdx] + rankNo;
         const hot = n.hl && (sqName === n.hl[0] || sqName === n.hl[1]);
-        fill(hot ? C_HL : (dr + dc) % 2 === 0 ? C_LIGHT : C_DARK);
+        const light = (dr + dc) % 2 === 0;
+        fill(hot ? (light ? board.lmL : board.lmD) : light ? board.sqL : board.sqD);
         const sx = X(boardLX + dc * BOARD_SQ);
         const sy = Y(boardLY + dr * BOARD_SQ);
         doc.rect(sx, sy, L(BOARD_SQ) + 0.4, L(BOARD_SQ) + 0.4, 'F');

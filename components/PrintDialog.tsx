@@ -11,6 +11,7 @@ import {
   type OpeningPdfOpts,
 } from '@/lib/opening-pdf';
 import { fillPosterEvals } from '@/lib/opening-engine';
+import { BOARD_THEMES, boardThemeById, type BoardThemeId } from '@/lib/board-theme';
 
 /**
  * Print dialog for the opening tree, in two outputs:
@@ -35,12 +36,15 @@ interface PrintDialogProps {
   color: 'w' | 'b';
   focusPath: string | null;
   focusName: string | null;
+  /** The board theme the app is showing right now — the print's default. */
+  boardTheme: BoardThemeId;
   onClose: () => void;
 }
 
-export function PrintDialog({ games, color, focusPath, focusName, onClose }: PrintDialogProps) {
+export function PrintDialog({ games, color, focusPath, focusName, boardTheme, onClose }: PrintDialogProps) {
   const [mounted, setMounted] = useState(false);
   const [mode, setMode] = useState<OutputMode>('poster');
+  const [boardId, setBoardId] = useState<BoardThemeId>(boardTheme);
   const [orientation, setOrientation] = useState<Orientation>('portrait');
   const [building, setBuilding] = useState(true);
   const [img, setImg] = useState<string | null>(null);
@@ -84,8 +88,9 @@ export function PrintDialog({ games, color, focusPath, focusName, onClose }: Pri
       orientation: mode === 'wallpaper' ? 'landscape' : orientation,
       shape,
       evals: evalsRef.current,
+      board: boardThemeById(boardId),
     }),
-    [focusPath, focusName, orientation, mode, shape]
+    [focusPath, focusName, orientation, mode, shape, boardId]
   );
 
   useEffect(() => setMounted(true), []);
@@ -230,6 +235,21 @@ export function PrintDialog({ games, color, focusPath, focusName, onClose }: Pri
               </div>
             </div>
           )}
+          <div className="pd-row">
+            <span className="pd-lbl">Board</span>
+            <div className="seg-tabs">
+              {BOARD_THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={'seg-tab' + (boardId === t.id ? ' on' : '')}
+                  onClick={() => setBoardId(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
           {analysing && (
             <div className="pd-note">
               Analysing positions with Stockfish… {analysing.done}/{analysing.total}

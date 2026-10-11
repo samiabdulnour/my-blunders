@@ -1116,7 +1116,7 @@ export default function Page() {
     >
       {mode === 'opening' ? (
         <ClinicProvider key={clinicEpoch}>
-          <OpeningSidebar />
+          <OpeningSidebar boardTheme={theme === 'dark' ? boardDark : boardLight} />
           <div className="main clinic-mode">
             <OpeningClinic coords={coords} evalBar={evalBar} />
           </div>
