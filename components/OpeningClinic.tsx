@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { layoutTree, findByPath, hotspots, weakSpots, lineString, formatEval, type LaidNode, type DrillItem } from '@/lib/opening-tree';
 import { figurine } from '@/lib/figurine';
 import { useClinic } from '@/lib/clinic-context';
 import { fetchTheory, type Theory } from '@/lib/opening-explorer';
 import { evalPosition, peekEval, whiteCp, type EngineEval } from '@/lib/opening-engine';
 import { OpeningDrill } from '@/components/OpeningDrill';
+import { BestLinePopup } from '@/components/BestLinePopup';
 import { OpeningBoard, type BoardArrow } from '@/components/repertoire/OpeningBoard';
 import { IconWarn } from '@/components/repertoire/icons';
 import { BoardTopSlot } from '@/lib/board-nav';
@@ -46,36 +47,86 @@ function edgeStroke(parentFen: string, parentEval: number | null, childEval: num
 }
 
 /* The tree is drawn like the A1 poster, scaled for a screen: small boards
- * close together, the opening name in a band ABOVE the board, one line of move
- * + eval below it, elbow connectors, outline packing, and the move numbers in a
- * gutter down the left instead of on every label. Card, top to bottom:
- *   name band (two label lines) · board (80px + 1px frame) · move/eval line,
- * and the connectors run in the strip between one row's line and the next
- * row's names. */
+ * close together, the opening name in a band ABOVE the board, two lines under
+ * it (move + eval, then games played), elbow connectors, outline packing, and
+ * the move numbers in a gutter down the left. Rows are as tall as their
+ * longest name needs, so a name is never cut short; the layout itself only
+ * fixes each node's column and depth, and `rowGeometry` turns depths into
+ * pixels. */
 const TOP_PAD = 10;
 const LEFT_PAD = 8;
 const SQ = 10; // board square, px
 const BOARD = SQ * 8 + 2; // + the 1px frame each side
 const CARD_W = 88;
 const COL_GAP = 10;
-const ROW_H = 146;
-const TOP_INSET = 28; // the name band above the board
-const CARD_BOTTOM = TOP_INSET + BOARD + 21; // under the move/eval line
+/** Name band: one Label-style line per line of name, plus room for the arrow. */
+const NAME_LINE = 12;
+const NAME_BAND_PAD = 10;
+/** A row with no names keeps just enough band for the arrow to land in. */
+const BAND_EMPTY = 10;
+/** The two lines under the board: move + eval, then games played. */
+const LABEL_H = 38;
+/** Label bottom → next row's band; the connectors' bus runs midway. */
+const LINK_GAP = 22;
 /** Move-number gutter: pinned to the left edge of the pane while you pan. */
 const GUTTER = 30;
 /** Where a row's move number sits down White's board (as on the poster). */
 const MOVE_NO_AT = 0.275;
+/** Canvas drawn past each edge of the visible pane, and the step the visible
+ *  window moves in — so panning re-renders every few hundred px, not per frame. */
+const CULL_MARGIN = 500;
+const CULL_STEP = 250;
+
+/** Pixel rows: each depth's top, and its name band's height. */
+interface Rows { top: number[]; band: number[]; height: number }
+
+/** The part of an opening's name that is new at this node. Names nest
+ *  ("Sicilian Defense: Closed, Traditional"), and the family is already printed
+ *  higher up the same line, so a node shows only what its ancestor's name
+ *  doesn't say; a different family, or a top-level name, is shown in full. */
+function newPart(name: string, above: string): string {
+  if (!above) return name;
+  const split = (s: string) => s.split(/: |, /);
+  const a = split(above);
+  const n = split(name);
+  let k = 0;
+  while (k < a.length && k < n.length - 1 && a[k] === n[k]) k++;
+  return k > 0 ? n.slice(k).join(', ') : name;
+}
+
+/** Lines a name wraps to in the band (Label style: 11px bold uppercase,
+ *  tracked 0.14em) at the card's width. Errs long — a hyphen can also break —
+ *  so the band is never shorter than the text. */
+function nameLines(text: string, ctx: CanvasRenderingContext2D | null): number {
+  if (!text) return 0;
+  const words = text.toUpperCase().split(/\s+/);
+  const w = (t: string) => (ctx ? ctx.measureText(t).width : t.length * 7.5) + t.length * 11 * 0.14;
+  let lines = 0;
+  let line = '';
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && w(next) <= CARD_W) line = next;
+    else {
+      // A new line — plus the extra ones a word wider than the card takes
+      // where it can break ("SMITH-MORRA" splits at its hyphen; a word with
+      // no hyphen stays on its line, a touch wider than the card).
+      lines += 1 + (word.includes('-') ? Math.floor(w(word) / CARD_W) : 0);
+      line = word;
+    }
+  }
+  return lines;
+}
 
 /** Elbow connector, as on the poster: down from the parent to one shared bus
  *  per parent, across to the child's column, down into the child — landing
  *  above the child's name band when it has one, so it never crosses the name. */
-function connectorPath(parent: LaidNode, child: LaidNode): { d: string; tip: [number, number] } {
+function connectorPath(parent: LaidNode, child: LaidNode, rows: Rows): { d: string; tip: [number, number]; box: [number, number, number, number] } {
   const px = LEFT_PAD + parent.x + CARD_W / 2;
-  const py = TOP_PAD + parent.y + CARD_BOTTOM;
-  const busY = TOP_PAD + parent.y + CARD_BOTTOM + (ROW_H - CARD_BOTTOM) / 2;
+  const py = TOP_PAD + rows.top[parent.y] + rows.band[parent.y] + BOARD + LABEL_H;
+  const busY = py + LINK_GAP / 2;
   const cx = LEFT_PAD + child.x + CARD_W / 2;
-  const cy = TOP_PAD + child.y + (child.name ? 1 : TOP_INSET - 2);
-  return { d: `M ${px} ${py} V ${busY} H ${cx} V ${cy}`, tip: [cx, cy] };
+  const cy = TOP_PAD + rows.top[child.y] + (child.name ? 1 : rows.band[child.y] - 2);
+  return { d: `M ${px} ${py} V ${busY} H ${cx} V ${cy}`, tip: [cx, cy], box: [Math.min(px, cx), py, Math.max(px, cx), cy] };
 }
 
 /**
@@ -221,7 +272,8 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
     // the data now keeps more (MAX_CHILDREN) so the poster can show wider. Packed
     // by outline like the poster, so a deep line slides under a short one
     // instead of every leaf owning a full-height column.
-    const metrics = { maxChildren: 3, cardW: CARD_W, colGap: COL_GAP, rowH: ROW_H, pack: { maxCols: 0 } };
+    // rowH 1: the layout's y is the node's depth; rowGeometry sizes the rows.
+    const metrics = { maxChildren: 3, cardW: CARD_W, colGap: COL_GAP, rowH: 1, pack: { maxCols: 0 } };
     if (focus) {
       const node = findByPath(tree, focus);
       if (node) {
@@ -239,23 +291,156 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
     return m;
   }, [layout]);
 
-  // Fill a Stockfish eval for any rendered node the games don't already carry
-  // one for, so every board shows an eval. Cached per FEN, computed progressively
-  // (the engine result re-renders via the tick).
+  // Each named node's label: the part of its name that's new on this line.
+  const labels = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const n of layout.nodes) {
+      if (!n.name) continue;
+      const segs = n.pathId.split('/');
+      let above = '';
+      for (let i = segs.length - 1; i >= 1 && !above; i--) above = findByPath(tree, segs.slice(0, i).join('/'))?.name ?? '';
+      out.set(n.pathId, newPart(n.name, above));
+    }
+    return out;
+  }, [layout, tree]);
+
+  // Row heights follow the longest name in each row, measured in the UI face
+  // once it's loaded (a fallback face would wrap differently).
+  const [fontsReady, setFontsReady] = useState(false);
+  useEffect(() => {
+    let live = true;
+    document.fonts?.ready.then(() => { if (live) setFontsReady(true); });
+    return () => { live = false; };
+  }, []);
+  const rows = useMemo<Rows>(() => {
+    const ctx = typeof document !== 'undefined' ? document.createElement('canvas').getContext('2d') : null;
+    if (ctx) ctx.font = `700 11px ${getComputedStyle(document.body).fontFamily}`;
+    const lines: number[] = new Array(layout.maxDepth + 1).fill(0);
+    for (const n of layout.nodes) {
+      const label = labels.get(n.pathId);
+      if (label) lines[n.y] = Math.max(lines[n.y], nameLines(label, ctx));
+    }
+    const band = lines.map((l) => (l ? l * NAME_LINE + NAME_BAND_PAD : BAND_EMPTY));
+    const top: number[] = [];
+    let y = 0;
+    for (let d = 0; d < band.length; d++) {
+      top.push(y);
+      y += band[d] + BOARD + LABEL_H + LINK_GAP;
+    }
+    return { top, band, height: y - LINK_GAP };
+    // fontsReady: re-measure once the real face is in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout, labels, fontsReady]);
+
+  // Fill a Stockfish eval for every drawn node the games don't already carry
+  // one for, top rows first and nearest the main line first (what you see when
+  // the tab opens). Results land in a FEN-keyed cache; the tree re-renders to
+  // pick them up at most a few times a second — a re-render per eval used to
+  // repaint every board in the tree hundreds of times while the pass ran.
   const [, setTick] = useState(0);
   useEffect(() => {
     let cancelled = false;
+    let last = 0;
+    let timer = 0;
+    const bump = () => {
+      const now = performance.now();
+      if (now - last > 400) { last = now; setTick((t) => t + 1); }
+      else if (!timer) timer = window.setTimeout(() => { timer = 0; last = performance.now(); if (!cancelled) setTick((t) => t + 1); }, 400);
+    };
+    const top = layout.nodes.filter((n) => n.y === 0);
+    const mainX = top.reduce((a, b) => (b.games > a.games ? b : a), top[0] ?? { x: 0, games: 0 }).x;
+    const order = [...layout.nodes].sort((a, b) => a.y - b.y || Math.abs(a.x - mainX) - Math.abs(b.x - mainX));
     (async () => {
-      for (const n of layout.nodes) {
+      for (const n of order) {
         if (cancelled) return;
         if (n.eval != null || peekEval(n.fen) !== undefined) continue;
         await evalPosition(n.fen);
-        if (!cancelled) setTick((t) => t + 1);
+        if (!cancelled) bump();
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [layout]);
   const evalOf = (n: LaidNode): number | null | undefined => n.eval ?? whiteCp(peekEval(n.fen));
+
+  // Only what's on screen (plus a margin) is drawn: a big repertoire is
+  // hundreds of boards of 64 squares each, and the pane shows a dozen. The
+  // window is measured against the pane and snapped to CULL_STEP, so panning
+  // re-renders in steps rather than every frame.
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const [view, setView] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = treeRef.current;
+    if (!el) return;
+    let raf = 0;
+    const snap = (v: number, up: boolean) => (up ? Math.ceil(v / CULL_STEP) : Math.floor(v / CULL_STEP)) * CULL_STEP;
+    const measure = () => {
+      raf = 0;
+      const c = canvasRef.current;
+      if (!c) return;
+      const cr = c.getBoundingClientRect();
+      const pr = el.getBoundingClientRect();
+      const z = zoomRef.current;
+      const next = {
+        x0: snap((pr.left - cr.left) / z - CULL_MARGIN, false),
+        y0: snap((pr.top - cr.top) / z - CULL_MARGIN, false),
+        x1: snap((pr.right - cr.left) / z + CULL_MARGIN, true),
+        y1: snap((pr.bottom - cr.top) / z + CULL_MARGIN, true),
+      };
+      setView((v) => (v && v.x0 === next.x0 && v.y0 === next.y0 && v.x1 === next.x1 && v.y1 === next.y1 ? v : next));
+    };
+    const onChange = () => { if (!raf) raf = requestAnimationFrame(measure); };
+    measure();
+    el.addEventListener('scroll', onChange, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onChange) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', onChange);
+    return () => {
+      el.removeEventListener('scroll', onChange);
+      ro?.disconnect();
+      window.removeEventListener('resize', onChange);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [layout, rows, zoom, ready, tree]);
+  const inView = (x0: number, y0: number, x1: number, y1: number) =>
+    !!view && x1 >= view.x0 && x0 <= view.x1 && y1 >= view.y0 && y0 <= view.y1;
+
+  const select = useCallback((pathId: string) => { setSelectedId(pathId); setDetailOpen(true); }, [setSelectedId]);
+
+  /** Select a node and bring its board into view, at a readable size: a
+   *  zoomed-out tree first zooms back to 100%, then scrolls once that's laid out. */
+  const pendingRevealRef = useRef<string | null>(null);
+  const revealNode = (pathId: string) => {
+    if (!byId[pathId]) return;
+    userMovedRef.current = true; // don't let the auto-centre pull it back
+    setSelectedId(pathId);
+    if (zoomRef.current < 1) {
+      pendingRevealRef.current = pathId;
+      setZoom(1);
+    } else scrollToNode(pathId);
+  };
+  useLayoutEffect(() => {
+    const id = pendingRevealRef.current;
+    if (!id) return;
+    pendingRevealRef.current = null;
+    scrollToNode(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoom]);
+  /** Scroll the tree so this node's board sits in the visible part of the
+   *  pane, centred across and just under the sticky header. */
+  const scrollToNode = (pathId: string) => {
+    const el = treeRef.current;
+    const c = canvasRef.current;
+    const n = byId[pathId];
+    if (!el || !c || !n) return;
+    const cr = c.getBoundingClientRect();
+    const pr = el.getBoundingClientRect();
+    const z = zoomRef.current;
+    const cx = cr.left - pr.left + el.scrollLeft + (LEFT_PAD + n.x + CARD_W / 2) * z;
+    const ty = cr.top - pr.top + el.scrollTop + (TOP_PAD + rows.top[n.y]) * z;
+    const header = (el.querySelector('.clinic-drill') ?? el.querySelector('.clinic-bar'))?.getBoundingClientRect();
+    const below = header ? header.bottom - pr.top + 12 : 0;
+    el.scrollTo({ left: Math.max(0, cx - el.clientWidth / 2), top: Math.max(0, ty - below), behavior: 'smooth' });
+  };
 
   // Open the canvas *on the opening*, not on blank space: a wide repertoire's
   // root sits centred over its subtree, so scroll-0 shows empty canvas. Centre
@@ -295,6 +480,18 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
     return [...layout.nodes].sort((a, b) => a.y - b.y || a.x - b.x)[0] ?? null;
   }, [layout]);
   const selected = (selectedId && byId[selectedId]) || defaultSel;
+
+  // The opening the selected position belongs to: a name is only stored where
+  // it changes, so take the nearest one at or above it.
+  const selectedOpening = useMemo(() => {
+    if (!selected) return '';
+    const segs = selected.pathId.split('/');
+    for (let i = segs.length; i >= 1; i--) {
+      const name = findByPath(tree, segs.slice(0, i).join('/'))?.name;
+      if (name) return name;
+    }
+    return '';
+  }, [selected, tree]);
 
   // FEN of the position *before* the selected node's move. So the detail panel
   // can show the best move for the player who made that move.
@@ -397,17 +594,17 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
         ) : (
           <div
             className="clinic-canvas-wrap"
-            style={{ width: GUTTER + (LEFT_PAD + layout.width) * zoom, height: (TOP_PAD + layout.height) * zoom }}
+            style={{ width: GUTTER + (LEFT_PAD + layout.width) * zoom, height: (TOP_PAD + rows.height) * zoom }}
           >
             {/* Move numbers, one per full move beside White's row, pinned to
                 the pane's left edge while the tree pans under them. A view that
                 starts on a Black move labels its first row "7…". */}
-            <div className="clinic-gutter" style={{ height: (TOP_PAD + layout.height) * zoom }} aria-hidden="true">
+            <div className="clinic-gutter" style={{ height: (TOP_PAD + rows.height) * zoom }} aria-hidden="true">
               {Array.from({ length: layout.maxDepth + 1 }, (_, r) => {
                 const ply = firstPly + r;
                 const whiteMove = ply % 2 === 1;
                 if (!whiteMove && r > 0) return null;
-                const top = (TOP_PAD + r * ROW_H + TOP_INSET + BOARD * MOVE_NO_AT) * zoom;
+                const top = (TOP_PAD + rows.top[r] + rows.band[r] + BOARD * MOVE_NO_AT) * zoom;
                 return (
                   <span key={r} className="clinic-move-no num" style={{ top }}>
                     {Math.floor((ply - 1) / 2) + 1}{whiteMove ? '.' : '…'}
@@ -417,30 +614,47 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
             </div>
             <div className="clinic-canvas-box" style={{ width: (LEFT_PAD + layout.width) * zoom }}>
               <div
+                ref={canvasRef}
                 className="clinic-canvas"
-                style={{ width: LEFT_PAD + layout.width, height: TOP_PAD + layout.height, transform: `scale(${zoom})`, transformOrigin: '0 0' }}
+                style={{ width: LEFT_PAD + layout.width, height: TOP_PAD + rows.height, transform: `scale(${zoom})`, transformOrigin: '0 0' }}
               >
-                <svg className="clinic-conn" width={LEFT_PAD + layout.width} height={TOP_PAD + layout.height}>
-                  {layout.edges.map((e, i) => {
+                <svg className="clinic-conn" width={LEFT_PAD + layout.width} height={TOP_PAD + rows.height}>
+                  {layout.edges.map((e) => {
                     const a = byId[e.from];
                     const b = byId[e.to];
                     if (!a || !b) return null;
+                    const { d, tip: [tx, ty], box } = connectorPath(a, b, rows);
+                    if (!inView(...box)) return null;
                     const stroke = edgeStroke(a.fen, evalOf(a) ?? null, evalOf(b) ?? null);
                     // Dash the move that leaves theory, so the solid spine reads as
                     // the main line and deviations stand out (colour still = quality).
                     const dash = b.deviation ? '5 4' : undefined;
-                    const { d, tip: [tx, ty] } = connectorPath(a, b);
                     return (
-                      <g key={i}>
+                      <g key={e.to}>
                         <path d={d} fill="none" stroke={stroke} strokeWidth="1.6" strokeDasharray={dash} />
                         <path d={`M ${tx - 3} ${ty - 4.5} L ${tx + 3} ${ty - 4.5} L ${tx} ${ty} Z`} fill={stroke} />
                       </g>
                     );
                   })}
                 </svg>
-                {layout.nodes.map((n) => (
-                  <ClinicNode key={n.pathId} node={n} color={color} displayEval={evalOf(n)} selected={selected?.pathId === n.pathId} onSelect={() => { setSelectedId(n.pathId); setDetailOpen(true); }} />
-                ))}
+                {layout.nodes.map((n) => {
+                  const x = LEFT_PAD + n.x;
+                  const y = TOP_PAD + rows.top[n.y];
+                  if (!inView(x, y, x + CARD_W, y + rows.band[n.y] + BOARD + LABEL_H)) return null;
+                  return (
+                    <ClinicNode
+                      key={n.pathId}
+                      node={n}
+                      label={labels.get(n.pathId) ?? ''}
+                      top={y}
+                      band={rows.band[n.y]}
+                      color={color}
+                      displayEval={evalOf(n)}
+                      selected={selected?.pathId === n.pathId}
+                      onSelect={select}
+                    />
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -450,6 +664,7 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
       {detailOpen && (
         <DetailPanel
           node={selected}
+          openingName={selectedOpening}
           parentFen={parentFen}
           color={color}
           onClose={() => setDetailOpen(false)}
@@ -460,13 +675,26 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
             if (child) drill(`${selected.pathId}/${child.san}`);
           }}
           onDrill={setDrillItems}
+          onShowInTree={() => selected && revealNode(selected.pathId)}
         />
       )}
     </div>
   );
 }
 
-function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: LaidNode; color: 'w' | 'b'; displayEval: number | null | undefined; selected: boolean; onSelect: () => void }) {
+/** One card. Memoised: the tree re-renders as evals arrive and as you pan,
+ *  and a card whose own props didn't change (most of them) skips its board. */
+const ClinicNode = memo(function ClinicNode({ node, label, top, band, color, displayEval, selected, onSelect }: {
+  node: LaidNode;
+  /** The part of the opening's name that's new here (see newPart). */
+  label: string;
+  top: number;
+  band: number;
+  color: 'w' | 'b';
+  displayEval: number | null | undefined;
+  selected: boolean;
+  onSelect: (pathId: string) => void;
+}) {
   // Frame is neutral now; move-quality lives on the connecting lines. Only gap
   // (rarely played), hotspot (blunder spot), and selection still tint the frame.
   const cls =
@@ -476,34 +704,58 @@ function ClinicNode({ node, color, displayEval, selected, onSelect }: { node: La
     (node.hotspot ? ' hotspot' : '') +
     (selected ? ' sel' : '');
   const evalLabel = displayEval === undefined ? '…' : formatEval(displayEval) || '·';
-  // Poster card: name band above the board, games played top-left on it, then
-  // one line under it — the move (its number is in the gutter) and the eval.
+  // Poster card: the name band above the board, and nothing ON the board —
+  // under it, the move (its number is in the gutter) and eval, then how often
+  // you reached it, lines hidden below (+N), and blunders made from here.
   return (
-    <div className="cnode" style={{ left: LEFT_PAD + node.x, top: TOP_PAD + node.y, width: CARD_W }}>
-      <div className="cnode-name" style={{ height: TOP_INSET }} title={node.name || undefined}>
-        {node.name && <span>{node.name}</span>}
+    <div className="cnode" style={{ left: LEFT_PAD + node.x, top, width: CARD_W }}>
+      <div className="cnode-name" style={{ height: band }} title={node.name || undefined}>
+        {label && <span>{label}</span>}
       </div>
-      <button className="cnode-btn" onClick={onSelect} aria-label={`${node.label}${node.name ? `, ${node.name}` : ''}`}>
+      <button className="cnode-btn" onClick={() => onSelect(node.pathId)} aria-label={`${node.label}${node.name ? `, ${node.name}` : ''}`}>
         <div className={cls}>
-          {node.games > 0 && <span className="cnode-games num">{node.games}</span>}
-          {node.blunders > 0 && <span className="cnode-warn"><IconWarn size={9} /> {node.blunders}</span>}
-          {node.more > 0 && <span className="cnode-more">+{node.more}</span>}
           <OpeningBoard fen={node.fen} hl={node.hl} sqSize={SQ} orient={color} />
         </div>
       </button>
       <div className="cnode-label">
-        <span className="cnode-move">{figurine(node.san, node.depth % 2 === 1 ? 'w' : 'b')}</span>
-        <span className="cnode-eval num">{evalLabel}</span>
+        <div className="cnode-line">
+          <span className="cnode-move">{figurine(node.san, node.depth % 2 === 1 ? 'w' : 'b')}</span>
+          <span className="cnode-eval num">{evalLabel}</span>
+        </div>
+        <div className="cnode-line cnode-meta num">
+          <span>{node.games} {node.games === 1 ? 'game' : 'games'}</span>
+          {node.more > 0 && <span>+{node.more}</span>}
+          {node.blunders > 0 && <span className="cnode-warn"><IconWarn size={9} />{node.blunders}</span>}
+        </div>
       </div>
     </div>
   );
-}
+});
 
-function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: { node: LaidNode | null; parentFen: string | null; color: 'w' | 'b'; onClose: () => void; onPickMove: (san: string) => void; onDrill: (items: DrillItem[]) => void }) {
+function DetailPanel({ node, openingName, parentFen, color, onClose, onPickMove, onDrill, onShowInTree }: {
+  node: LaidNode | null;
+  /** The opening this position belongs to: its own name, else the nearest above. */
+  openingName: string;
+  parentFen: string | null;
+  color: 'w' | 'b';
+  onClose: () => void;
+  onPickMove: (san: string) => void;
+  onDrill: (items: DrillItem[]) => void;
+  /** Bring this position into view in the tree (the "You played" card). */
+  onShowInTree: () => void;
+}) {
+  // The engine's best line, replayed on a small board.
+  const [popup, setPopup] = useState(false);
+  // A new position opens the panel at its top — its scroll would otherwise
+  // carry over from the last one and cut the board off.
+  const panelRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    setPopup(false);
+    if (panelRef.current) panelRef.current.scrollTop = 0;
+  }, [node?.fen]);
   const [theory, setTheory] = useState<Theory | null>(null);
   const [theoryLoading, setTheoryLoading] = useState(false);
   const [engine, setEngine] = useState<EngineEval | null>(null);
-  const [engineLoading, setEngineLoading] = useState(false);
   // Engine eval of the position *before* this node's move. The best move the
   // player who moved here should have chosen.
   const [parentEngine, setParentEngine] = useState<EngineEval | null>(null);
@@ -519,8 +771,8 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
   useEffect(() => {
     if (!node) { setEngine(null); return; }
     let cancelled = false;
-    setEngineLoading(true); setEngine(null);
-    evalPosition(node.fen).then((e) => { if (!cancelled) setEngine(e); }).finally(() => { if (!cancelled) setEngineLoading(false); });
+    setEngine(null);
+    evalPosition(node.fen).then((e) => { if (!cancelled) setEngine(e); });
     return () => { cancelled = true; };
   }, [node?.fen]);
 
@@ -551,7 +803,6 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
   // Side to move at this node — the colour of any move played *from* here.
   const stm: 'w' | 'b' = (node.fen.split(' ')[1] ?? 'w') === 'w' ? 'w' : 'b';
   const yours = [...node.children].sort((a, b) => b.games - a.games);
-  const yourMain = yours[0];
 
   // Best move at the current position (for tagging the "played in practice" list).
   const greenSan = engine?.bestSan || theory?.moves[0]?.san;
@@ -567,117 +818,122 @@ function DetailPanel({ node, parentFen, color, onClose, onPickMove, onDrill }: {
     if (node.hl && !playedBest) arrows.push({ from: node.hl[0], to: node.hl[1], kind: 'bad' });
   }
 
+  const who = reachedByUser ? 'You' : 'Opponent';
+  const mover = movedColor ?? 'w';
+  // What "Drill this position" practises: on your move, this position; on the
+  // opponent's, the position you just moved from — find the best move where
+  // you played this one.
+  const sans = node.pathId.split('/');
+  const drillItem: DrillItem | null = userTurn
+    ? {
+        fen: node.fen, color, line: lineString(sans), name: openingName, reached: node.games, blundered: node.blunders,
+        usualSan: [...node.children].sort((a, b) => b.games - a.games)[0]?.san ?? null,
+      }
+    : parentFen
+      ? { fen: parentFen, color, line: lineString(sans.slice(0, -1)), name: openingName, reached: node.games, blundered: 0, usualSan: node.san }
+      : null;
+
   return (
-    <aside className="clinic-detail">
+    <aside className="clinic-detail" ref={panelRef}>
       <button className="cd-close" onClick={onClose} aria-label="Close panel" title="Close panel">×</button>
       <div className="cd-board-sec">
         <div className="cd-board"><OpeningBoard fen={node.fen} hl={node.hl} sqSize={22} orient={color} arrows={arrows} /></div>
-        <div className="cd-head">
-          {node.name && <div className="cd-name">{node.name}</div>}
-          <div className="cd-move">{figurine(node.label, node.depth % 2 === 1 ? 'w' : 'b')}</div>
-          {node.depth > 0 && (
-            <div className={'cd-theory ' + (node.onBook ? 'book' : 'off')}>
-              {node.onBook ? 'Main line' : 'Off-book'}
-            </div>
-          )}
-          <div className="cd-record num" title="Your score from this position (wins + ½ draws)">
-            <span className={'cd-score ' + node.perf}>{node.score}%</span>
-            <span className="cd-wdl">{node.wins}W · {node.draws}D · {node.losses}L</span>
+      </div>
+
+      {/* One bracket, built like a puzzle's result: title, one body line, the
+          best / played cards, the moves from here, and the drill as the main
+          action at the bottom. */}
+      <div className="result cd-result">
+        <div>
+          <div className="verdict-title">{openingName || 'Starting position'}</div>
+          <div className="verdict-sub num cd-facts">
+            <span>{figurine(node.label, mover)}</span>
+            {node.depth > 0 && <span className={'cd-theory ' + (node.onBook ? 'book' : 'off')}>{node.onBook ? 'Main line' : 'Off-book'}</span>}
+            <span title="Your score from this position (wins + ½ draws)"><span className={'cd-score ' + node.perf}>{node.score}%</span> {node.wins}W {node.draws}D {node.losses}L</span>
+            {node.blunders > 0 && <span className="cd-blund">Blundered here {node.blunders}×</span>}
           </div>
-          {node.blunders > 0 && (
-            <div className="cd-sub num"><span className="cd-blund">blundered {node.blunders}×</span></div>
-          )}
         </div>
-        {userTurn && (
-          <button
-            className="od-start cd-drill"
-            onClick={() => {
-              const sans = node.pathId.split('/');
-              const usual = [...node.children].sort((a, b) => b.games - a.games)[0];
-              onDrill([{ fen: node.fen, color, line: lineString(sans), name: node.name || '', reached: node.games, blundered: node.blunders, usualSan: usual?.san ?? null }]);
-            }}
-          >
+
+        {node.depth > 0 && (
+          <div className="rf-cards">
+            <button
+              type="button"
+              className="btn rf-card"
+              onClick={() => setPopup(true)}
+              disabled={!parentEngine?.bestSan}
+              aria-label="Best move here. Watch where it leads."
+            >
+              <span className="rf-lbl">Best move</span>
+              <span className="rf-v best">{parentEngine ? figurine(parentEngine.bestSan || '—', mover) : '…'}</span>
+            </button>
+            <button
+              type="button"
+              className="btn rf-card"
+              onClick={onShowInTree}
+              aria-label={`${who} played ${node.san}. Show this position in the tree.`}
+            >
+              <span className="rf-lbl">{who} played</span>
+              <span className={'rf-v' + (playedBest ? ' best' : '')}>{figurine(node.san, mover)}</span>
+            </button>
+          </div>
+        )}
+
+        {yours.length > 0 && (
+          <>
+            <div className="rf-lbl">{userTurn ? 'What you play from here' : 'What you face here'}</div>
+            <div className="rf-cards cd-moves">
+              {yours.map((c) => (
+                <button
+                  key={c.san}
+                  type="button"
+                  className={'btn rf-card' + (c.blunders > 0 ? ' bad' : '')}
+                  onClick={() => onPickMove(c.san)}
+                  title={`${c.wins}W ${c.draws}D ${c.losses}L${c.blunders > 0 ? ` · blundered ${c.blunders}×` : ''}`}
+                >
+                  <span className="rf-v">{figurine(c.san, stm)}</span>
+                  <span className="cd-card-meta num">
+                    {c.eval != null && <>{formatEval(c.eval)} </>}
+                    <span className={'cd-score ' + c.perf}>{c.score}%</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {theory && theory.moves.length > 0 && (
+          <>
+            <div className="rf-lbl">Played in practice</div>
+            <div className="rf-cards cd-moves">
+              {theory.moves.slice(0, 4).map((m) => (
+                <div key={m.uci} className="btn rf-card cd-static">
+                  <span className={'rf-v' + (m.san === greenSan ? ' best' : '')}>{figurine(m.san, stm)}</span>
+                  <span className="cd-card-meta num">{m.share}%</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        {theoryLoading && !theory && <div className="verdict-sub">Looking up theory…</div>}
+
+        {drillItem && (
+          <button type="button" className="btn prim" onClick={() => onDrill([drillItem])}>
             Drill this position →
           </button>
         )}
       </div>
 
-      <div className="cd-sec">
-        <div className="cd-eyebrow">{node.depth > 0 ? 'Best move here' : 'Best first move'}</div>
-        {node.depth > 0 ? (
-          parentEngine ? (
-            <>
-              <div className="cd-engine">
-                <span className="ce-move">{figurine(parentEngine.bestSan || '—', movedColor ?? 'w')}</span>
-                <span className="ce-eval num">{evalText(parentEngine)}</span>
-              </div>
-              {/* Only the part the headline above doesn't already say — the move
-                  and its eval are right there, so don't repeat them. */}
-              <div className="cd-verdict">
-                {playedBest
-                  ? <>{reachedByUser ? 'You' : 'Opponent'} played it <b className="good">✓</b></>
-                  : <>{reachedByUser ? 'You' : 'Opponent'} played <b className={node.deviation ? 'bad' : ''}>{figurine(node.san, movedColor ?? 'w')}</b></>}
-              </div>
-            </>
-          ) : (
-            <div className="cd-note">Analyzing the move…</div>
-          )
-        ) : engine ? (
-          <div className="cd-engine">
-            <span className="ce-move">{figurine(engine.bestSan || '—', stm)}</span>
-            <span className="ce-eval num">{evalText(engine)}</span>
-          </div>
-        ) : engineLoading ? (
-          <div className="cd-note">Analyzing position…</div>
-        ) : (
-          <div className="cd-note">Engine unavailable.</div>
-        )}
-      </div>
-
-      {(theoryLoading || (theory && theory.moves.length > 0)) && (
-        <div className="cd-sec">
-          <div className="cd-eyebrow">Played in practice</div>
-          {theoryLoading && !theory ? (
-            <div className="cd-note">Looking up theory…</div>
-          ) : (
-            <ul className="theory-list">
-              {theory!.moves.slice(0, 5).map((m) => {
-                const mine = userTurn && m.san === yourMain?.san;
-                const isBest = m.san === greenSan;
-                return (
-                  <li key={m.uci} className={'theory-row' + (isBest ? ' best' : '') + (mine ? ' mine' : '')}>
-                    <span className="t-san">{figurine(m.san, stm)}{mine && <span className="t-tag you">you</span>}</span>
-                    <span className="t-bar"><span className="t-fill" style={{ width: m.share + '%' }} /></span>
-                    <span className="t-share num">{m.share}%</span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
+      {popup && parentFen && (
+        <BestLinePopup
+          fen={parentFen}
+          pvSan={parentEngine?.pv ?? []}
+          orient={color}
+          lead="Best was"
+          tail={parentEngine ? evalText(parentEngine) : undefined}
+          note="The position before the move, then the engine’s best line. Tap a move to jump to it."
+          onClose={() => setPopup(false)}
+        />
       )}
-
-      <div className="cd-sec">
-        <div className="cd-eyebrow">{userTurn ? 'What you play from here' : 'What you face here'}</div>
-        {yours.length === 0 ? (
-          <div className="cd-note">End of your mapped line{node.more > 0 ? ` (+${node.more} more below)` : ''}.</div>
-        ) : (
-          <ul className="cont-list">
-            {yours.map((c) => (
-              <li key={c.san}>
-                <button className={'cont-row' + (c.blunders > 0 ? ' bad' : '')} onClick={() => onPickMove(c.san)}>
-                  <span className="c-san">{figurine(c.san, stm)}</span>
-                  <span className="c-meta num">
-                    {c.eval != null && <span className="c-eval">{formatEval(c.eval)}</span>}
-                    <span className={'c-score ' + c.perf} title={`Your score down this line: ${c.wins}W · ${c.draws}D · ${c.losses}L`}>{c.score}%</span>
-                    {c.blunders > 0 && <span className="c-warn"><IconWarn size={9} /> {c.blunders}</span>}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
     </aside>
   );
 }

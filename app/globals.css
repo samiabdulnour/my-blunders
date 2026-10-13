@@ -2983,7 +2983,8 @@ body.panning * {
   text-align: center; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim);
   text-transform: uppercase; letter-spacing: var(--track-caps); line-height: 12px;
 }
-.cnode-name span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* Never clamped: the row is sized to its longest name (see rowGeometry). */
+.cnode-name span { display: block; }
 .cnode-btn { display: block; border: 0; background: none; padding: 0; cursor: pointer; }
 .cnode-frame {
   position: relative; width: max-content; line-height: 0;
@@ -2999,20 +3000,19 @@ body.panning * {
 /* Tight to the board: the name band sits just above it, so a wider ring
    would cut into the name. */
 .cnode-frame.sel { outline: 2px solid var(--contour); outline-offset: 1px; }
-/* Chips inside the board's corners, as on the poster: games played top-left,
-   blunders top-right, hidden lines (+N, drill to see) bottom-right. */
-.cnode-games, .cnode-warn, .cnode-more {
-  position: absolute; z-index: 3; height: 14px; padding: 0 3px; border-radius: 2px;
-  display: inline-flex; align-items: center; gap: 2px; line-height: 1;
-  font-size: var(--fs-micro); font-weight: var(--fw-bold);
-}
-.cnode-games { top: 1px; left: 1px; background: var(--bg2); background: color-mix(in srgb, var(--bg2) 82%, transparent); color: var(--txt-dim); }
-.cnode-warn { top: 1px; right: 1px; background: var(--red); color: #fff; }
-.cnode-more { bottom: 1px; right: 1px; background: var(--bg2); background: color-mix(in srgb, var(--bg2) 82%, transparent); color: var(--txt-dim); }
-.cnode-label { display: flex; gap: 5px; justify-content: center; align-items: baseline; padding-top: 3px; white-space: nowrap; line-height: 16px; }
+/* Under the board: move + eval (Title + Body), then games played, lines
+   hidden below (+N) and blunders made here, all Body — nothing sits on the
+   board itself. */
+.cnode-label { display: flex; flex-direction: column; align-items: center; padding-top: 3px; line-height: 16px; white-space: nowrap; }
+.cnode-line { display: flex; gap: 5px; justify-content: center; align-items: baseline; }
+.cnode-meta { font-size: var(--fs-base); font-weight: var(--fw-reg); color: var(--txt-dim); }
+.cnode-warn { display: inline-flex; align-items: center; gap: 2px; color: var(--red); }
 .cnode-move { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt); letter-spacing: normal; }
 
-.clinic-detail { position: relative; width: 340px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--bg2); overflow-y: auto; display: flex; flex-direction: column; }
+/* The panel is the page background, so its one bracket stands out exactly as a
+   puzzle's result does: board, then a .result bracket built from the same
+   pieces (title, body line, .rf-card buttons, a .btn.prim to act). */
+.clinic-detail { position: relative; width: 340px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--bg); overflow-y: auto; display: flex; flex-direction: column; }
 .cd-close {
   position: absolute; top: 8px; right: 8px; z-index: 6; width: 26px; height: 26px; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 18px;
@@ -3024,49 +3024,27 @@ body.panning * {
   .cd-close:hover { color: var(--txt); border-color: var(--border2); }
 }
 .cd-empty { margin: auto; padding: 40px 24px; text-align: center; color: var(--txt-dim); font-size: var(--fs-base); }
-.cd-board-sec { padding: 8px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.cd-board-sec { padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
 .cd-board { display: flex; justify-content: center; }
-.cd-head { width: 100%; text-align: center; }
-.cd-name { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); }
-.cd-move { font-size: var(--fs-title); font-weight: var(--fw-bold); letter-spacing: normal; line-height: 1.1; }
-.cd-theory { display: inline-block; margin-top: 5px; padding: 2px 9px; border-radius: 10px; border: 1px solid currentColor; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); font-weight: var(--fw-bold); }
+.cd-theory { /* Body text, tinted: green on the main line, coral off it. */ }
 .cd-theory.book { color: var(--green); }
 .cd-theory.off { color: var(--coral); }
-.cd-sub { font-size: var(--fs-base); color: var(--txt-dim); margin-top: 3px; }
 .cd-blund { color: var(--red); }
-/* Your win rate (score %) + W/D/L from the selected position */
-.cd-record { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin-top: 4px; font-size: var(--fs-base); }
-.cd-score { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
-.cd-wdl { color: var(--txt-dim); font-variant-numeric: tabular-nums; }
-.cd-sec { padding: 8px 14px; border-bottom: 1px solid var(--border); }
-.cd-eyebrow { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt); margin-bottom: 5px; }
-.cd-src { color: var(--txt-dim); font-weight: var(--fw-bold); letter-spacing: var(--track-caps); }
-.cd-note { font-size: var(--fs-base); color: var(--txt-dim); }
-.theory-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
-.theory-row { display: flex; align-items: center; gap: 8px; }
-.theory-row .t-san { width: 66px; flex-shrink: 0; font-size: var(--fs-base); font-weight: var(--fw-bold); display: flex; align-items: center; gap: 5px; }
-.theory-row.best .t-san { color: var(--green); }
-.t-tag { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); padding: 1px 4px; border-radius: 3px; background: var(--green-soft); color: var(--green); font-weight: var(--fw-bold); }
-.t-tag.you { background: var(--bg3); color: var(--txt-dim); }
-.t-bar { flex: 1; height: 7px; border-radius: 4px; background: var(--bg3); overflow: hidden; }
-.t-fill { display: block; height: 100%; background: var(--txt-faint); }
-.theory-row.best .t-fill { background: var(--green); }
-.t-share { width: 34px; text-align: right; font-size: var(--fs-base); color: var(--txt-dim); }
-.cd-verdict { margin-top: 3px; font-size: var(--fs-base); line-height: 1.35; color: var(--txt-dim); }
-.cd-verdict b { color: var(--txt); font-weight: var(--fw-bold); }
-.cd-verdict b.good { color: var(--green); }
-.cd-verdict b.bad { color: var(--red); }
-.cont-list { list-style: none; display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; }
-.cont-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 0; background: var(--bg); color: var(--txt); cursor: pointer; transition: border-color 0.12s ease; }
-.cont-row:active { border-color: var(--border2); }
-@media (hover: hover) {
-  .cont-row:hover { border-color: var(--border2); }
-}
-.cont-row.bad { border-color: var(--red); }
-.cont-row .c-san { font-size: var(--fs-base); font-weight: var(--fw-bold); }
-.cont-row .c-meta { font-size: var(--fs-base); color: var(--txt-dim); display: inline-flex; align-items: center; gap: 6px; }
-.c-score { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
-.c-warn { display: inline-flex; align-items: center; gap: 2px; color: var(--red); font-weight: var(--fw-bold); }
+.cd-score { font-variant-numeric: tabular-nums; }
+/* Never squeezed by the scrolling panel: it scrolls, its parts keep their size. */
+.clinic-detail > * { flex-shrink: 0; }
+.cd-result { margin: 0 12px 12px; }
+/* The body line: move · theory · score + record · blunders, dot-separated. */
+.cd-facts { display: flex; flex-wrap: wrap; gap: 0 6px; }
+.cd-facts > span + span::before { content: '·'; margin-right: 6px; color: var(--txt-dim); }
+/* A move you blundered from: the card's frame turns red. */
+.btn.rf-card.bad { border-color: var(--red); }
+/* Theory moves are information, not actions: card look, no press. */
+.rf-card.cd-static { pointer-events: none; }
+/* A card's numbers (eval, score, share) are Body text, not Label: the Label's
+   caps tracking pulls digits apart. Inherits the press inversion like .rf-lbl. */
+.rf-card .cd-card-meta { font-size: var(--fs-base); font-weight: var(--fw-reg); letter-spacing: 0; text-transform: none; color: var(--txt-dim); line-height: 1; }
+.btn.rf-card:active:not(:disabled) .cd-card-meta { color: inherit; }
 
 /* Puzzle ↔ Opening — tabs in the shared topbar (active = coral underline) */
 .mode-seg { display: inline-flex; gap: 10px; flex-shrink: 0; align-self: stretch; }
@@ -3085,11 +3063,6 @@ body.panning * {
 .main.clinic-mode { padding: 0; flex-direction: row; align-items: stretch; overflow: hidden; }
 
 /* Wrong/correct arrow legend under the detail board */
-.cd-legend { display: flex; gap: 16px; justify-content: center; font-size: var(--fs-micro); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); }
-.cd-leg { display: inline-flex; align-items: center; gap: 6px; }
-.cd-leg::before { content: ''; width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
-.cd-leg.good::before { background: var(--green); }
-.cd-leg.bad::before { background: var(--red); }
 
 /* Openings filter list (left panel, Opening mode) */
 .op-item { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg2); cursor: pointer; text-align: left; transition: border-color 0.12s ease, background 0.12s ease; }
@@ -3129,14 +3102,9 @@ body.panning * {
 .cnode-score.red, .op-score.red, .cd-score.red, .c-score.red { color: var(--red); }
 
 /* Stockfish "right continuation" readout */
-.cd-engine { display: flex; align-items: baseline; gap: 8px; margin-bottom: 0; }
-.ce-move { font-size: var(--fs-title); font-weight: var(--fw-bold); color: var(--green); letter-spacing: normal; }
-.ce-eval { font-size: var(--fs-base); font-weight: var(--fw-bold); color: var(--txt-dim); font-variant-numeric: tabular-nums; }
-.ce-tag { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--txt-dim); font-weight: var(--fw-bold); margin-left: auto; }
 
 /* Per-node + per-continuation Stockfish eval (games count now lives only in the left panel) */
 .cnode-eval { font-size: var(--fs-base); color: var(--txt-dim); font-variant-numeric: tabular-nums; font-weight: var(--fw-reg); }
-.c-eval { color: var(--txt-dim); font-variant-numeric: tabular-nums; }
 
 /* Clinic legend — explains the connector colours (move quality) + frame marks */
 /* Legend is the Opening tab's line 2 — bold uppercase dim to match the play
@@ -3212,7 +3180,6 @@ body.panning * {
 @media (hover: hover) {
   .od-start:hover { filter: brightness(1.08); }
 }
-.cd-drill { width: 100%; margin-top: 6px; }
 
 /* ── Opening Clinic + Drill: mobile (stack the panes, keep tabs on-screen) ── */
 @media (max-width: 900px) {

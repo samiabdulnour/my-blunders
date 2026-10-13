@@ -10,6 +10,9 @@ export interface EngineEval {
   mate: number | null;
   bestUci: string;
   bestSan: string;
+  /** The engine's principal variation in SAN, best move first (for replaying
+   *  where the best move leads). */
+  pv: string[];
 }
 
 const cache = new Map<string, EngineEval | null>();
@@ -27,7 +30,7 @@ export async function evalPosition(fen: string): Promise<EngineEval | null> {
     const res = await getWasmEngine().analyze({ fen, depth: 14 });
     const l = res.lines[0];
     const out: EngineEval | null = l
-      ? { cp: l.cp, mate: l.mate, bestUci: l.pvUci[0] ?? '', bestSan: l.pvSan[0] ?? '' }
+      ? { cp: l.cp, mate: l.mate, bestUci: l.pvUci[0] ?? '', bestSan: l.pvSan[0] ?? '', pv: l.pvSan.slice(0, 12) }
       : null;
     cache.set(fen, out);
     return out;
