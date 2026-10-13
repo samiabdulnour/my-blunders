@@ -106,6 +106,18 @@ const HEAD_TRACK = 0.02;
 /** Gruezi cap height as a fraction of font size — a move number's cap top sits
  *  on its row's board top. */
 const CAP_RATIO = 0.708;
+/** The mark in the bottom-right cell: the app icon in place of a board, at a
+ *  board's exact size, with the site's address on the line a board's move
+ *  takes. The icon is the 512px web icon (the same artwork as the App Store
+ *  icon), ~590dpi on an A1 board, so it prints sharp although it's an image.
+ *  Each print board has its own copy of the icon in that board's square
+ *  colours (red square and all else unchanged), so the icon reads as one more
+ *  board of the sheet. */
+const MARK_ICONS: Record<string, string> = {
+  green: '/icons/icon-512.png',
+  wood: '/icons/icon-512-wood.png',
+};
+const MARK_URL = 'myblunders.com';
 
 /** The sheet's typeface, embedded so it isn't set in Helvetica: Gruezi Bold for
  *  the headings and the move column, Medium for everything else — the two
@@ -194,6 +206,21 @@ function fenGrid(fen: string): (string | null)[][] {
   });
 }
 
+/** Fetch an app asset as a data URL — the form both jsPDF and the canvas
+ *  renderer take for an image. */
+async function loadDataUrl(path: string): Promise<string> {
+  const blob = await fetch(path).then((r) => {
+    if (!r.ok) throw new Error(`${path}: ${r.status}`);
+    return r.blob();
+  });
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result as string);
+    fr.onerror = () => reject(fr.error);
+    fr.readAsDataURL(blob);
+  });
+}
+
 /** Rasterise the 12 cburnett pieces to PNG data-URIs (once). Keyed by FEN char
  *  (uppercase = white). Failures are skipped — a missing piece just isn't drawn. */
 async function rasterizePieces(): Promise<Map<string, string>> {
@@ -231,7 +258,9 @@ async function rasterizePieces(): Promise<Map<string, string>> {
   return map;
 }
 
-async function saveOrShare(blob: Blob, filename: string, title: string): Promise<void> {
+/** Resolves true once the file was shared or downloaded, false if the person
+ *  dismissed the share sheet. */
+async function saveOrShare(blob: Blob, filename: string, title: string): Promise<boolean> {
   const file = new File([blob], filename, { type: blob.type || 'application/pdf' });
   const nav = navigator as Navigator & {
     canShare?: (d: unknown) => boolean;
@@ -242,9 +271,9 @@ async function saveOrShare(blob: Blob, filename: string, title: string): Promise
   if (nav.canShare && nav.share && nav.canShare({ files: [file] })) {
     try {
       await nav.share({ files: [file], title });
-      return;
+      return true;
     } catch (e) {
-      if ((e as { name?: string })?.name === 'AbortError') return; // user cancelled
+      if ((e as { name?: string })?.name === 'AbortError') return false; // user cancelled
       // otherwise fall through to download
     }
   }
@@ -256,6 +285,7 @@ async function saveOrShare(blob: Blob, filename: string, title: string): Promise
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
+  return true;
 }
 
 export interface OpeningPdfOpts {
@@ -482,7 +512,6 @@ async function renderPoster(
 
   const pieces = await rasterizePieces();
 
-  const named = layout.nodes.filter((n) => n.name).length;
   const legendLines = [
     'Under each board: the move, the engine eval in pawns (+ favours White),',
     'then your record from that position as wins/draws/losses.',
@@ -505,15 +534,47 @@ async function renderPoster(
   const Y = (ly: number) => offY + ly * S;
   const L = (len: number) => len * S;
 
+  // ── The mark's cell ───────────────────────────────────────────────────────
+  // The sheet's bottom-right grid cell carries the app icon instead of a
+  // board. On the grid the boards already sit on: whole columns of free sheet
+  // right of the tree and whole rows below it, at the fitted scale. A sheet
+  // the tree fills (every budget is sized to fill its sheet) has neither, and
+  // the cell is the tree's own last-row, last-column slot: the board there
+  // gives way, every other board stays exactly where it was. A sparse tree
+  // leaves free cells, and the mark takes the sheet's corner without
+  // displacing anything.
+  const unit = CARD_W + COL_GAP;
+  const lastX = layout.nodes.reduce((m, n) => Math.max(m, n.x), -Infinity);
+  const gridRight = Number.isFinite(lastX) ? lastX : 0;
+  const spareCols = Math.max(0, Math.floor((pageW - PAGE_MARGIN - X(LEFT_PAD + gridRight + CARD_W)) / L(unit) + 1e-6));
+  const spareRows = Math.max(
+    0,
+    Math.floor((pageH - PAGE_MARGIN - Y(TOP_PAD + layout.maxDepth * ROW_H + CARD_BOTTOM)) / L(ROW_H) + 1e-6),
+  );
+  const markX = gridRight + spareCols * unit;
+  const markY = (layout.maxDepth + spareRows) * ROW_H;
+  if (spareCols === 0 && spareRows === 0) {
+    const gone = layout.nodes.find((n) => Math.abs(n.x - markX) < 1e-6 && Math.abs(n.y - markY) < 1e-6);
+    if (gone) {
+      layout = {
+        ...layout,
+        nodes: layout.nodes.filter((n) => n !== gone),
+        edges: layout.edges.filter((e) => e.to !== gone.pathId),
+      };
+    }
+  }
+  const named = layout.nodes.filter((n) => n.name).length;
+
   const fill = (hex: string) => { const [r, g, b] = hexToRgb(hex); doc.setFillColor(r, g, b); };
   const stroke = (hex: string) => { const [r, g, b] = hexToRgb(hex); doc.setDrawColor(r, g, b); };
   const text = (hex: string) => { const [r, g, b] = hexToRgb(hex); doc.setTextColor(r, g, b); };
 
   // Engine evals (when the caller has run a pass) win over the per-game average:
-  // they cover every position, not just the ~1 in 5 from an analysed game.
+  // they cover every position, not just the ~1 in 5 that Lichess had analysed.
   const evalOf = (n: { fen: string; eval: number | null }): number | null =>
     opts.evals?.get(n.fen) ?? n.eval;
   const board = opts.board ?? DEFAULT_BOARD;
+  const markIcon = await loadDataUrl(MARK_ICONS[board.id] ?? MARK_ICONS.green).catch(() => null);
 
   const byId: Record<string, LaidNode> = {};
   for (const n of layout.nodes) byId[n.pathId] = n;
@@ -749,6 +810,29 @@ async function renderPoster(
     text(n.perf === 'green' ? C_GREEN : n.perf === 'amber' ? C_YELLOW : C_RED);
     doc.text(wdl, lx + mw + ew, ly, { align: 'left', baseline: 'top' });
   }
+
+  // ── The mark ──────────────────────────────────────────────────────────────
+  // The app icon, drawn exactly where and as large as the board would be, in a
+  // board's frame (its light square would otherwise melt into the paper), and
+  // the address under it on the move line, in the header's quieter grey.
+  {
+    const bx = X(LEFT_PAD + markX + (CARD_W - BOARD) / 2);
+    const by = Y(TOP_PAD + markY + TOP_INSET);
+    const side = L(BOARD);
+    if (markIcon) doc.addImage(markIcon, 'PNG', bx, by, side, side, `mbicon-${board.id}`, 'FAST');
+    // Drawn just outside the icon, so neither renderer lets the image cover it.
+    const fw = Math.max(0.3, L(0.8));
+    stroke(C_FRAME);
+    doc.setLineWidth(fw);
+    doc.rect(bx - fw / 2, by - fw / 2, side + fw, side + fw, 'S');
+    doc.setFont(FONT, 'normal');
+    doc.setFontSize(Math.max(3.5, L(9)));
+    text(C_HEAD_DIM);
+    doc.text(MARK_URL, X(LEFT_PAD + markX + CARD_W / 2), Y(TOP_PAD + markY + TOP_INSET + BOARD + 3), {
+      align: 'center',
+      baseline: 'top',
+    });
+  }
   }; // end drawContent
 
   // One sheet.
@@ -871,12 +955,13 @@ export async function exportOpeningTreePdf(
   tree: TreeNode,
   color: 'w' | 'b',
   opts: OpeningPdfOpts = {}
-): Promise<void> {
+): Promise<boolean> {
   const { blob, filename, title } = await buildOpeningTreePdf(tree, color, opts);
-  await saveOrShare(blob, filename, title);
+  return saveOrShare(blob, filename, title);
 }
 
-/** Hand an already-built poster off to the user (share sheet on iOS / download). */
-export async function savePdf(built: BuiltPdf): Promise<void> {
-  await saveOrShare(built.blob, built.filename, built.title);
+/** Hand an already-built poster off to the user (share sheet on iOS /
+ *  download). True once it was shared or downloaded, false if dismissed. */
+export async function savePdf(built: BuiltPdf): Promise<boolean> {
+  return saveOrShare(built.blob, built.filename, built.title);
 }
