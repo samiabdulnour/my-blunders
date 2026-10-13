@@ -22,6 +22,7 @@ import { useRegisterBoardNav, BoardControlsSlot, BoardTopSlot } from '@/lib/boar
 import { isNativeApp } from '@/lib/platform';
 import { SEED_PUZZLES } from '@/lib/seed-puzzles';
 import { clearElo } from '@/lib/player-elo';
+import { noteAppUse, noteOwnPuzzleSolved } from '@/lib/review';
 import { FAMOUS_PUZZLES } from '@/lib/famous-puzzles';
 import { playMove, loadSound, saveSound } from '@/lib/sound';
 import type {
@@ -234,6 +235,7 @@ export default function Page() {
     setStats(loadStats());
     setHistory(loadHistory());
     setOnboarded(loadOnboarded());
+    noteAppUse(); // a day of use, for the rating prompt's "never on day one"
     // Persisted prefs are in hand — safe to persist on change from here.
     hydrated.current = true;
 
@@ -675,6 +677,9 @@ export default function Page() {
 
       if (solvedNow) {
         record('ok'); // combinations record here; normal puzzles already did
+        // Solved first try, from their own games: counts toward the rating
+        // prompt's fallback moment (famous blunders and misses never do).
+        if (keyResultRef.current === 'ok' && !isFamous(cur)) noteOwnPuzzleSolved();
         setRevealed(true);
         // Finding the best move reads as "Correct" even after a wrong try or
         // two (stats still logged the miss). Revealing it is "Solution shown".

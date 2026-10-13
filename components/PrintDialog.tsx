@@ -11,6 +11,7 @@ import {
   type OpeningPdfOpts,
 } from '@/lib/opening-pdf';
 import { fillPosterEvals } from '@/lib/opening-engine';
+import { maybeRequestReview } from '@/lib/review';
 import { BOARD_THEMES, boardThemeById, type BoardThemeId } from '@/lib/board-theme';
 
 /**
@@ -62,7 +63,7 @@ export function PrintDialog({ games, color, focusPath, focusName, boardTheme, on
   // Bumps to invalidate an in-flight render when options change or we unmount.
   const runRef = useRef(0);
   // Engine evals by FEN, filled in the background so every board shows one (only
-  // ~1 in 5 positions comes from a server-analysed game). Held in a ref because
+  // ~1 in 5 positions comes from a game Lichess had already analysed). Held in a ref because
   // the render effect must not re-fire on every position analysed — `evalsReady`
   // bumps once, when a pass finishes and actually added something.
   const evalsRef = useRef<Map<string, number>>(new Map());
@@ -163,7 +164,8 @@ export function PrintDialog({ games, color, focusPath, focusName, boardTheme, on
         mode === 'wallpaper'
           ? await buildOpeningTreeWallpaper(tree, color, opts())
           : await buildOpeningTreePdf(tree, color, opts());
-      await savePdf(built);
+      // The best moment the app has to ask for a rating: they kept the result.
+      if (await savePdf(built)) void maybeRequestReview('save');
     } finally {
       setSaving(false);
     }
