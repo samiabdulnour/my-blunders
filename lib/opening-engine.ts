@@ -49,7 +49,8 @@ const posterCache = new Map<string, number | null>();
 
 /**
  * Evaluate every position on the poster, so each board can print an eval
- * instead of only the ~1-in-5 that came from a server-analysed game.
+ * instead of only the ~1-in-5 from games Lichess had already analysed (their
+ * evals arrive inside the downloaded PGN; this pass runs the bundled engine).
  *
  * Positions the clinic already analysed at depth 14 are reused as-is (better and
  * free); the rest are searched at POSTER_DEPTH and cached, so re-opening the

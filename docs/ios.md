@@ -133,10 +133,12 @@ npx capacitor-assets generate --ios
 
 ## Troubleshooting
 
-- **"fetch failed" on first launch**: `NEXT_PUBLIC_API_BASE` wasn't set
-  when you built, or the Render service is cold-starting. Curl the
-  endpoint manually to confirm it's live, then re-run
-  `npm run ios:sync`.
+- **Import fails ("fetch failed")**: the app has no backend, so this is
+  the device not reaching Lichess / chess.com: no network, the site is
+  down, or the username is wrong. Check by opening
+  `https://lichess.org/api/games/user/<name>?max=1` (or the chess.com
+  archives URL) in Safari on the same device. A missing
+  `NEXT_PUBLIC_API_BASE` is never the cause; it isn't used by the app.
 - **`app/api/` is missing after a failed static build**: the
   park-and-restore script registers SIGINT/SIGTERM handlers, but a
   hard kill (SIGKILL) won't trigger them. Recover by hand:
