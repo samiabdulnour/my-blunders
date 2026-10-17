@@ -7,6 +7,7 @@ import type { HistoryEntry, SessionStats } from '@/lib/types';
 import type { ThemeMode } from '@/lib/storage';
 import type { Importer } from '@/lib/useImporter';
 import { BrandMark } from './BrandMark';
+import { AppStoreTopLink } from './AppStorePromo';
 import { ImportBar } from './ImportBar';
 import { BoardThemePicker } from './BoardThemePicker';
 import { boardThemeById, type BoardThemeId } from '@/lib/board-theme';
@@ -216,6 +217,7 @@ export function AppShell({
             class). On desktop they stay inline and `open` is a no-op. */}
         <div className={'topbar-prefs' + (sideOpen ? ' open' : '')}>
           {/* Random-order + session stats now live in the puzzle sidebar. */}
+          <AppStoreTopLink />
           {/* Global settings: import · coordinates · dark mode · about. */}
           <button
             type="button"
