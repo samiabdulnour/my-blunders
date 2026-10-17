@@ -205,11 +205,17 @@ select {
 }
 /* The coord mode switcher is a plain control bracket — the same height as the
    arrows bracket (a `.board-controls` with 38px buttons), so every top bracket
-   across the app is this one compact size. 12px side padding matches the puzzle
-   / play / opening headers so the menu button lands at the same x in every tab. */
+   across the app is this one compact size. 14px side padding matches the puzzle
+   and play headers so the menu button lands at the same x in every tab. */
 .ct-switcher-head > .board-controls {
   flex: 1;
-  padding: 7px 12px;
+  padding: 7px 14px;
+}
+/* It is the coordinate trainer's top bracket: spans the column without
+   widening it, like .ctx-line. */
+.ct-switcher-head {
+  width: 0;
+  min-width: 100%;
 }
 .board-controls {
   display: flex;
@@ -1088,17 +1094,35 @@ select {
 }
 
 /* ─── Board column + quiet context bar ─── */
+/* One layout for every board tab (Puzzles, Coordinates, Play, the opening
+   drill): a top bracket, then a .board-row of the .board-stack (board + the
+   brackets under it) and the .result-slot. The column shrink-wraps the row —
+   it sits in a centring flex column, so `auto` width is fit-content — which
+   makes every bracket exactly the board's width (plus the result panel beside
+   it on a wide screen). The header, the board, the arrows and the result then
+   share one left and one right edge, and the board lands on the same spot in
+   every tab. Full-width brackets opt out of sizing the column; see .ctx-line.
+   A one-column grid rather than a flex column: a grid area is a definite
+   width, so a child's `min-width: 100%` resolves against it (in a shrink-wrapped
+   flex column it resolves to nothing and the header collapses). */
 .board-col {
-  width: 100%;
-  max-width: 808px;
-  display: flex;
-  flex-direction: column;
+  max-width: 100%;
+  display: grid;
+  /* A zero minimum lets the column narrow to the pane, so a board too wide
+     for the side-by-side layout (labels + engine bar) squeezes the result
+     panel rather than pushing the row past the edge. */
+  grid-template-columns: minmax(0, auto);
   /* Uniform 10px gap between the brackets, matching the board-stack gap so the
      header→board and board→arrows gaps are identical across every tab. */
-  gap: 10px;
+  row-gap: 10px;
 }
-/* Puzzle name + info in a white bracket, menu button pinned to the right. */
+/* Puzzle name + info in a white bracket, menu button pinned to the right.
+   `width: 0; min-width: 100%` spans the column without widening it: a long
+   name ellipsises instead of pushing the header past the board's edge. The
+   coordinate trainer's switcher bracket (.ct-switcher-head) does the same. */
 .ctx-line {
+  width: 0;
+  min-width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1106,7 +1130,6 @@ select {
      .board-controls — so the name, the ☰, the arrows and the result panel's
      buttons all sit on one vertical line. */
   padding: 0 14px;
-  min-width: 0;
   /* Compact shared header height (same as the arrows bracket). */
   height: 54px;
   box-sizing: border-box;
@@ -1170,12 +1193,14 @@ select {
 }
 
 /* ─── Board + result row ─── */
+/* Stacked by default (phones, tablets, a narrow window): the result brackets
+   go under the board at its width. Side by side once the screen has room for
+   the board, the 18px gap and the 280px panel — see the media queries after
+   .result-slot. */
 .board-row {
   display: flex;
-  gap: 18px;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .bwrap {
@@ -1423,9 +1448,67 @@ select {
 }
 
 /* ─── Verdict-first result panel ─── */
+/* Stacked: as wide as the board above it, never wider (same trick as
+   .ctx-line, so a long line of text wraps instead of widening the column). */
 .result-slot {
-  width: 280px;
-  flex-shrink: 0;
+  width: 0;
+  min-width: 100%;
+  /* Several brackets (Play's status + moves, a game's blurb + notation) stack
+     on the column's 10px gap. */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+/* Side by side when the main pane fits board + gap + panel: 482 + 18 + 280 =
+   780px plus its 24px padding each side. With the 320px sidebar docked that's
+   a 1148px window; with it closed, any desktop width. The panel may give up to
+   80px so a board with labels or the engine bar still fits beside it. */
+@media (min-width: 1148px) {
+  .board-row {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 18px;
+  }
+  .result-slot {
+    width: 280px;
+    min-width: 200px;
+  }
+  /* The header spans board + panel, but the Find / Colour / Games switcher
+     keeps to the board's width (482 less the bracket's border and 14px
+     insets), lining up with the arrow buttons under the board. */
+  .ct-switcher-head .bc-modes {
+    max-width: 452px;
+  }
+  /* Beside the board there's room for more of the game's moves. (Scoped so
+     it outranks the base .ct-moves rule further down the file.) */
+  .result-slot .ct-moves {
+    max-height: 340px;
+  }
+}
+@media (min-width: 901px) {
+  .body-row.side-closed .board-row {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 18px;
+  }
+  .body-row.side-closed .result-slot {
+    width: 280px;
+    min-width: 200px;
+  }
+  .body-row.side-closed .ct-switcher-head .bc-modes {
+    max-width: 452px;
+  }
+  .body-row.side-closed .ct-moves {
+    max-height: 340px;
+  }
+}
+/* With no board beside it (the finished opening drill) the panel is the
+   column, so it takes the board's width itself. After the rules above so it
+   wins at every width. */
+.board-row > .result-slot:only-child {
+  width: 482px;
+  max-width: 100%;
+  min-width: 0;
 }
 .pre-result,
 .result {
@@ -2599,47 +2682,24 @@ a.icon-btn {
        area, so the scroll content pads past the home indicator itself. */
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
+  /* Squares stay the desktop 60px wherever that fits (a tablet), and shrink to
+     the screen on a phone. The column shrink-wraps the board (see .board-col),
+     so every bracket follows the board's width rather than a fixed one. */
   .bwrap {
     /* Reserve the 12px main padding + the rank column and its mirror spacer
        (14 + 8 gap, both sides) so the 8×8 grid sits centred on screen. */
-    --sq-size: min(44px, calc((100vw - 68px) / 8));
+    --sq-size: min(60px, calc((100vw - 68px) / 8));
   }
   /* No labels → the grid fills the width (just the page padding reserved). */
   .bwrap.no-coords {
-    --sq-size: min(52px, calc((100vw - 28px) / 8));
+    --sq-size: min(60px, calc((100vw - 28px) / 8));
   }
   /* Engine bar on: reserve its 12px + 8px gap too, so the grid still fits. */
   .bwrap.has-eval {
-    --sq-size: min(44px, calc((100vw - 88px) / 8));
+    --sq-size: min(60px, calc((100vw - 88px) / 8));
   }
   .bwrap.no-coords.has-eval {
-    --sq-size: min(52px, calc((100vw - 48px) / 8));
-  }
-  .board-row {
-    flex-direction: column;
-    align-items: center;
-    /* Same 10px gap as the other stacked brackets (board → result / moves). */
-    gap: 10px;
-  }
-  /* Full-column width so the control bracket lines up with the result / moves
-     brackets below it, whether or not the board shows coordinate labels. The
-     slot stretches full width; the board itself stays centred within the stack. */
-  .board-stack {
-    width: 100%;
-    max-width: 480px;
-    align-items: stretch;
-  }
-  /* Only the board keeps its intrinsic width (centred); every bracket around it
-     — mode switcher, arrows, coordinate row, notation — stretches full width so
-     they all line up edge-to-edge, identically in every mode. */
-  .board-stack > .bwrap,
-  .board-stack > .ct-board,
-  .board-stack > .ct-board-area {
-    align-self: center;
-  }
-  .result-slot {
-    width: 100%;
-    max-width: 480px;
+    --sq-size: min(60px, calc((100vw - 48px) / 8));
   }
 }
 @media (max-width: 480px) {
@@ -2657,8 +2717,8 @@ a.icon-btn {
   }
 }
 
-/* Landscape phones: short viewport, wide screen — scale board by height
-   and restore side-by-side layout so nothing overflows vertically. */
+/* Landscape phones: short viewport, wide screen — scale the board by height
+   and restore the side-by-side layout; the arrows under it scroll into view. */
 @media (orientation: landscape) and (max-height: 500px) {
   /* Force slide-over sidebar for phones wider than 900px in landscape */
   .body-row { position: relative; }
@@ -2679,9 +2739,16 @@ a.icon-btn {
     z-index: 70;
   }
   .body-row.side-closed .scrim { display: none; }
-  /* Size board to fit inside landscape height without scrolling */
-  .bwrap {
-    --sq-size: min(42px, calc((100vh - 68px) / 8));
+  /* Size the board to the height left under the 48px topbar, the header
+     bracket and its gap (64px) and the pane's padding. Every variant is named
+     so labels or the engine bar don't fall back to the tablet sizes above
+     (they outrank a bare .bwrap); the trainer's own boards follow in the
+     Coordinates section. Whatever sits under the board scrolls into view. */
+  .bwrap,
+  .bwrap.no-coords,
+  .bwrap.has-eval,
+  .bwrap.no-coords.has-eval {
+    --sq-size: min(42px, calc((100vh - 122px) / 8));
   }
   /* Board + result panel side by side (undo the portrait column stack) */
   .board-row {
@@ -2695,7 +2762,6 @@ a.icon-btn {
   }
   .main {
     padding: 4px 8px;
-    overflow-y: hidden;
   }
 }
 
@@ -3313,32 +3379,14 @@ body.panning * {
 }
 
 /* ── Assisted Play ─────────────────────────────────────────────────── */
-.main.play-mode { align-items: center; justify-content: flex-start; }
 /* Two columns sized to read as one block: the side stretches to the board's
  * height and its controls pin to the bottom, so both columns share top & bottom
  * edges instead of the panel floating shorter/taller than the board. */
 .play { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 900px; }
-.play-board { flex-shrink: 0; display: flex; justify-content: center; }
-/* Play is now a single centred column: opening · board · move result · moves.
-   (Opponent strength + game controls live in the hamburger drawer.) */
-.play-col {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  /* Uniform 10px gap between brackets, same as every other tab. */
-  gap: 10px;
-  width: 100%;
-  max-width: 520px;
-}
-/* Opening header matches the compact puzzle/coords header height so the board aligns. */
-.play-col .ps-block-open {
-  height: 54px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
-}
+/* Play uses the puzzle layout (.board-col): the opening name in a .ctx-line
+   header, the board + arrows (+ clocks) in the .board-stack, and the move
+   result and move list in the .result-slot. (Opponent strength + game
+   controls live in the hamburger drawer.) */
 .ps-open-body {
   flex: 1;
   min-width: 0;
@@ -3378,7 +3426,9 @@ body.panning * {
 .play-side .ps-elo-note { margin-top: 6px; }
 .play-side .ps-controls { gap: 8px; }
 .play-side .ps-new-label { margin-bottom: 4px; }
-.ps-block { border: 1px solid var(--contour); padding: 14px 16px; background: var(--bg2); }
+/* Same 12px / 14px inset as the puzzle result panel (.pre-result), so Play's
+   text lines up with the arrow buttons and the header like every other tab. */
+.ps-block { border: 1px solid var(--contour); padding: 12px 14px; background: var(--bg2); }
 .play-side .ps-block { padding: 11px 14px; }
 .ps-moves-block .ps-h { display: flex; align-items: baseline; justify-content: space-between; }
 .ps-live-link { background: none; border: 0; padding: 0; color: var(--coral); cursor: pointer; font: inherit; font-size: var(--fs-base); text-transform: none; letter-spacing: 0; }
@@ -3704,8 +3754,6 @@ body.panning * {
 .ct-coord-cell.cur { opacity: 1; }
 .ct-coord-cell.blank { opacity: 0; } /* not-yet-filled past slots at the start */
 
-/* Colour mode's board-width column: mode switcher, board-sized square, buttons. */
-.ct-color-stack { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 482px; }
 /* A board-sized white square in the board's spot, holding the coordinate. */
 .ct-color-square {
   align-self: center;
@@ -3771,10 +3819,13 @@ body.panning * {
 .ct-sq.ok { box-shadow: inset 0 0 0 5px var(--green); }
 .ct-sq.fail { box-shadow: inset 0 0 0 5px var(--red); }
 
-/* Edge coordinates when showCoords is on */
-.ct-board-area { display: grid; grid-template-columns: 16px auto; grid-template-rows: auto 16px; }
+/* Edge coordinates when showCoords is on. Same geometry as the shared board's
+   labels (.bwrap: a 14px rank column, an 8px gap, and a mirrored spacer on the
+   right; the file row 5px under the grid), so with labels on the squares sit
+   exactly where they do in Puzzles and Play. */
+.ct-board-area { display: grid; grid-template-columns: 14px auto 14px; column-gap: 8px; row-gap: 5px; }
 .ct-board-area .ct-board { grid-column: 2; grid-row: 1; }
-.ct-ranks { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; justify-content: space-around; align-items: center; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); font-variant-numeric: tabular-nums; }
+.ct-ranks { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; justify-content: space-around; align-items: flex-end; padding-right: 2px; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); font-variant-numeric: tabular-nums; }
 .ct-files { grid-column: 2; grid-row: 2; display: flex; justify-content: space-around; align-items: center; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--txt-dim); text-transform: uppercase; }
 
 /* Game info (replay) in the left panel: selector, name + blurb, turn line. */
@@ -3784,8 +3835,6 @@ body.panning * {
 .ct-game-context { margin: 5px 0 0; font-size: var(--fs-base); color: var(--txt-dim); line-height: 1.5; }
 .ct-game-status { margin-top: 9px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--track-caps); font-weight: var(--fw-bold); color: var(--txt-dim); }
 
-/* Games layout: board · arrows · notation stacked in one board-width column. */
-.ct-replay-stack { gap: 10px; }
 /* "What is this" bracket above the notation — same shell as the notation block. */
 .ct-replay-about { border: 1px solid var(--contour); background: var(--bg2); padding: 9px 11px; box-sizing: border-box; }
 .ct-replay-about .verdict-sub { margin-top: 2px; }
@@ -3803,13 +3852,21 @@ body.panning * {
      other tabs: fill the viewport (minus the page padding) with no labels;
      reserve the label columns when they're on. */
   .ct-board { width: min(480px, calc(100vw - 28px)); grid-template-columns: repeat(8, 1fr); }
-  /* Mirror the 16px rank column on the right so the grid centres (like the
-     shared board's mirror spacer), and shrink the board to leave room. */
-  .ct-board-area { grid-template-columns: 16px auto 16px; }
+  /* Leave room for the label columns, as the shared board does. */
   .ct-board-area .ct-board { width: min(480px, calc(100vw - 68px)); }
   .ct-sq { width: auto; height: auto; }
   .ct-color-square { width: min(480px, calc(100vw - 28px)); }
   .ct-coord-big { font-size: clamp(60px, 18vw, 120px); }
+}
+/* Landscape phones: the same height-fitted size as the shared board (see the
+   landscape block above), so the trainer's board and colour square match it. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .ct-board,
+  .ct-board-area .ct-board,
+  .ct-color-square { width: min(336px, calc(100vh - 122px)); }
+  .ct-board { grid-template-columns: repeat(8, 1fr); }
+  .ct-sq { width: auto; height: auto; }
+  .ct-coord-big { font-size: clamp(48px, 22vh, 120px); }
 }
 
 /* ─── Motion ─────────────────────────────────────────────────────────────

@@ -70,6 +70,10 @@ const LABEL_H = 38;
 const LINK_GAP = 22;
 /** Move-number gutter: pinned to the left edge of the pane while you pan. */
 const GUTTER = 30;
+/** The tree's zoom range, shared by the −/+ buttons and the pinch gestures. */
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 1.6;
+const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 /** Where a row's move number sits down White's board (as on the poster). */
 const MOVE_NO_AT = 0.275;
 /** Canvas drawn past each edge of the visible pane, and the step the visible
@@ -140,7 +144,7 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
   const [drillItems, setDrillItems] = useState<DrillItem[] | null>(null);
   const [detailOpen, setDetailOpen] = useState(true);
   const [zoom, setZoom] = useState(1);
-  const zoomBy = (d: number) => setZoom((z) => Math.min(1.6, Math.max(0.1, Math.round((z + d) * 10) / 10)));
+  const zoomBy = (d: number) => setZoom((z) => clampZoom(Math.round((z + d) * 10) / 10));
   // The tree-zoom control is only handy on the web; the native app drops it.
   // Detect after mount so the prerendered HTML and first client render agree
   // (no hydration mismatch), then hide it on device.
@@ -149,11 +153,16 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
   // The scrolling tree pane + a live mirror of the zoom (so the centering
   // effect can read the current zoom without re-running on every zoom change).
   const treeRef = useRef<HTMLDivElement | null>(null);
+  // The scaled canvas inside the pane (zoom anchoring and culling measure it).
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
-  // Pending scroll position to apply after a pinch-zoom re-render (useLayoutEffect
-  // reads it once the DOM has updated its new scrollable dimensions).
-  const pendingScrollRef = useRef<{ x: number; y: number } | null>(null);
+  // A zoom asked for but not yet rendered: the zoom, and the canvas point
+  // (lx, ly, unscaled) that must end up under the pane point (px, py) — the
+  // pinch midpoint or the cursor. The layout effect below scrolls to honour it
+  // once the canvas has its new size. Several trackpad-pinch wheel events can
+  // land per frame; each builds on this rather than on what's still on screen.
+  const pendingZoomRef = useRef<{ z: number; lx: number; ly: number; px: number; py: number } | null>(null);
   // What view we last auto-centred (colour|focus). Re-centre only when the view
   // changes. Not on every incremental fetch, which would yank the canvas back.
   const centeredKeyRef = useRef<string | null>(null);
@@ -163,30 +172,68 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
   // leave you looking at the wrong place when you open the tab.
   const userMovedRef = useRef(false);
 
-  // After a pinch-zoom re-render, apply the stored scroll position so the pinch
-  // midpoint stays anchored in place (canvas dimensions have updated by now).
+  // After a gesture-zoom re-render, scroll so the anchored canvas point is back
+  // under the fingers / cursor. Measured from where the canvas actually sits
+  // now, so the move-number gutter and the header above it need no constants.
   useLayoutEffect(() => {
+    const a = pendingZoomRef.current;
+    pendingZoomRef.current = null;
     const el = treeRef.current;
-    if (!el || !pendingScrollRef.current) return;
-    el.scrollLeft = Math.max(0, pendingScrollRef.current.x);
-    el.scrollTop = Math.max(0, pendingScrollRef.current.y);
-    pendingScrollRef.current = null;
+    const c = canvasRef.current;
+    if (!a || !el || !c) return;
+    const pr = el.getBoundingClientRect();
+    const cr = c.getBoundingClientRect();
+    el.scrollLeft += cr.left + a.lx * zoom - (pr.left + a.px);
+    el.scrollTop += cr.top + a.ly * zoom - (pr.top + a.py);
   }, [zoom]);
 
-  // Pinch-to-zoom + mouse drag-to-pan on the tree canvas.
-  // Non-passive touchmove lets us preventDefault during pinch.
+  // The tree pane only exists outside a drill, so the gesture listeners below
+  // attach whenever it (re)mounts, not just on the first render.
+  const drilling = !!drillItems && drillItems.length > 0;
+
+  // Gesture zoom + mouse drag-to-pan on the tree canvas: a two-finger pinch on
+  // a touch screen, a trackpad pinch (or Ctrl/⌘ + wheel) on a computer.
+  // Non-passive listeners let us preventDefault, so the gesture zooms the tree
+  // instead of the whole page.
   useEffect(() => {
     const el = treeRef.current;
     if (!el) return;
 
+    type Anchor = { z: number; lx: number; ly: number; px: number; py: number };
+    const inPane = (clientX: number, clientY: number) => {
+      const rect = el.getBoundingClientRect();
+      return { px: clientX - rect.left, py: clientY - rect.top };
+    };
+    /** The zoom, and the canvas point under pane point (px, py), that the next
+     *  step builds on: the zoom still waiting to render if there is one, else
+     *  what's on screen. */
+    const anchorAt = (px: number, py: number): Anchor => {
+      const p = pendingZoomRef.current;
+      // A pinch that settled back on the zoom already shown never re-renders,
+      // so its leftovers are stale: read the screen again.
+      if (p && p.z !== zoomRef.current) {
+        return { z: p.z, lx: p.lx + (px - p.px) / p.z, ly: p.ly + (py - p.py) / p.z, px, py };
+      }
+      pendingZoomRef.current = null;
+      const z = zoomRef.current;
+      const pr = el.getBoundingClientRect();
+      const cr = canvasRef.current?.getBoundingClientRect() ?? pr;
+      return { z, lx: (pr.left + px - cr.left) / z, ly: (pr.top + py - cr.top) / z, px, py };
+    };
+    /** Zoom to `z`, keeping the canvas point in `at` under the same spot of
+     *  the pane: a gesture's starting anchor, or a fresh one per wheel step. */
+    const zoomAround = (z: number, at: Anchor) => {
+      const nz = clampZoom(z);
+      if (nz === (pendingZoomRef.current?.z ?? zoomRef.current)) return;
+      userMovedRef.current = true; // user took over the canvas
+      pendingZoomRef.current = { ...at, z: nz };
+      setZoom(nz);
+    };
+
     // ── Touch pinch-to-zoom ─────────────────────────────────────────────────
     let pinching = false;
     let startDist = 0;
-    let startZoom = 1;
-    let startScrollX = 0;
-    let startScrollY = 0;
-    let midX = 0;
-    let midY = 0;
+    let start: Anchor | null = null;
 
     const pinchDist = (t: TouchList) =>
       Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
@@ -196,25 +243,18 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
       pinching = true;
       userMovedRef.current = true; // user took over the canvas
       startDist = pinchDist(e.touches);
-      startZoom = zoomRef.current;
-      startScrollX = el.scrollLeft;
-      startScrollY = el.scrollTop;
-      const rect = el.getBoundingClientRect();
-      midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
-      midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+      const mid = inPane(
+        (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      );
+      start = anchorAt(mid.px, mid.py);
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (!pinching || e.touches.length < 2) return;
+      if (!pinching || !start || e.touches.length < 2) return;
       e.preventDefault();
-      const d = pinchDist(e.touches);
-      const newZ = Math.min(1.6, Math.max(0.1, startZoom * (d / startDist)));
-      // Keep the canvas point under the pinch midpoint stationary. The canvas
-      // starts after the (unscaled) move-number gutter.
-      const layoutX = (startScrollX + midX - GUTTER) / startZoom;
-      const layoutY = (startScrollY + midY) / startZoom;
-      pendingScrollRef.current = { x: layoutX * newZ + GUTTER - midX, y: layoutY * newZ - midY };
-      setZoom(newZ);
+      // Keep the canvas point under the pinch midpoint stationary.
+      zoomAround(start.z * (pinchDist(e.touches) / startDist), start);
     };
 
     const onTouchEnd = (e: TouchEvent) => { if (e.touches.length < 2) pinching = false; };
@@ -222,6 +262,51 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd, { passive: true });
+
+    // ── Trackpad pinch ──────────────────────────────────────────────────────
+    // Chrome, Edge and Firefox report a trackpad pinch as a wheel event with
+    // ctrlKey set (the same as Ctrl + mouse wheel); Safari on a Mac sends its
+    // own gesture events instead (below). A plain wheel still scrolls the tree.
+    let gesturing = false;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || gesturing) return;
+      e.preventDefault();
+      // Line-mode deltas (Firefox with a mouse) are ~3 per notch; make them
+      // pixels. The cap keeps one mouse-wheel notch to a ~20% step, while a
+      // pinch's small deltas zoom smoothly.
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      const step = Math.exp(-Math.max(-25, Math.min(25, dy)) * 0.008);
+      const { px, py } = inPane(e.clientX, e.clientY);
+      const at = anchorAt(px, py);
+      zoomAround(at.z * step, at);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+
+    // ── Safari gesture events (Mac trackpad; also fired by iOS touch) ───────
+    // `scale` is relative to the gesture's start. On iOS the touch handlers
+    // above already zoom, so here we only stop the page from zooming too.
+    type GestureEv = Event & { scale: number; clientX: number; clientY: number };
+    let gStart: Anchor | null = null;
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      if (pinching) return;
+      const g = e as GestureEv;
+      const { px, py } = inPane(g.clientX, g.clientY);
+      gesturing = true;
+      gStart = anchorAt(px, py);
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      if (pinching || !gesturing || !gStart) return;
+      zoomAround(gStart.z * (e as GestureEv).scale, gStart);
+    };
+    const onGestureEnd = (e: Event) => {
+      e.preventDefault();
+      gesturing = false;
+    };
+    el.addEventListener('gesturestart', onGestureStart);
+    el.addEventListener('gesturechange', onGestureChange);
+    el.addEventListener('gestureend', onGestureEnd);
 
     // ── Mouse drag-to-pan ───────────────────────────────────────────────────
     let panStart: { x: number; y: number; scrollLeft: number; scrollTop: number } | null = null;
@@ -257,12 +342,16 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('gesturestart', onGestureStart);
+      el.removeEventListener('gesturechange', onGestureChange);
+      el.removeEventListener('gestureend', onGestureEnd);
       el.removeEventListener('mousedown', onMouseDown);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       document.body.classList.remove('panning');
     };
-  }, []);
+  }, [drilling]);
 
   // Focus re-roots the tree at one node (an opening, or any clicked node) so you
   // can drill in; otherwise the whole tree. Path ids are absolute, so a focus
@@ -366,7 +455,6 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
   // hundreds of boards of 64 squares each, and the pane shows a dozen. The
   // window is measured against the pane and snapped to CULL_STEP, so panning
   // re-renders in steps rather than every frame.
-  const canvasRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   useLayoutEffect(() => {
     const el = treeRef.current;
@@ -569,9 +657,9 @@ export function OpeningClinic({ coords = false, evalBar = false }: { coords?: bo
           <div className="clinic-tools">
             {!nativeApp && (
               <div className="clinic-zoom">
-                <button onClick={() => zoomBy(-0.2)} aria-label="Zoom out" disabled={zoom <= 0.1}>−</button>
+                <button onClick={() => zoomBy(-0.2)} aria-label="Zoom out" disabled={zoom <= MIN_ZOOM}>−</button>
                 <span className="num">{Math.round(zoom * 100)}%</span>
-                <button onClick={() => zoomBy(0.2)} aria-label="Zoom in" disabled={zoom >= 1.6}>+</button>
+                <button onClick={() => zoomBy(0.2)} aria-label="Zoom in" disabled={zoom >= MAX_ZOOM}>+</button>
               </div>
             )}
             <BoardTopSlot />

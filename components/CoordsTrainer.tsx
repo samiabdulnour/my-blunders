@@ -136,10 +136,11 @@ function FindMode({ sub, onChangeSub, coords }: { sub: SubMode; onChangeSub: (s:
 
       <div className="main">
         <div className="board-col">
+          {/* Mode switcher (+ menu) portals in here: the top bracket, spanning
+              the board and the result panel like the puzzle header. */}
+          <BoardTopSlot className="ct-switcher-head" />
           <div className="board-row">
             <div className="board-stack">
-              {/* Mode switcher (+ menu) portals in here, above the board. */}
-              <BoardTopSlot className="ct-switcher-head" />
               <CoordBoard orientation={orientation} onPick={running ? pick : () => {}} flash={flash} interactive={running} showCoords={coords} />
               {/* Row of coordinates under the board with the square to guess dead
                   centre (black); upcoming ones dimmed to its left, guessed ones to
@@ -234,10 +235,10 @@ function ColorMode({ sub, onChangeSub }: { sub: SubMode; onChangeSub: (s: SubMod
 
       <div className="main">
         <div className="board-col">
+          {/* Mode switcher (+ menu) portals in here, as in Find. */}
+          <BoardTopSlot className="ct-switcher-head" />
           <div className="board-row">
-            <div className="ct-color-stack">
-              {/* Mode switcher (+ menu) portals in here, above the coordinate. */}
-              <BoardTopSlot className="ct-switcher-head" />
+            <div className="board-stack">
               {/* Board-sized white square in the board's position, with the
                   coordinate to guess shown inside it. */}
               <div className="ct-color-square">
@@ -530,52 +531,57 @@ function ReplayMode({ sub, onChangeSub, coords, evalBar }: { sub: SubMode; onCha
 
       <div className="main">
         <div className="board-col">
-          {/* Games layout, top → bottom: mode switcher · board · arrows · notation. */}
-          <div className="board-stack ct-replay-stack">
-            <BoardTopSlot className="ct-switcher-head" />
-            <Board
-              chess={boardChess}
-              orientation={orientation}
-              selected={selected}
-              legalFrom={legalFrom}
-              lastFrom={lastMove?.from ?? null}
-              lastTo={lastMove?.to ?? null}
-              flashOk={null}
-              flashFail={wrong?.to ?? null}
-              bounceBack={wrong}
-              introMove={travel}
-              revealed={done}
-              onSquareClick={onSquareClick}
-              onDragMove={(mv) => tryMove(mv, true)}
-              coords={coords}
-              showEval={evalBar}
-            />
-            <BoardControlsSlot />
-            {/* Says what this mode is for, like the note under Find / Colour. */}
-            <div className="ct-replay-about">
-              {/* Same collapsible-title pattern as the Play move list: title with a
-                  trailing chevron, tap to fold the blurb away once you've read it. */}
-              <button className="ps-moves-toggle" onClick={() => setAboutOpen((o) => !o)} aria-expanded={aboutOpen}>
-                {game.white} vs {game.black}
-                <span className="ps-moves-chevron">{aboutOpen ? '▾' : '▸'}</span>
-              </button>
-              {aboutOpen && (
-                <div className="verdict-sub">
-                  Step through a famous game with the arrows and read the moves off the notation.
-                </div>
-              )}
+          {/* The puzzle layout: mode switcher on top, board + arrows, and the
+              game's blurb + notation in the result column beside (or under) it. */}
+          <BoardTopSlot className="ct-switcher-head" />
+          <div className="board-row">
+            <div className="board-stack">
+              <Board
+                chess={boardChess}
+                orientation={orientation}
+                selected={selected}
+                legalFrom={legalFrom}
+                lastFrom={lastMove?.from ?? null}
+                lastTo={lastMove?.to ?? null}
+                flashOk={null}
+                flashFail={wrong?.to ?? null}
+                bounceBack={wrong}
+                introMove={travel}
+                revealed={done}
+                onSquareClick={onSquareClick}
+                onDragMove={(mv) => tryMove(mv, true)}
+                coords={coords}
+                showEval={evalBar}
+              />
+              <BoardControlsSlot />
             </div>
-            <div className="ct-notation">
-              <div className="ct-moves-h">Moves · {Math.ceil(moves.length / 2)}{done ? ` · ${game.result}` : ''}</div>
-              <ol className="ct-moves" ref={movesRef}>
-                {rows.map((r) => (
-                  <li className="ps-move-row" key={r.n}>
-                    <span className="ps-move-no num">{r.n}.</span>
-                    <span className={'ct-ply' + (r.wPly < ply ? ' done' : '') + (r.wPly === ply ? ' next' : '')}>{figurine(r.w, 'w')}</span>
-                    <span className={'ct-ply' + (r.b ? (r.bPly < ply ? ' done' : '') + (r.bPly === ply ? ' next' : '') : '')}>{figurine(r.b ?? '', 'b')}</span>
-                  </li>
-                ))}
-              </ol>
+            <div className="result-slot">
+              {/* Says what this mode is for, like the note under Find / Colour. */}
+              <div className="ct-replay-about">
+                {/* Same collapsible-title pattern as the Play move list: title with a
+                    trailing chevron, tap to fold the blurb away once you've read it. */}
+                <button className="ps-moves-toggle" onClick={() => setAboutOpen((o) => !o)} aria-expanded={aboutOpen}>
+                  {game.white} vs {game.black}
+                  <span className="ps-moves-chevron">{aboutOpen ? '▾' : '▸'}</span>
+                </button>
+                {aboutOpen && (
+                  <div className="verdict-sub">
+                    Step through a famous game with the arrows and read the moves off the notation.
+                  </div>
+                )}
+              </div>
+              <div className="ct-notation">
+                <div className="ct-moves-h">Moves · {Math.ceil(moves.length / 2)}{done ? ` · ${game.result}` : ''}</div>
+                <ol className="ct-moves" ref={movesRef}>
+                  {rows.map((r) => (
+                    <li className="ps-move-row" key={r.n}>
+                      <span className="ps-move-no num">{r.n}.</span>
+                      <span className={'ct-ply' + (r.wPly < ply ? ' done' : '') + (r.wPly === ply ? ' next' : '')}>{figurine(r.w, 'w')}</span>
+                      <span className={'ct-ply' + (r.b ? (r.bPly < ply ? ' done' : '') + (r.bPly === ply ? ' next' : '') : '')}>{figurine(r.b ?? '', 'b')}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
             </div>
           </div>
         </div>
