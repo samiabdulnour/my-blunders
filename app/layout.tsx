@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { APP_STORE_ID } from '@/lib/app-store';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -26,6 +27,12 @@ export const metadata: Metadata = {
     statusBarStyle: 'black-translucent',
   },
   applicationName: 'My Blunders',
+  /**
+   * Safari's Smart App Banner (`<meta name="apple-itunes-app">`): on iPhone and
+   * iPad it offers "Open" or "Get" for the App Store app above the page. Only
+   * Safari draws it, so the same tag in the app's own WebView does nothing.
+   */
+  itunes: { appId: APP_STORE_ID },
 };
 
 export const viewport: Viewport = {

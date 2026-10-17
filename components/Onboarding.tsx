@@ -5,6 +5,7 @@ import Link from 'next/link';
 import type { Importer } from '@/lib/useImporter';
 import { useImportStatus } from '@/lib/import-status';
 import { BoardThemePicker } from '@/components/BoardThemePicker';
+import { AppStoreCard } from '@/components/AppStorePromo';
 import type { BoardThemeId } from '@/lib/board-theme';
 
 interface OnboardingProps {
@@ -305,6 +306,9 @@ export function Onboarding({
       {phase === 'done' && (
         <div className="onb-done">✓ All set. Loading your first puzzle…</div>
       )}
+
+      {/* Kept to the first step, so it never competes with an import underway. */}
+      {phase === 'idle' && <AppStoreCard />}
 
       <div className="onb-alt">
         <Link href="/about">about My Blunders →</Link>
