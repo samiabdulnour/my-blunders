@@ -619,10 +619,13 @@ async function renderPoster(
   doc.setCharSpace(HEAD_TRACK * titleSize);
   titleRows.forEach((row, i) => doc.text(row, contentRight - HEAD_R_TITLE, titleBase0 + i * TITLE_LEAD));
 
+  // The two labels share the title's FIRST row: cap tops level, even when a
+  // wrapped title has also shrunk.
+  const labelBase = titleBase0 + CAP_RATIO * (HEAD_SIZE - titleSize);
   doc.setFontSize(HEAD_SIZE);
   doc.setCharSpace(HEAD_TRACK * HEAD_SIZE);
-  doc.text('OPENING TREE', contentRight - HEAD_R_MID, HEAD_TITLE_BASE);
-  doc.text(`${named} NAMED LINE${named === 1 ? '' : 'S'}`, contentRight - HEAD_R_END, HEAD_TITLE_BASE, { align: 'right' });
+  doc.text('OPENING TREE', contentRight - HEAD_R_MID, labelBase);
+  doc.text(`${named} NAMED LINE${named === 1 ? '' : 'S'}`, contentRight - HEAD_R_END, labelBase, { align: 'right' });
   doc.setCharSpace(0);
 
   stroke(C_HEAD_DIM);
