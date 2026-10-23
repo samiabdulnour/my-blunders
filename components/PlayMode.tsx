@@ -763,10 +763,12 @@ export function PlayMode({
         </div>
       </aside>
 
-      {/* Main column: opening · board · move result · moves. */}
-      <div className="main play-mode">
-        <div className="play-col">
-          <div className="ps-block ps-block-open">
+      {/* The puzzle layout: opening header on top, board + arrows (+ clocks),
+          and the move result + move list in the result column beside (or
+          under) the board — so the board sits where it does in every tab. */}
+      <div className="main">
+        <div className="board-col">
+          <div className="ctx-line">
             <div className="ps-open-body">
               {/* Title line first (opening name), then the small label — same
                   title-on-top layout as the puzzle and coords headers. */}
@@ -781,144 +783,148 @@ export function PlayMode({
             <BoardTopSlot />
           </div>
 
-          <div className="play-board">
-            <Board
-              chess={boardChess}
-              orientation={orientation === 'w' ? 'white' : 'black'}
-              selected={selected}
-              legalFrom={legalFrom}
-              lastFrom={hlFrom}
-              lastTo={hlTo}
-              flashOk={null}
-              flashFail={null}
-              bounceBack={null}
-              introMove={navTravel}
-              revealed={!canMove}
-              onSquareClick={onSquareClick}
-              onDragMove={(mv) => applyUserMove(mv, true)}
-              coords={coords}
-              showEval={evalBar}
-            />
-          </div>
+          <div className="board-row">
+            <div className="board-stack">
+              <Board
+                chess={boardChess}
+                orientation={orientation === 'w' ? 'white' : 'black'}
+                selected={selected}
+                legalFrom={legalFrom}
+                lastFrom={hlFrom}
+                lastTo={hlTo}
+                flashOk={null}
+                flashFail={null}
+                bounceBack={null}
+                introMove={navTravel}
+                revealed={!canMove}
+                onSquareClick={onSquareClick}
+                onDragMove={(mv) => applyUserMove(mv, true)}
+                coords={coords}
+                showEval={evalBar}
+              />
 
-          {/* Control bracket right under the board (portal target). */}
-          <BoardControlsSlot />
+              {/* Control bracket right under the board (portal target). */}
+              <BoardControlsSlot />
 
-          {/* Clocks sit under the arrows — so the board and the arrows keep the
-              exact same position whether or not a time control is active. Shown
-              only when one is. */}
-          {clockPills && (
-            <div className="play-clocks">
-              {clockPills.map((p) => (
-                <div
-                  key={p.key}
-                  className={'pc' + (p.run ? ' run' : '') + (p.run && p.ms < 20000 ? ' low' : '')}
-                >
-                  <span className="pc-label">{p.label}</span>
-                  <span className="pc-time">{formatMs(p.ms)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="ps-block ps-block-status">
-            <div className="ps-h">{statusHead}</div>
-            {result ? (
-              <div className="ps-result">{result}</div>
-            ) : (
-              <>
-                {verdict ? (
-                  <div className={'ps-verdict q-' + (verdict.isBest ? 'best' : verdict.quality)}>
-                    <div className="ps-verdict-head">
-                      {ratedSan && <span className="ps-verdict-move">{figurine(ratedSan, userColor)}</span>}
-                      {verdict.isBest
-                        ? 'Best move !'
-                        : verdict.quality === 'ok'
-                          ? 'Good move ✓'
-                          : QUALITY_LABEL[verdict.quality]}
+              {/* Clocks sit under the arrows — so the board and the arrows keep the
+                  exact same position whether or not a time control is active. Shown
+                  only when one is. */}
+              {clockPills && (
+                <div className="play-clocks">
+                  {clockPills.map((p) => (
+                    <div
+                      key={p.key}
+                      className={'pc' + (p.run ? ' run' : '') + (p.run && p.ms < 20000 ? ' low' : '')}
+                    >
+                      <span className="pc-label">{p.label}</span>
+                      <span className="pc-time">{formatMs(p.ms)}</span>
                     </div>
-                    {/* Whenever your move wasn't the engine's pick — even a "good
-                        move" — name the best move. (Redundant only when you already
-                        played it, i.e. isBest.) */}
-                    {!verdict.isBest && verdict.bestSan && (
-                      <div className="ps-verdict-body">
-                        Best was{' '}
-                        {/* Tap the move to watch where it actually leads — the
-                            engine's own line, replayed on a small board. */}
-                        <button
-                          className="ps-best-link"
-                          onClick={() => setLineOpen(true)}
-                          disabled={!verdictFen}
-                          aria-label={`Show where ${verdict.bestSan} leads`}
-                        >
-                          {figurine(verdict.bestSan, userColor)}
-                        </button>{' '}
-                        <span className="num">({fmtEval(verdict.evalAfterPawns)} after yours)</span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="result-slot">
+              <div className="ps-block ps-block-status">
+                <div className="ps-h">{statusHead}</div>
+                {result ? (
+                  <div className="ps-result">{result}</div>
+                ) : (
+                  <>
+                    {verdict ? (
+                      <div className={'ps-verdict q-' + (verdict.isBest ? 'best' : verdict.quality)}>
+                        <div className="ps-verdict-head">
+                          {ratedSan && <span className="ps-verdict-move">{figurine(ratedSan, userColor)}</span>}
+                          {verdict.isBest
+                            ? 'Best move !'
+                            : verdict.quality === 'ok'
+                              ? 'Good move ✓'
+                              : QUALITY_LABEL[verdict.quality]}
+                        </div>
+                        {/* Whenever your move wasn't the engine's pick — even a "good
+                            move" — name the best move. (Redundant only when you already
+                            played it, i.e. isBest.) */}
+                        {!verdict.isBest && verdict.bestSan && (
+                          <div className="ps-verdict-body">
+                            Best was{' '}
+                            {/* Tap the move to watch where it actually leads — the
+                                engine's own line, replayed on a small board. */}
+                            <button
+                              className="ps-best-link"
+                              onClick={() => setLineOpen(true)}
+                              disabled={!verdictFen}
+                              aria-label={`Show where ${verdict.bestSan} leads`}
+                            >
+                              {figurine(verdict.bestSan, userColor)}
+                            </button>{' '}
+                            <span className="num">({fmtEval(verdict.evalAfterPawns)} after yours)</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : !manual && !thinking && sideToMove === userColor && (
+                      <div className="ps-hint">Make a move. I&apos;ll flag any mistakes and show the best reply.</div>
+                    )}
+                    {book && (
+                      <div className={'ps-book b-' + book.status}>
+                        {book.status === 'offbook'
+                          ? <>Out of book. Theory plays <b>{figurine(book.mainSan, userColor)}</b></>
+                          : book.status === 'main'
+                            ? 'Main line ✓'
+                            : 'Book move'}
+                        {book.name && <div className="ps-book-name">{book.name}</div>}
                       </div>
                     )}
-                  </div>
-                ) : !manual && !thinking && sideToMove === userColor && (
-                  <div className="ps-hint">Make a move. I&apos;ll flag any mistakes and show the best reply.</div>
-                )}
-                {book && (
-                  <div className={'ps-book b-' + book.status}>
-                    {book.status === 'offbook'
-                      ? <>Out of book. Theory plays <b>{figurine(book.mainSan, userColor)}</b></>
-                      : book.status === 'main'
-                        ? 'Main line ✓'
-                        : 'Book move'}
-                    {book.name && <div className="ps-book-name">{book.name}</div>}
-                  </div>
-                )}
-                {manual && !book && (
-                  <div className="ps-hint">Playing both sides. Set up your line, then turn steering off to face the engine.</div>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className={'ps-block ps-moves-block' + (movesOpen ? '' : ' min')}>
-          <div className="ps-h ps-moves-h">
-            <button className="ps-moves-toggle" onClick={() => setMovesOpen((o) => !o)} aria-expanded={movesOpen}>
-              Moves{totalPlies > 0 ? ` · ${Math.ceil(totalPlies / 2)}` : ''}
-              <span className="ps-moves-chevron">{movesOpen ? '▾' : '▸'}</span>
-            </button>
-            {movesOpen && atPast && (
-              <button className="ps-live-link" onClick={() => setViewPly(null)}>● jump to latest</button>
-            )}
-          </div>
-          {movesOpen && (
-            moveRows.length === 0 ? (
-              <div className="ps-moves-empty">No moves yet. Your game will be listed here. Click any move to step back.</div>
-            ) : (
-              <ol className="ps-moves" ref={movesRef}>
-                {moveRows.map((r) => (
-                  <li className="ps-move-row" key={r.n}>
-                    <span className="ps-move-no num">{r.n}.</span>
-                    <button
-                      className={'ps-ply' + (curPly === r.wPly ? ' cur' : '')}
-                      onClick={() => goPly(r.wPly)}
-                    >
-                      {figurine(r.w.san, 'w')}
-                    </button>
-                    {r.b ? (
-                      <button
-                        className={'ps-ply' + (curPly === r.bPly ? ' cur' : '')}
-                        onClick={() => goPly(r.bPly)}
-                      >
-                        {figurine(r.b.san, 'b')}
-                      </button>
-                    ) : (
-                      <span className="ps-ply ps-ply-empty" />
+                    {manual && !book && (
+                      <div className="ps-hint">Playing both sides. Set up your line, then turn steering off to face the engine.</div>
                     )}
-                  </li>
-                ))}
-              </ol>
-            )
-          )}
-          {movesOpen && atPast && (
-            <div className="ps-review-note">Reviewing an earlier position. Play a move to continue from here.</div>
-          )}
+                  </>
+                )}
+              </div>
+
+              <div className={'ps-block ps-moves-block' + (movesOpen ? '' : ' min')}>
+              <div className="ps-h ps-moves-h">
+                <button className="ps-moves-toggle" onClick={() => setMovesOpen((o) => !o)} aria-expanded={movesOpen}>
+                  Moves{totalPlies > 0 ? ` · ${Math.ceil(totalPlies / 2)}` : ''}
+                  <span className="ps-moves-chevron">{movesOpen ? '▾' : '▸'}</span>
+                </button>
+                {movesOpen && atPast && (
+                  <button className="ps-live-link" onClick={() => setViewPly(null)}>● jump to latest</button>
+                )}
+              </div>
+              {movesOpen && (
+                moveRows.length === 0 ? (
+                  <div className="ps-moves-empty">No moves yet. Your game will be listed here. Click any move to step back.</div>
+                ) : (
+                  <ol className="ps-moves" ref={movesRef}>
+                    {moveRows.map((r) => (
+                      <li className="ps-move-row" key={r.n}>
+                        <span className="ps-move-no num">{r.n}.</span>
+                        <button
+                          className={'ps-ply' + (curPly === r.wPly ? ' cur' : '')}
+                          onClick={() => goPly(r.wPly)}
+                        >
+                          {figurine(r.w.san, 'w')}
+                        </button>
+                        {r.b ? (
+                          <button
+                            className={'ps-ply' + (curPly === r.bPly ? ' cur' : '')}
+                            onClick={() => goPly(r.bPly)}
+                          >
+                            {figurine(r.b.san, 'b')}
+                          </button>
+                        ) : (
+                          <span className="ps-ply ps-ply-empty" />
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                )
+              )}
+              {movesOpen && atPast && (
+                <div className="ps-review-note">Reviewing an earlier position. Play a move to continue from here.</div>
+              )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
